@@ -41,12 +41,45 @@ infisical:
     # -- Image repository for the Infisical service
     repository: infisical/infisical
     # -- Specific version tag of the Infisical image. View the latest version here https://hub.docker.com/r/infisical/infisical
-    tag: "v0.93.1-postgres"
+    tag: "v0.120.0-postgres"
     # -- Pulls image only if not already present on the node
     pullPolicy: IfNotPresent
     # -- Secret references for pulling the image, if needed
     imagePullSecrets: []
 
+  # -- Environment variables for Infisical pods
+  env: []
+  # -- Environment variables from Kubernetes secrets for Infisical pods
+  envFrom: []
+
+  # -- Startup probe for Infisical pods
+  startupProbe:
+    httpGet:
+      path: /api/status
+      port: 8080
+    periodSeconds: 1
+    failureThreshold: 60
+
+  # -- Readiness probe for Infisical pods
+  readinessProbe:
+    httpGet:
+      path: /api/status
+      port: 8080
+    periodSeconds: 5
+    successThreshold: 1
+    failureThreshold: 2
+    timeoutSeconds: 5
+
+  # -- Liveness probe for Infisical pods
+  livenessProbe:
+    httpGet:
+      path: /api/status
+      port: 8080
+    periodSeconds: 10
+    failureThreshold: 3
+
+  # -- Security context for Infisical pods
+  securityContext: {}
   # -- Node affinity settings for pod placement
   affinity: {}
   # -- Tolerations definitions
@@ -61,16 +94,20 @@ infisical:
     annotations: {}
     # -- Service type, can be changed based on exposure needs (e.g., LoadBalancer)
     type: ClusterIP
+    # -- Service port
+    port: 8080
+    # -- Service target port on container
+    targetPort: 8080
     # -- Optional node port for service when using NodePort type
     nodePort: ""
 
   resources:
-    limits:
-      # -- Memory limit for Infisical container
-      memory: 600Mi
-    requests:
-      # -- CPU request for Infisical container
-      cpu: 350m
+    # limits:
+    #   # -- Memory limit for Infisical container
+    #   memory: 600Mi
+    # requests:
+    #   # -- CPU request for Infisical container
+    #   cpu: 350m
 
 ingress:
   # -- Enable or disable ingress configuration
@@ -82,7 +119,7 @@ ingress:
 
   nginx:
     # -- Enable NGINX-specific settings, if using NGINX ingress controller
-    enabled: true
+    enabled: false
 
   # -- Custom annotations for ingress resource
   annotations: {}

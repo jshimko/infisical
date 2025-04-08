@@ -47,7 +47,7 @@ spec:
       - name: "migration-init"
         image: "{{ $infisicalValues.databaseSchemaMigrationJob.image.repository }}:{{ $infisicalValues.databaseSchemaMigrationJob.image.tag }}"
         imagePullPolicy: {{ $infisicalValues.databaseSchemaMigrationJob.image.pullPolicy }}
-        args: 
+        args:
         - "job"
         - "{{ .Release.Name }}-schema-migration-{{ .Release.Revision }}"
     {{- end }}
@@ -55,13 +55,7 @@ spec:
       - name: {{ template "infisical.name" . }}-{{ $infisicalValues.name }}
         image: "{{ $infisicalValues.image.repository }}:{{ $infisicalValues.image.tag }}"
         imagePullPolicy: {{ $infisicalValues.image.pullPolicy }}
-        readinessProbe:
-          httpGet:
-            path: /api/status
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
-        ports: 
+        ports:
         - containerPort: 8080
         env:
         {{- if .Values.postgresql.useExistingPostgresSecret.enabled }}
@@ -79,16 +73,46 @@ spec:
         - name: REDIS_URL
           value: {{ include "infisical.redisConnectionString" . }}
         {{- end }}
+        {{- with $infisicalValues.env }}
+        {{- toYaml . | nindent 10 }}
+        {{- end }}
+
         envFrom:
         - secretRef:
             name: {{ $infisicalValues.kubeSecretRef }}
-        {{- if  $infisicalValues.resources }}
-        resources: {{- toYaml $infisicalValues.resources | nindent 12 }}
+        {{- with $infisicalValues.envFrom }}
+        {{- toYaml . | nindent 10 }}
         {{- end }}
+
+        {{- with $infisicalValues.securityContext }}
+        securityContext:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+
+        {{- with $infisicalValues.startupProbe }}
+        startupProbe:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+
+        {{- with $infisicalValues.livenessProbe }}
+        livenessProbe:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+
+        {{- with $infisicalValues.readinessProbe }}
+        readinessProbe:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+
+        {{- with  $infisicalValues.resources }}
+        resources: {{- toYaml . | nindent 12 }}
+        {{- end }}
+
         {{- with $infisicalValues.extraVolumeMounts }}
         volumeMounts:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+
       {{- with $infisicalValues.extraVolumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
@@ -96,7 +120,7 @@ spec:
 ---
 
 apiVersion: v1
-kind: Service 
+kind: Service
 metadata:
   name: {{ include "infisical.fullname" . }}
   labels:
@@ -111,7 +135,7 @@ spec:
     {{- include "infisical.matchLabels" . | nindent 8 }}
   ports:
     - protocol: TCP
-      port: 8080
+      port: {{ default 8080 $infisicalValues.service.port }}
       targetPort: 8080
       {{- if eq $infisicalValues.service.type "NodePort" }}
       nodePort: {{ $infisicalValues.service.nodePort }}
