@@ -38,7 +38,13 @@ spec:
           - name: DB_CONNECTION_URI
             value: {{ include "infisical.postgresDBConnectionString" . }}
           {{- end }}
+          {{- with $infisicalValues.env }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
           envFrom:
           - secretRef:
               name: {{ $infisicalValues.kubeSecretRef }}
+          {{- with $infisicalValues.envFrom }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
 {{- end }}
