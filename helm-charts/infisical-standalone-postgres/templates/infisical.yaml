@@ -1,3 +1,4 @@
+{{ if .Values.infisical.enabled }}
 {{- $infisicalValues := .Values.infisical }}
 apiVersion: apps/v1
 kind: Deployment
@@ -140,3 +141,4 @@ spec:
       {{- if eq $infisicalValues.service.type "NodePort" }}
       nodePort: {{ $infisicalValues.service.nodePort }}
       {{- end }}
+{{ end }}
