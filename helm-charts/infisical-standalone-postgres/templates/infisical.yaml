@@ -26,32 +26,75 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-    {{- with $infisicalValues.affinity }}
+      {{- with $infisicalValues.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
-    {{- end }}
-    {{- with $infisicalValues.tolerations }}
+      {{- end }}
+      {{- with $infisicalValues.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
-    {{- end }}
-    {{- with $infisicalValues.nodeSelector }}
+      {{- end }}
+      {{- with $infisicalValues.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
-    {{- end }}
-    {{- if $infisicalValues.image.imagePullSecrets }}
+      {{- end }}
+      {{- if $infisicalValues.image.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml $infisicalValues.image.imagePullSecrets | nindent 6 }}
-    {{- end }}
-    {{- if $infisicalValues.autoDatabaseSchemaMigration }}
+      {{- end }}
+      {{- if or $infisicalValues.autoGenerateSecrets $infisicalValues.autoDatabaseSchemaMigration }}
       serviceAccountName: {{ include "infisical.serviceAccountName" . }}
+      {{- end }}
       initContainers:
+      {{- if $infisicalValues.autoGenerateSecrets }}
+      - name: ensure-secret-exists
+        image: bitnami/kubectl:latest
+        command:
+        - "/bin/bash"
+        - "-c"
+        - |
+          # Check if secret already exists (to avoid regenerating on restarts)
+          if kubectl get secret {{ $infisicalValues.kubeSecretRef }} -n {{ .Release.Namespace }} &>/dev/null; then
+            echo "Secret '{{ $infisicalValues.kubeSecretRef }}' already exists in namespace '{{ .Release.Namespace }}'"
+            exit 0
+          fi
+
+          # Generate secure random values using openssl
+          echo "Generating secure random values..."
+          AUTH_SECRET=$(openssl rand -base64 32 | base64)
+          ENCRYPTION_KEY=$(openssl rand -hex 16 | base64)
+          SITE_URL=$(echo "{{ $infisicalValues.siteUrl }}" | base64)
+
+          # Create the secret
+          echo "Creating Kubernetes secret: {{ $infisicalValues.kubeSecretRef }}"
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: {{ $infisicalValues.kubeSecretRef }}
+            namespace: {{ .Release.Namespace }}
+          type: Opaque
+          data:
+            AUTH_SECRET: ${AUTH_SECRET}
+            ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+            SITE_URL: ${SITE_URL}
+          EOF
+
+          if [ $? -eq 0 ]; then
+            echo "Secret '{{ $infisicalValues.kubeSecretRef }}' created in namespace '{{ .Release.Namespace }}'"
+          else
+            echo "Failed to create secret"
+            exit 1
+          fi
+      {{- end }}
+      {{- if $infisicalValues.autoDatabaseSchemaMigration }}
       - name: "migration-init"
         image: "{{ $infisicalValues.databaseSchemaMigrationJob.image.repository }}:{{ $infisicalValues.databaseSchemaMigrationJob.image.tag }}"
         imagePullPolicy: {{ $infisicalValues.databaseSchemaMigrationJob.image.pullPolicy }}
         args:
         - "job"
         - "{{ .Release.Name }}-schema-migration-{{ .Release.Revision }}"
-    {{- end }}
+      {{- end }}
       containers:
       - name: {{ template "infisical.name" . }}-{{ $infisicalValues.name }}
         image: "{{ $infisicalValues.image.repository }}:{{ $infisicalValues.image.tag }}"
