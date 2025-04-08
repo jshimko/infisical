@@ -52,6 +52,9 @@ infisical:
   # -- Environment variables from Kubernetes secrets for Infisical pods
   envFrom: []
 
+  # -- Kubernetes Secret reference containing Infisical root credentials
+  kubeSecretRef: "infisical-secrets"
+
   # -- Startup probe for Infisical pods
   startupProbe:
     httpGet:
@@ -86,8 +89,6 @@ infisical:
   tolerations: []
   # -- Node selector for pod placement
   nodeSelector: {}
-  # -- Kubernetes Secret reference containing Infisical root credentials
-  kubeSecretRef: "infisical-secrets"
 
   service:
     # -- Custom annotations for Infisical service

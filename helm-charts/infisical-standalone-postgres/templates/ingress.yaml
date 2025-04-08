@@ -36,14 +36,14 @@ spec:
             service:
               name: {{ include "infisical.fullname" . }}
               port:
-                number: 8080
+                number: {{ default 8080 .Values.service.port }}
         - path: /ss-webhook
           pathType: Exact
           backend:
             service:
               name: {{ include "infisical.fullname" . }}
               port:
-                number: 8080
+                number: {{ default 8080 .Values.service.port }}
       {{- if $ingress.hostName }}
       host: {{ $ingress.hostName }}
       {{- end }}
