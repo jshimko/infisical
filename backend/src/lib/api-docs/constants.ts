@@ -1672,7 +1672,8 @@ export const KMS = {
     projectId: "The ID of the project to create the key in.",
     name: "The name of the key to be created. Must be slug-friendly.",
     description: "An optional description of the key.",
-    encryptionAlgorithm: "The algorithm to use when performing cryptographic operations with the key."
+    encryptionAlgorithm: "The algorithm to use when performing cryptographic operations with the key.",
+    type: "The type of key to be created, either encrypt-decrypt or sign-verify, based on your intended use for the key."
   },
   UPDATE_KEY: {
     keyId: "The ID of the key to be updated.",
@@ -1705,6 +1706,28 @@ export const KMS = {
   DECRYPT: {
     keyId: "The ID of the key to decrypt the data with.",
     ciphertext: "The ciphertext to be decrypted (base64 encoded)."
+  },
+
+  LIST_SIGNING_ALGORITHMS: {
+    keyId: "The ID of the key to list the signing algorithms for. The key must be for signing and verifying."
+  },
+
+  GET_PUBLIC_KEY: {
+    keyId: "The ID of the key to get the public key for. The key must be for signing and verifying."
+  },
+
+  SIGN: {
+    keyId: "The ID of the key to sign the data with.",
+    data: "The data in string format to be signed (base64 encoded).",
+    isDigest:
+      "Whether the data is already digested or not. Please be aware that if you are passing a digest the algorithm used to create the digest must match the signing algorithm used to sign the digest.",
+    signingAlgorithm: "The algorithm to use when performing cryptographic operations with the key."
+  },
+  VERIFY: {
+    keyId: "The ID of the key to verify the data with.",
+    data: "The data in string format to be verified (base64 encoded). For data larger than 4096 bytes you must first create a digest of the data and then pass the digest in the data parameter.",
+    signature: "The signature to be verified (base64 encoded).",
+    isDigest: "Whether the data is already digested or not."
   }
 };
 
@@ -1759,6 +1782,12 @@ export const AppConnections = {
     connectionId: `The ID of the ${APP_CONNECTION_NAME_MAP[app]} Connection to be deleted.`
   }),
   CREDENTIALS: {
+    AUTH0_CONNECTION: {
+      domain: "The domain of the Auth0 instance to connect to.",
+      clientId: "Your Auth0 application's Client ID.",
+      clientSecret: "Your Auth0 application's Client Secret.",
+      audience: "The unique identifier of the target API you want to access."
+    },
     SQL_CONNECTION: {
       host: "The hostname of the database server.",
       port: "The port number of the database.",
@@ -1974,12 +2003,19 @@ export const SecretRotations = {
         "The username of the first login to rotate passwords for. This user must already exists in your database.",
       username2:
         "The username of the second login to rotate passwords for. This user must already exists in your database."
+    },
+    AUTH0_CLIENT_SECRET: {
+      clientId: "The client ID of the Auth0 Application to rotate the client secret for."
     }
   },
   SECRETS_MAPPING: {
     SQL_CREDENTIALS: {
       username: "The name of the secret that the active username will be mapped to.",
       password: "The name of the secret that the generated password will be mapped to."
+    },
+    AUTH0_CLIENT_SECRET: {
+      clientId: "The name of the secret that the client ID will be mapped to.",
+      clientSecret: "The name of the secret that the rotated client secret will be mapped to."
     }
   }
 };

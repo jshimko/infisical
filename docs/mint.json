@@ -178,8 +178,9 @@
           "group": "Secret Rotation",
           "pages": [
             "documentation/platform/secret-rotation/overview",
-            "documentation/platform/secret-rotation/postgres",
-            "documentation/platform/secret-rotation/mssql"
+            "documentation/platform/secret-rotation/auth0-client-secret",
+            "documentation/platform/secret-rotation/postgres-credentials",
+            "documentation/platform/secret-rotation/mssql-credentials"
           ]
         },
         {
@@ -414,6 +415,7 @@
         {
           "group": "Connections",
           "pages": [
+            "integrations/app-connections/auth0",
             "integrations/app-connections/aws",
             "integrations/app-connections/azure-app-configuration",
             "integrations/app-connections/azure-key-vault",
@@ -551,6 +553,12 @@
     {
       "group": "Build Tool Integrations",
       "pages": ["integrations/build-tools/gradle"]
+    },
+    {
+      "group": "Others",
+      "pages": [
+        "integrations/external/backstage"
+      ]
     },
     {
       "group": "",
@@ -839,6 +847,19 @@
             "api-reference/endpoints/secret-rotations/list",
             "api-reference/endpoints/secret-rotations/options",
             {
+              "group": "Auth0 Client Secret",
+              "pages": [
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/create",
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/delete",
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/get-by-id",
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/get-by-name",
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/get-generated-credentials-by-id",
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/list",
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/rotate-secrets",
+                "api-reference/endpoints/secret-rotations/auth0-client-secret/update"
+              ]
+            },
+            {
               "group": "Microsoft SQL Server Credentials",
               "pages": [
                 "api-reference/endpoints/secret-rotations/mssql-credentials/create",
@@ -882,6 +903,18 @@
           "pages": [
             "api-reference/endpoints/app-connections/list",
             "api-reference/endpoints/app-connections/options",
+            {
+              "group": "Auth0",
+              "pages": [
+                "api-reference/endpoints/app-connections/auth0/list",
+                "api-reference/endpoints/app-connections/auth0/available",
+                "api-reference/endpoints/app-connections/auth0/get-by-id",
+                "api-reference/endpoints/app-connections/auth0/get-by-name",
+                "api-reference/endpoints/app-connections/auth0/create",
+                "api-reference/endpoints/app-connections/auth0/update",
+                "api-reference/endpoints/app-connections/auth0/delete"
+              ]
+            },
             {
               "group": "AWS",
               "pages": [
@@ -1319,9 +1352,23 @@
             "api-reference/endpoints/kms/keys/get-by-name",
             "api-reference/endpoints/kms/keys/create",
             "api-reference/endpoints/kms/keys/update",
-            "api-reference/endpoints/kms/keys/delete",
-            "api-reference/endpoints/kms/keys/encrypt",
-            "api-reference/endpoints/kms/keys/decrypt"
+            "api-reference/endpoints/kms/keys/delete"
+          ]
+        },
+        {
+          "group": "Encryption",
+          "pages": [
+            "api-reference/endpoints/kms/encryption/encrypt",
+            "api-reference/endpoints/kms/encryption/decrypt"
+          ]
+        },
+        {
+          "group": "Signing",
+          "pages": [
+            "api-reference/endpoints/kms/signing/sign",
+            "api-reference/endpoints/kms/signing/verify",
+            "api-reference/endpoints/kms/signing/public-key",
+            "api-reference/endpoints/kms/signing/signing-algorithms"
           ]
         }
       ]
