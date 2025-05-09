@@ -1,6 +1,7 @@
 import dns from "node:dns/promises";
 
 import { isIPv4 } from "net";
+import RE2 from "re2";
 
 import { getConfig } from "@app/lib/config/env";
 
@@ -14,13 +15,13 @@ export const blockLocalAndPrivateIpAddresses = async (url: string) => {
 
   const validUrl = new URL(url);
   const inputHostIps: string[] = [];
-  if (isIPv4(validUrl.host)) {
-    inputHostIps.push(validUrl.host);
+  if (isIPv4(validUrl.hostname)) {
+    inputHostIps.push(validUrl.hostname);
   } else {
-    if (validUrl.host === "localhost" || validUrl.host === "host.docker.internal") {
+    if (validUrl.hostname === "localhost" || validUrl.hostname === "host.docker.internal") {
       throw new BadRequestError({ message: "Local IPs not allowed as URL" });
     }
-    const resolvedIps = await dns.resolve4(validUrl.host);
+    const resolvedIps = await dns.resolve4(validUrl.hostname);
     inputHostIps.push(...resolvedIps);
   }
   const isInternalIp = inputHostIps.some((el) => isPrivateIp(el));
@@ -80,42 +81,47 @@ export const isFQDN = (str: string, options: FQDNOptions = {}): boolean => {
 
     if (
       !opts.allow_numeric_tld &&
-      !/^([a-z\u00A1-\u00A8\u00AA-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]{2,}|xn[a-z0-9-]{2,})$/i.test(tld)
+      !new RE2(/^([a-z\u00A1-\u00A8\u00AA-\uD7FF\uF900-\uFDCF\uFDF0-\uFFEF]{2,}|xn[a-z0-9-]{2,})$/i).test(tld)
     ) {
       return false;
     }
 
     // disallow spaces
-    if (/\s/.test(tld)) {
+    if (new RE2(/\s/).test(tld)) {
       return false;
     }
   }
 
   // reject numeric TLDs
-  if (!opts.allow_numeric_tld && /^\d+$/.test(tld)) {
+  if (!opts.allow_numeric_tld && new RE2(/^\d+$/).test(tld)) {
     return false;
   }
+
+  const partRegex = new RE2(/^[a-z_\u00a1-\uffff0-9-]+$/i);
+  const fullWidthRegex = new RE2(/[\uff01-\uff5e]/);
+  const hyphenRegex = new RE2(/^-|-$/);
+  const underscoreRegex = new RE2(/_/);
 
   return parts.every((part) => {
     if (part.length > 63 && !opts.ignore_max_length) {
       return false;
     }
 
-    if (!/^[a-z_\u00a1-\uffff0-9-]+$/i.test(part)) {
+    if (!partRegex.test(part)) {
       return false;
     }
 
     // disallow full-width chars
-    if (/[\uff01-\uff5e]/.test(part)) {
+    if (fullWidthRegex.test(part)) {
       return false;
     }
 
     // disallow parts starting or ending with hyphen
-    if (/^-|-$/.test(part)) {
+    if (hyphenRegex.test(part)) {
       return false;
     }
 
-    if (!opts.allow_underscores && /_/.test(part)) {
+    if (!opts.allow_underscores && underscoreRegex.test(part)) {
       return false;
     }
 

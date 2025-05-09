@@ -9,6 +9,7 @@ export type Organization = {
   createAt: string;
   updatedAt: string;
   authEnforced: boolean;
+  bypassOrgAuthEnabled: boolean;
   orgAuthMethod: string;
   scimEnabled: boolean;
   slug: string;
@@ -17,6 +18,8 @@ export type Organization = {
   selectedMfaMethod?: MfaMethod;
   shouldUseNewPrivilegeSystem: boolean;
   allowSecretSharingOutsideOrganization?: boolean;
+  userTokenExpiration?: string;
+  userRole: string;
 };
 
 export type UpdateOrgDTO = {
@@ -29,6 +32,8 @@ export type UpdateOrgDTO = {
   enforceMfa?: boolean;
   selectedMfaMethod?: MfaMethod;
   allowSecretSharingOutsideOrganization?: boolean;
+  bypassOrgAuthEnabled?: boolean;
+  userTokenExpiration?: string;
 };
 
 export type BillingDetails = {

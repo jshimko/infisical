@@ -19,6 +19,7 @@ import { registerIdentityAzureAuthRouter } from "./identity-azure-auth-router";
 import { registerIdentityGcpAuthRouter } from "./identity-gcp-auth-router";
 import { registerIdentityJwtAuthRouter } from "./identity-jwt-auth-router";
 import { registerIdentityKubernetesRouter } from "./identity-kubernetes-auth-router";
+import { registerIdentityLdapAuthRouter } from "./identity-ldap-auth-router";
 import { registerIdentityOidcAuthRouter } from "./identity-oidc-auth-router";
 import { registerIdentityRouter } from "./identity-router";
 import { registerIdentityTokenAuthRouter } from "./identity-token-auth-router";
@@ -26,6 +27,7 @@ import { registerIdentityUaRouter } from "./identity-universal-auth-router";
 import { registerIntegrationAuthRouter } from "./integration-auth-router";
 import { registerIntegrationRouter } from "./integration-router";
 import { registerInviteOrgRouter } from "./invite-org-router";
+import { registerMicrosoftTeamsRouter } from "./microsoft-teams-router";
 import { registerOrgAdminRouter } from "./org-admin-router";
 import { registerOrgRouter } from "./organization-router";
 import { registerPasswordRouter } from "./password-router";
@@ -62,6 +64,7 @@ export const registerV1Routes = async (server: FastifyZodProvider) => {
       await authRouter.register(registerIdentityAzureAuthRouter);
       await authRouter.register(registerIdentityOidcAuthRouter);
       await authRouter.register(registerIdentityJwtAuthRouter);
+      await authRouter.register(registerIdentityLdapAuthRouter);
     },
     { prefix: "/auth" }
   );
@@ -79,6 +82,7 @@ export const registerV1Routes = async (server: FastifyZodProvider) => {
     async (workflowIntegrationRouter) => {
       await workflowIntegrationRouter.register(registerWorkflowIntegrationRouter);
       await workflowIntegrationRouter.register(registerSlackRouter, { prefix: "/slack" });
+      await workflowIntegrationRouter.register(registerMicrosoftTeamsRouter, { prefix: "/microsoft-teams" });
     },
     { prefix: "/workflow-integrations" }
   );

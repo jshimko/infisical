@@ -47,6 +47,13 @@ export enum EventType {
   CREATE_IDENTITY_UNIVERSAL_AUTH_CLIENT_SECRET = "create-identity-universal-auth-client-secret",
   REVOKE_IDENTITY_UNIVERSAL_AUTH_CLIENT_SECRET = "revoke-identity-universal-auth-client-secret",
   GET_IDENTITY_UNIVERSAL_AUTH_CLIENT_SECRETS = "get-identity-universal-auth-client-secret",
+
+  LOGIN_IDENTITY_LDAP_AUTH = "login-identity-ldap-auth",
+  ADD_IDENTITY_LDAP_AUTH = "add-identity-ldap-auth",
+  UPDATE_IDENTITY_LDAP_AUTH = "update-identity-ldap-auth",
+  GET_IDENTITY_LDAP_AUTH = "get-identity-ldap-auth",
+  REVOKE_IDENTITY_LDAP_AUTH = "revoke-identity-ldap-auth",
+
   CREATE_ENVIRONMENT = "create-environment",
   UPDATE_ENVIRONMENT = "update-environment",
   DELETE_ENVIRONMENT = "delete-environment",
@@ -78,6 +85,8 @@ export enum EventType {
   DELETE_CERT = "delete-cert",
   REVOKE_CERT = "revoke-cert",
   GET_CERT_BODY = "get-cert-body",
+  GET_CERT_PRIVATE_KEY = "get-cert-private-key",
+  GET_CERT_BUNDLE = "get-cert-bundle",
   CREATE_PKI_ALERT = "create-pki-alert",
   GET_PKI_ALERT = "get-pki-alert",
   UPDATE_PKI_ALERT = "update-pki-alert",
@@ -90,6 +99,7 @@ export enum EventType {
   ADD_PKI_COLLECTION_ITEM = "add-pki-collection-item",
   DELETE_PKI_COLLECTION_ITEM = "delete-pki-collection-item",
   ORG_ADMIN_ACCESS_PROJECT = "org-admin-accessed-project",
+  ORG_ADMIN_BYPASS_SSO = "org-admin-bypassed-sso",
   CREATE_CERTIFICATE_TEMPLATE = "create-certificate-template",
   UPDATE_CERTIFICATE_TEMPLATE = "update-certificate-template",
   DELETE_CERTIFICATE_TEMPLATE = "delete-certificate-template",
@@ -97,8 +107,8 @@ export enum EventType {
   CREATE_CERTIFICATE_TEMPLATE_EST_CONFIG = "create-certificate-template-est-config",
   UPDATE_CERTIFICATE_TEMPLATE_EST_CONFIG = "update-certificate-template-est-config",
   GET_CERTIFICATE_TEMPLATE_EST_CONFIG = "get-certificate-template-est-config",
-  UPDATE_PROJECT_SLACK_CONFIG = "update-project-slack-config",
-  GET_PROJECT_SLACK_CONFIG = "get-project-slack-config",
+  UPDATE_PROJECT_WORKFLOW_INTEGRATION_CONFIG = "update-project-workflow-integration-config",
+  GET_PROJECT_WORKFLOW_INTEGRATION_CONFIG = "get-project-workflow-integration-config",
   INTEGRATION_SYNCED = "integration-synced",
   CREATE_SHARED_SECRET = "create-shared-secret",
   DELETE_SHARED_SECRET = "delete-shared-secret",
@@ -162,5 +172,16 @@ export enum EventType {
   CREATE_SECRET_ROTATION = "create-secret-rotation",
   UPDATE_SECRET_ROTATION = "update-secret-rotation",
   DELETE_SECRET_ROTATION = "delete-secret-rotation",
-  SECRET_ROTATION_ROTATE_SECRETS = "secret-rotation-rotate-secrets"
+  SECRET_ROTATION_ROTATE_SECRETS = "secret-rotation-rotate-secrets",
+
+  GET_PROJECT_SLACK_CONFIG = "get-project-slack-config",
+  UPDATE_PROJECT_SLACK_CONFIG = "update-project-slack-config",
+
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_CREATE = "microsoft-teams-workflow-integration-create",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_DELETE = "microsoft-teams-workflow-integration-delete",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_UPDATE = "microsoft-teams-workflow-integration-update",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_CHECK_INSTALLATION_STATUS = "microsoft-teams-workflow-integration-check-installation-status",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_GET_TEAMS = "microsoft-teams-workflow-integration-get-teams",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_GET = "microsoft-teams-workflow-integration-get",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_LIST = "microsoft-teams-workflow-integration-list"
 }

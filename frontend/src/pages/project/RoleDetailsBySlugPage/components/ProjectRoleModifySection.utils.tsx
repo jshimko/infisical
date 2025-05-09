@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Tooltip } from "@app/components/v2";
 import {
   ProjectPermissionActions,
+  ProjectPermissionCertificateActions,
   ProjectPermissionCmekActions,
   ProjectPermissionSub
 } from "@app/context";
@@ -24,12 +25,21 @@ import {
   TPermissionConditionOperators
 } from "@app/context/ProjectPermissionContext/types";
 import { TProjectPermission } from "@app/hooks/api/roles/types";
+import { ProjectType } from "@app/hooks/api/workspace/types";
 
 const GeneralPolicyActionSchema = z.object({
   read: z.boolean().optional(),
   edit: z.boolean().optional(),
   delete: z.boolean().optional(),
   create: z.boolean().optional()
+});
+
+const CertificatePolicyActionSchema = z.object({
+  [ProjectPermissionCertificateActions.Create]: z.boolean().optional(),
+  [ProjectPermissionCertificateActions.Delete]: z.boolean().optional(),
+  [ProjectPermissionCertificateActions.Edit]: z.boolean().optional(),
+  [ProjectPermissionCertificateActions.Read]: z.boolean().optional(),
+  [ProjectPermissionCertificateActions.ReadPrivateKey]: z.boolean().optional()
 });
 
 const SecretPolicyActionSchema = z.object({
@@ -92,7 +102,8 @@ const MemberPolicyActionSchema = z.object({
   [ProjectPermissionMemberActions.Create]: z.boolean().optional(),
   [ProjectPermissionMemberActions.Edit]: z.boolean().optional(),
   [ProjectPermissionMemberActions.Delete]: z.boolean().optional(),
-  [ProjectPermissionMemberActions.GrantPrivileges]: z.boolean().optional()
+  [ProjectPermissionMemberActions.GrantPrivileges]: z.boolean().optional(),
+  [ProjectPermissionMemberActions.AssumePrivileges]: z.boolean().optional()
 });
 
 const IdentityPolicyActionSchema = z.object({
@@ -100,7 +111,8 @@ const IdentityPolicyActionSchema = z.object({
   [ProjectPermissionIdentityActions.Create]: z.boolean().optional(),
   [ProjectPermissionIdentityActions.Edit]: z.boolean().optional(),
   [ProjectPermissionIdentityActions.Delete]: z.boolean().optional(),
-  [ProjectPermissionIdentityActions.GrantPrivileges]: z.boolean().optional()
+  [ProjectPermissionIdentityActions.GrantPrivileges]: z.boolean().optional(),
+  [ProjectPermissionIdentityActions.AssumePrivileges]: z.boolean().optional()
 });
 
 const GroupPolicyActionSchema = z.object({
@@ -217,7 +229,7 @@ export const projectRoleFormSchema = z.object({
       [ProjectPermissionSub.AuditLogs]: GeneralPolicyActionSchema.array().default([]),
       [ProjectPermissionSub.IpAllowList]: GeneralPolicyActionSchema.array().default([]),
       [ProjectPermissionSub.CertificateAuthorities]: GeneralPolicyActionSchema.array().default([]),
-      [ProjectPermissionSub.Certificates]: GeneralPolicyActionSchema.array().default([]),
+      [ProjectPermissionSub.Certificates]: CertificatePolicyActionSchema.array().default([]),
       [ProjectPermissionSub.PkiAlerts]: GeneralPolicyActionSchema.array().default([]),
       [ProjectPermissionSub.PkiCollections]: GeneralPolicyActionSchema.array().default([]),
       [ProjectPermissionSub.CertificateTemplates]: GeneralPolicyActionSchema.array().default([]),
@@ -232,6 +244,7 @@ export const projectRoleFormSchema = z.object({
       })
         .array()
         .default([]),
+      [ProjectPermissionSub.SshHostGroups]: GeneralPolicyActionSchema.array().default([]),
       [ProjectPermissionSub.SecretApproval]: GeneralPolicyActionSchema.array().default([]),
       [ProjectPermissionSub.SecretRollback]: SecretRollbackPolicyActionSchema.array().default([]),
       [ProjectPermissionSub.Project]: WorkspacePolicyActionSchema.array().default([]),
@@ -368,7 +381,6 @@ export const rolePermission2Form = (permissions: TProjectPermission[] = []) => {
         ProjectPermissionSub.AuditLogs,
         ProjectPermissionSub.IpAllowList,
         ProjectPermissionSub.CertificateAuthorities,
-        ProjectPermissionSub.Certificates,
         ProjectPermissionSub.PkiAlerts,
         ProjectPermissionSub.PkiCollections,
         ProjectPermissionSub.CertificateTemplates,
@@ -378,7 +390,8 @@ export const rolePermission2Form = (permissions: TProjectPermission[] = []) => {
         ProjectPermissionSub.Kms,
         ProjectPermissionSub.SshCertificateTemplates,
         ProjectPermissionSub.SshCertificateAuthorities,
-        ProjectPermissionSub.SshCertificates
+        ProjectPermissionSub.SshCertificates,
+        ProjectPermissionSub.SshHostGroups
       ].includes(subject)
     ) {
       // from above statement we are sure it won't be undefined
@@ -503,6 +516,25 @@ export const rolePermission2Form = (permissions: TProjectPermission[] = []) => {
       return;
     }
 
+    if (subject === ProjectPermissionSub.Certificates) {
+      const canRead = action.includes(ProjectPermissionCertificateActions.Read);
+      const canEdit = action.includes(ProjectPermissionCertificateActions.Edit);
+      const canDelete = action.includes(ProjectPermissionCertificateActions.Delete);
+      const canCreate = action.includes(ProjectPermissionCertificateActions.Create);
+      const canReadPrivateKey = action.includes(ProjectPermissionCertificateActions.ReadPrivateKey);
+
+      if (!formVal[subject]) formVal[subject] = [{}];
+
+      // from above statement we are sure it won't be undefined
+      if (canRead) formVal[subject]![0].read = true;
+      if (canEdit) formVal[subject]![0].edit = true;
+      if (canCreate) formVal[subject]![0].create = true;
+      if (canDelete) formVal[subject]![0].delete = true;
+      if (canReadPrivateKey)
+        formVal[subject]![0][ProjectPermissionCertificateActions.ReadPrivateKey] = true;
+      return;
+    }
+
     if (subject === ProjectPermissionSub.Project) {
       const canEdit = action.includes(ProjectPermissionActions.Edit);
       const canDelete = action.includes(ProjectPermissionActions.Delete);
@@ -577,6 +609,7 @@ export const rolePermission2Form = (permissions: TProjectPermission[] = []) => {
       const canEdit = action.includes(ProjectPermissionMemberActions.Edit);
       const canDelete = action.includes(ProjectPermissionMemberActions.Delete);
       const canGrantPrivileges = action.includes(ProjectPermissionMemberActions.GrantPrivileges);
+      const canAssumePrivileges = action.includes(ProjectPermissionMemberActions.AssumePrivileges);
 
       if (!formVal[subject]) formVal[subject] = [{}];
 
@@ -587,6 +620,8 @@ export const rolePermission2Form = (permissions: TProjectPermission[] = []) => {
       if (canDelete) formVal[subject]![0][ProjectPermissionMemberActions.Delete] = true;
       if (canGrantPrivileges)
         formVal[subject]![0][ProjectPermissionMemberActions.GrantPrivileges] = true;
+      if (canAssumePrivileges)
+        formVal[subject]![0][ProjectPermissionMemberActions.AssumePrivileges] = true;
       return;
     }
 
@@ -596,6 +631,9 @@ export const rolePermission2Form = (permissions: TProjectPermission[] = []) => {
       const canEdit = action.includes(ProjectPermissionIdentityActions.Edit);
       const canDelete = action.includes(ProjectPermissionIdentityActions.Delete);
       const canGrantPrivileges = action.includes(ProjectPermissionIdentityActions.GrantPrivileges);
+      const canAssumePrivileges = action.includes(
+        ProjectPermissionIdentityActions.AssumePrivileges
+      );
 
       if (!formVal[subject]) formVal[subject] = [{ conditions: [] }];
 
@@ -606,6 +644,8 @@ export const rolePermission2Form = (permissions: TProjectPermission[] = []) => {
       if (canDelete) formVal[subject]![0][ProjectPermissionIdentityActions.Delete] = true;
       if (canGrantPrivileges)
         formVal[subject]![0][ProjectPermissionIdentityActions.GrantPrivileges] = true;
+      if (canAssumePrivileges)
+        formVal[subject]![0][ProjectPermissionIdentityActions.AssumePrivileges] = true;
       return;
     }
 
@@ -873,7 +913,7 @@ export const PROJECT_PERMISSION_OBJECT: TProjectPermissionObject = {
     actions: [{ label: "Modify", value: "edit" }]
   },
   [ProjectPermissionSub.Integrations]: {
-    title: "Integrations",
+    title: "Native Integrations",
     actions: [
       { label: "Read", value: "read" },
       { label: "Create", value: "create" },
@@ -904,7 +944,8 @@ export const PROJECT_PERMISSION_OBJECT: TProjectPermissionObject = {
       { label: "Add", value: ProjectPermissionMemberActions.Create },
       { label: "Modify", value: ProjectPermissionMemberActions.Edit },
       { label: "Remove", value: ProjectPermissionMemberActions.Delete },
-      { label: "Grant Privileges", value: ProjectPermissionMemberActions.GrantPrivileges }
+      { label: "Grant Privileges", value: ProjectPermissionMemberActions.GrantPrivileges },
+      { label: "Assume Privileges", value: ProjectPermissionMemberActions.AssumePrivileges }
     ]
   },
   [ProjectPermissionSub.Identity]: {
@@ -914,7 +955,8 @@ export const PROJECT_PERMISSION_OBJECT: TProjectPermissionObject = {
       { label: "Add", value: ProjectPermissionIdentityActions.Create },
       { label: "Modify", value: ProjectPermissionIdentityActions.Edit },
       { label: "Remove", value: ProjectPermissionIdentityActions.Delete },
-      { label: "Grant Privileges", value: ProjectPermissionIdentityActions.GrantPrivileges }
+      { label: "Grant Privileges", value: ProjectPermissionIdentityActions.GrantPrivileges },
+      { label: "Assume Privileges", value: ProjectPermissionIdentityActions.AssumePrivileges }
     ]
   },
   [ProjectPermissionSub.Groups]: {
@@ -1000,10 +1042,11 @@ export const PROJECT_PERMISSION_OBJECT: TProjectPermissionObject = {
   [ProjectPermissionSub.Certificates]: {
     title: "Certificates",
     actions: [
-      { label: "Read", value: "read" },
-      { label: "Create", value: "create" },
-      { label: "Modify", value: "edit" },
-      { label: "Remove", value: "delete" }
+      { label: "Read", value: ProjectPermissionCertificateActions.Read },
+      { label: "Read Private Key", value: ProjectPermissionCertificateActions.ReadPrivateKey },
+      { label: "Create", value: ProjectPermissionCertificateActions.Create },
+      { label: "Modify", value: ProjectPermissionCertificateActions.Edit },
+      { label: "Remove", value: ProjectPermissionCertificateActions.Delete }
     ]
   },
   [ProjectPermissionSub.CertificateTemplates]: {
@@ -1052,6 +1095,15 @@ export const PROJECT_PERMISSION_OBJECT: TProjectPermissionObject = {
       { label: "Issue Host Certificate", value: ProjectPermissionSshHostActions.IssueHostCert }
     ]
   },
+  [ProjectPermissionSub.SshHostGroups]: {
+    title: "SSH Host Groups",
+    actions: [
+      { label: "Read", value: "read" },
+      { label: "Create", value: "create" },
+      { label: "Modify", value: "edit" },
+      { label: "Remove", value: "delete" }
+    ]
+  },
   [ProjectPermissionSub.PkiCollections]: {
     title: "PKI Collections",
     actions: [
@@ -1071,7 +1123,7 @@ export const PROJECT_PERMISSION_OBJECT: TProjectPermissionObject = {
     ]
   },
   [ProjectPermissionSub.SecretApproval]: {
-    title: "Secret Protect policy",
+    title: "Secret Approval Policies",
     actions: [
       { label: "Read", value: "read" },
       { label: "Create", value: "create" },
@@ -1142,5 +1194,89 @@ export const PROJECT_PERMISSION_OBJECT: TProjectPermissionObject = {
         value: ProjectPermissionKmipActions.GenerateClientCertificates
       }
     ]
+  }
+};
+
+const SharedPermissionSubjects = {
+  [ProjectPermissionSub.AuditLogs]: true,
+  [ProjectPermissionSub.Groups]: true,
+  [ProjectPermissionSub.Member]: true,
+  [ProjectPermissionSub.Identity]: true,
+  [ProjectPermissionSub.Project]: true,
+  [ProjectPermissionSub.Role]: true,
+  [ProjectPermissionSub.Settings]: true
+};
+
+const SecretsManagerPermissionSubjects = (enabled = false) => ({
+  [ProjectPermissionSub.SecretFolders]: enabled,
+  [ProjectPermissionSub.SecretImports]: enabled,
+  [ProjectPermissionSub.DynamicSecrets]: enabled,
+  [ProjectPermissionSub.Secrets]: enabled,
+  [ProjectPermissionSub.SecretApproval]: enabled,
+  [ProjectPermissionSub.Integrations]: enabled,
+  [ProjectPermissionSub.SecretSyncs]: enabled,
+  [ProjectPermissionSub.Kms]: enabled,
+  [ProjectPermissionSub.Environments]: enabled,
+  [ProjectPermissionSub.Tags]: enabled,
+  [ProjectPermissionSub.Webhooks]: enabled,
+  [ProjectPermissionSub.IpAllowList]: enabled,
+  [ProjectPermissionSub.SecretRollback]: enabled,
+  [ProjectPermissionSub.SecretRotation]: enabled,
+  [ProjectPermissionSub.ServiceTokens]: enabled
+});
+
+const KmsPermissionSubjects = (enabled = false) => ({
+  [ProjectPermissionSub.Cmek]: enabled,
+  [ProjectPermissionSub.Kmip]: enabled
+});
+
+const CertificateManagerPermissionSubjects = (enabled = false) => ({
+  [ProjectPermissionSub.PkiCollections]: enabled,
+  [ProjectPermissionSub.PkiAlerts]: enabled,
+  [ProjectPermissionSub.CertificateAuthorities]: enabled,
+  [ProjectPermissionSub.CertificateTemplates]: enabled,
+  [ProjectPermissionSub.Certificates]: enabled
+});
+
+const SshPermissionSubjects = (enabled = false) => ({
+  [ProjectPermissionSub.SshCertificateAuthorities]: enabled,
+  [ProjectPermissionSub.SshCertificates]: enabled,
+  [ProjectPermissionSub.SshCertificateTemplates]: enabled,
+  [ProjectPermissionSub.SshHosts]: enabled,
+  [ProjectPermissionSub.SshHostGroups]: enabled
+});
+
+// scott: this structure ensures we don't forget to add project permissions to their relevant project type
+export const ProjectTypePermissionSubjects: Record<
+  ProjectType,
+  Record<ProjectPermissionSub, boolean>
+> = {
+  [ProjectType.SecretManager]: {
+    ...SharedPermissionSubjects,
+    ...SecretsManagerPermissionSubjects(true),
+    ...KmsPermissionSubjects(),
+    ...CertificateManagerPermissionSubjects(),
+    ...SshPermissionSubjects()
+  },
+  [ProjectType.KMS]: {
+    ...SharedPermissionSubjects,
+    ...KmsPermissionSubjects(true),
+    ...SecretsManagerPermissionSubjects(),
+    ...CertificateManagerPermissionSubjects(),
+    ...SshPermissionSubjects()
+  },
+  [ProjectType.CertificateManager]: {
+    ...SharedPermissionSubjects,
+    ...CertificateManagerPermissionSubjects(true),
+    ...KmsPermissionSubjects(),
+    ...SecretsManagerPermissionSubjects(),
+    ...SshPermissionSubjects()
+  },
+  [ProjectType.SSH]: {
+    ...SharedPermissionSubjects,
+    ...SshPermissionSubjects(true),
+    ...CertificateManagerPermissionSubjects(),
+    ...KmsPermissionSubjects(),
+    ...SecretsManagerPermissionSubjects()
   }
 };

@@ -18,10 +18,12 @@ import { LDAPModal } from "./LDAPModal";
 import { OIDCModal } from "./OIDCModal";
 import { OrgGeneralAuthSection } from "./OrgGeneralAuthSection";
 import { OrgGenericAuthSection } from "./OrgGenericAuthSection";
+import { OrgGithubSyncSection } from "./OrgGithubSyncSection";
 import { OrgLDAPSection } from "./OrgLDAPSection";
 import { OrgOIDCSection } from "./OrgOIDCSection";
 import { OrgScimSection } from "./OrgSCIMSection";
 import { OrgSSOSection } from "./OrgSSOSection";
+import { OrgUserAccessTokenLimitSection } from "./OrgUserAccessTokenLimitSection";
 import { SSOModal } from "./SSOModal";
 
 export const OrgAuthTab = withPermission(
@@ -45,6 +47,7 @@ export const OrgAuthTab = withPermission(
     const { data: samlConfig, isPending: isLoadingSamlConfig } = useGetSSOConfig(
       currentOrg?.id ?? ""
     );
+
     const { data: ldapConfig, isPending: isLoadingLdapConfig } = useGetLDAPConfig(
       currentOrg?.id ?? ""
     );
@@ -54,7 +57,8 @@ export const OrgAuthTab = withPermission(
       !enabledLoginMethods || enabledLoginMethods.includes(method);
 
     const isOidcConfigured = oidcConfig && (oidcConfig.discoveryURL || oidcConfig.issuer);
-    const isSamlConfigured = samlConfig && samlConfig.entryPoint;
+    const isSamlConfigured =
+      samlConfig && (samlConfig.entryPoint || samlConfig.issuer || samlConfig.cert);
     const isLdapConfigured = ldapConfig && ldapConfig.url;
 
     const shouldShowCreateIdentityProviderView =
@@ -164,6 +168,7 @@ export const OrgAuthTab = withPermission(
     return (
       <>
         <OrgGenericAuthSection />
+        <OrgUserAccessTokenLimitSection />
         {shouldShowCreateIdentityProviderView ? (
           createIdentityProviderView
         ) : (
@@ -179,6 +184,7 @@ export const OrgAuthTab = withPermission(
           </>
         )}
         <OrgScimSection />
+        <OrgGithubSyncSection />
         <UpgradePlanModal
           isOpen={popUp.upgradePlan.isOpen}
           onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}

@@ -7,6 +7,14 @@ export enum ProjectPermissionActions {
   Delete = "delete"
 }
 
+export enum ProjectPermissionCertificateActions {
+  Read = "read",
+  Create = "create",
+  Edit = "edit",
+  Delete = "delete",
+  ReadPrivateKey = "read-private-key"
+}
+
 export enum ProjectPermissionSecretActions {
   DescribeAndReadValue = "read",
   DescribeSecret = "describeSecret",
@@ -58,7 +66,8 @@ export enum ProjectPermissionIdentityActions {
   Create = "create",
   Edit = "edit",
   Delete = "delete",
-  GrantPrivileges = "grant-privileges"
+  GrantPrivileges = "grant-privileges",
+  AssumePrivileges = "assume-privileges"
 }
 
 export enum ProjectPermissionMemberActions {
@@ -66,7 +75,8 @@ export enum ProjectPermissionMemberActions {
   Create = "create",
   Edit = "edit",
   Delete = "delete",
-  GrantPrivileges = "grant-privileges"
+  GrantPrivileges = "grant-privileges",
+  AssumePrivileges = "assume-privileges"
 }
 
 export enum ProjectPermissionGroupActions {
@@ -173,6 +183,7 @@ export enum ProjectPermissionSub {
   SshCertificateTemplates = "ssh-certificate-templates",
   SshCertificates = "ssh-certificates",
   SshHosts = "ssh-hosts",
+  SshHostGroups = "ssh-host-groups",
   PkiAlerts = "pki-alerts",
   PkiCollections = "pki-collections",
   Kms = "kms",
@@ -247,7 +258,7 @@ export type ProjectPermissionSet =
     ]
   | [ProjectPermissionActions, ProjectPermissionSub.Role]
   | [ProjectPermissionActions, ProjectPermissionSub.Tags]
-  | [ProjectPermissionActions, ProjectPermissionSub.Member]
+  | [ProjectPermissionMemberActions, ProjectPermissionSub.Member]
   | [ProjectPermissionActions, ProjectPermissionSub.Groups]
   | [ProjectPermissionActions, ProjectPermissionSub.Integrations]
   | [ProjectPermissionActions, ProjectPermissionSub.Webhooks]
@@ -258,18 +269,19 @@ export type ProjectPermissionSet =
   | [ProjectPermissionActions, ProjectPermissionSub.ServiceTokens]
   | [ProjectPermissionActions, ProjectPermissionSub.SecretApproval]
   | [
-      ProjectPermissionActions,
+      ProjectPermissionIdentityActions,
       (
         | ProjectPermissionSub.Identity
         | (ForcedSubject<ProjectPermissionSub.Identity> & IdentityManagementSubjectFields)
       )
     ]
   | [ProjectPermissionActions, ProjectPermissionSub.CertificateAuthorities]
-  | [ProjectPermissionActions, ProjectPermissionSub.Certificates]
+  | [ProjectPermissionCertificateActions, ProjectPermissionSub.Certificates]
   | [ProjectPermissionActions, ProjectPermissionSub.CertificateTemplates]
   | [ProjectPermissionActions, ProjectPermissionSub.SshCertificateAuthorities]
   | [ProjectPermissionActions, ProjectPermissionSub.SshCertificateTemplates]
   | [ProjectPermissionActions, ProjectPermissionSub.SshCertificates]
+  | [ProjectPermissionActions, ProjectPermissionSub.SshHostGroups]
   | [ProjectPermissionSshHostActions, ProjectPermissionSub.SshHosts]
   | [ProjectPermissionActions, ProjectPermissionSub.PkiAlerts]
   | [ProjectPermissionActions, ProjectPermissionSub.PkiCollections]

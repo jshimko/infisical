@@ -76,6 +76,7 @@ type TSecretSyncQueueFactoryDep = {
     | "findBySecretKeys"
     | "bulkUpdate"
     | "deleteMany"
+    | "invalidateSecretCacheByProjectId"
   >;
   secretImportDAL: Pick<TSecretImportDALFactory, "find" | "findByFolderIds">;
   secretSyncDAL: Pick<TSecretSyncDALFactory, "findById" | "find" | "updateById" | "deleteById">;
@@ -213,7 +214,7 @@ export const secretSyncQueueFactory = ({
       canExpandValue: () => true
     });
 
-    const secrets = await secretV2BridgeDAL.findByFolderId({ folderId, projectId });
+    const secrets = await secretV2BridgeDAL.findByFolderId({ folderId });
 
     await Promise.allSettled(
       secrets.map(async (secret) => {
@@ -243,7 +244,6 @@ export const secretSyncQueueFactory = ({
 
     if (secretImports.length) {
       const importedSecrets = await fnSecretsV2FromImports({
-        projectId,
         decryptor: decryptSecretValue,
         folderDAL,
         secretDAL: secretV2BridgeDAL,
@@ -356,8 +356,11 @@ export const secretSyncQueueFactory = ({
       };
 
       if (Object.hasOwn(secretMap, key)) {
-        secretsToUpdate.push(secret);
-        if (importBehavior === SecretSyncImportBehavior.PrioritizeDestination) importedSecretMap[key] = secretData;
+        // Only update secrets if the source value is not empty
+        if (value) {
+          secretsToUpdate.push(secret);
+          if (importBehavior === SecretSyncImportBehavior.PrioritizeDestination) importedSecretMap[key] = secretData;
+        }
       } else {
         secretsToCreate.push(secret);
         importedSecretMap[key] = secretData;
@@ -381,6 +384,9 @@ export const secretSyncQueueFactory = ({
         secrets: secretsToUpdate
       });
     }
+
+    if (secretsToUpdate.length || secretsToCreate.length)
+      await secretV2BridgeDAL.invalidateSecretCacheByProjectId(projectId);
 
     return importedSecretMap;
   };
@@ -828,7 +834,7 @@ export const secretSyncQueueFactory = ({
         secretPath: folder?.path,
         environment: environment?.name,
         projectName: project.name,
-        syncUrl: `${appCfg.SITE_URL}/integrations/secret-syncs/${destination}/${secretSync.id}`
+        syncUrl: `${appCfg.SITE_URL}/secret-manager/${projectId}/integrations/secret-syncs/${destination}/${secretSync.id}`
       }
     });
   };

@@ -12,6 +12,7 @@ import {
 import { SshCaStatus, SshCertType } from "@app/ee/services/ssh/ssh-certificate-authority-types";
 import { SshCertKeyAlgorithm } from "@app/ee/services/ssh-certificate/ssh-certificate-types";
 import { SshCertTemplateStatus } from "@app/ee/services/ssh-certificate-template/ssh-certificate-template-types";
+import { TLoginMapping } from "@app/ee/services/ssh-host/ssh-host-types";
 import { SymmetricKeyAlgorithm } from "@app/lib/crypto/cipher";
 import { AsymmetricKeyAlgorithm, SigningAlgorithm } from "@app/lib/crypto/sign/types";
 import { TProjectPermission } from "@app/lib/types";
@@ -29,9 +30,11 @@ import {
   TSecretSyncRaw,
   TUpdateSecretSyncDTO
 } from "@app/services/secret-sync/secret-sync-types";
+import { WorkflowIntegration } from "@app/services/workflow-integration/workflow-integration-types";
 
 import { KmipPermission } from "../kmip/kmip-enum";
 import { ApprovalStatus } from "../secret-approval-request/secret-approval-request-types";
+import { TAllowedFields } from "@app/services/identity-ldap-auth/identity-ldap-auth-types";
 
 export type TListProjectAuditLogDTO = {
   filter: {
@@ -117,44 +120,60 @@ export enum EventType {
   CREATE_TOKEN_IDENTITY_TOKEN_AUTH = "create-token-identity-token-auth",
   UPDATE_TOKEN_IDENTITY_TOKEN_AUTH = "update-token-identity-token-auth",
   GET_TOKENS_IDENTITY_TOKEN_AUTH = "get-tokens-identity-token-auth",
+
   ADD_IDENTITY_TOKEN_AUTH = "add-identity-token-auth",
   UPDATE_IDENTITY_TOKEN_AUTH = "update-identity-token-auth",
   GET_IDENTITY_TOKEN_AUTH = "get-identity-token-auth",
   REVOKE_IDENTITY_TOKEN_AUTH = "revoke-identity-token-auth",
+
   LOGIN_IDENTITY_KUBERNETES_AUTH = "login-identity-kubernetes-auth",
   ADD_IDENTITY_KUBERNETES_AUTH = "add-identity-kubernetes-auth",
   UPDATE_IDENTITY_KUBENETES_AUTH = "update-identity-kubernetes-auth",
   GET_IDENTITY_KUBERNETES_AUTH = "get-identity-kubernetes-auth",
   REVOKE_IDENTITY_KUBERNETES_AUTH = "revoke-identity-kubernetes-auth",
+
   LOGIN_IDENTITY_OIDC_AUTH = "login-identity-oidc-auth",
   ADD_IDENTITY_OIDC_AUTH = "add-identity-oidc-auth",
   UPDATE_IDENTITY_OIDC_AUTH = "update-identity-oidc-auth",
   GET_IDENTITY_OIDC_AUTH = "get-identity-oidc-auth",
   REVOKE_IDENTITY_OIDC_AUTH = "revoke-identity-oidc-auth",
+
   LOGIN_IDENTITY_JWT_AUTH = "login-identity-jwt-auth",
   ADD_IDENTITY_JWT_AUTH = "add-identity-jwt-auth",
   UPDATE_IDENTITY_JWT_AUTH = "update-identity-jwt-auth",
   GET_IDENTITY_JWT_AUTH = "get-identity-jwt-auth",
   REVOKE_IDENTITY_JWT_AUTH = "revoke-identity-jwt-auth",
+
   CREATE_IDENTITY_UNIVERSAL_AUTH_CLIENT_SECRET = "create-identity-universal-auth-client-secret",
   REVOKE_IDENTITY_UNIVERSAL_AUTH_CLIENT_SECRET = "revoke-identity-universal-auth-client-secret",
+
   GET_IDENTITY_UNIVERSAL_AUTH_CLIENT_SECRETS = "get-identity-universal-auth-client-secret",
   GET_IDENTITY_UNIVERSAL_AUTH_CLIENT_SECRET_BY_ID = "get-identity-universal-auth-client-secret-by-id",
+
   LOGIN_IDENTITY_GCP_AUTH = "login-identity-gcp-auth",
   ADD_IDENTITY_GCP_AUTH = "add-identity-gcp-auth",
   UPDATE_IDENTITY_GCP_AUTH = "update-identity-gcp-auth",
   REVOKE_IDENTITY_GCP_AUTH = "revoke-identity-gcp-auth",
   GET_IDENTITY_GCP_AUTH = "get-identity-gcp-auth",
+
   LOGIN_IDENTITY_AWS_AUTH = "login-identity-aws-auth",
   ADD_IDENTITY_AWS_AUTH = "add-identity-aws-auth",
   UPDATE_IDENTITY_AWS_AUTH = "update-identity-aws-auth",
   REVOKE_IDENTITY_AWS_AUTH = "revoke-identity-aws-auth",
   GET_IDENTITY_AWS_AUTH = "get-identity-aws-auth",
+
   LOGIN_IDENTITY_AZURE_AUTH = "login-identity-azure-auth",
   ADD_IDENTITY_AZURE_AUTH = "add-identity-azure-auth",
   UPDATE_IDENTITY_AZURE_AUTH = "update-identity-azure-auth",
   GET_IDENTITY_AZURE_AUTH = "get-identity-azure-auth",
   REVOKE_IDENTITY_AZURE_AUTH = "revoke-identity-azure-auth",
+
+  LOGIN_IDENTITY_LDAP_AUTH = "login-identity-ldap-auth",
+  ADD_IDENTITY_LDAP_AUTH = "add-identity-ldap-auth",
+  UPDATE_IDENTITY_LDAP_AUTH = "update-identity-ldap-auth",
+  GET_IDENTITY_LDAP_AUTH = "get-identity-ldap-auth",
+  REVOKE_IDENTITY_LDAP_AUTH = "revoke-identity-ldap-auth",
+
   CREATE_ENVIRONMENT = "create-environment",
   UPDATE_ENVIRONMENT = "update-environment",
   DELETE_ENVIRONMENT = "delete-environment",
@@ -191,12 +210,19 @@ export enum EventType {
   UPDATE_SSH_CERTIFICATE_TEMPLATE = "update-ssh-certificate-template",
   DELETE_SSH_CERTIFICATE_TEMPLATE = "delete-ssh-certificate-template",
   GET_SSH_CERTIFICATE_TEMPLATE = "get-ssh-certificate-template",
+  GET_SSH_HOST = "get-ssh-host",
   CREATE_SSH_HOST = "create-ssh-host",
   UPDATE_SSH_HOST = "update-ssh-host",
   DELETE_SSH_HOST = "delete-ssh-host",
-  GET_SSH_HOST = "get-ssh-host",
   ISSUE_SSH_HOST_USER_CERT = "issue-ssh-host-user-cert",
   ISSUE_SSH_HOST_HOST_CERT = "issue-ssh-host-host-cert",
+  GET_SSH_HOST_GROUP = "get-ssh-host-group",
+  CREATE_SSH_HOST_GROUP = "create-ssh-host-group",
+  UPDATE_SSH_HOST_GROUP = "update-ssh-host-group",
+  DELETE_SSH_HOST_GROUP = "delete-ssh-host-group",
+  GET_SSH_HOST_GROUP_HOSTS = "get-ssh-host-group-hosts",
+  ADD_HOST_TO_SSH_HOST_GROUP = "add-host-to-ssh-host-group",
+  REMOVE_HOST_FROM_SSH_HOST_GROUP = "remove-host-from-ssh-host-group",
   CREATE_CA = "create-certificate-authority",
   GET_CA = "get-certificate-authority",
   UPDATE_CA = "update-certificate-authority",
@@ -215,6 +241,8 @@ export enum EventType {
   DELETE_CERT = "delete-cert",
   REVOKE_CERT = "revoke-cert",
   GET_CERT_BODY = "get-cert-body",
+  GET_CERT_PRIVATE_KEY = "get-cert-private-key",
+  GET_CERT_BUNDLE = "get-cert-bundle",
   CREATE_PKI_ALERT = "create-pki-alert",
   GET_PKI_ALERT = "get-pki-alert",
   UPDATE_PKI_ALERT = "update-pki-alert",
@@ -234,6 +262,7 @@ export enum EventType {
   GET_PROJECT_KMS_BACKUP = "get-project-kms-backup",
   LOAD_PROJECT_KMS_BACKUP = "load-project-kms-backup",
   ORG_ADMIN_ACCESS_PROJECT = "org-admin-accessed-project",
+  ORG_ADMIN_BYPASS_SSO = "org-admin-bypassed-sso",
   CREATE_CERTIFICATE_TEMPLATE = "create-certificate-template",
   UPDATE_CERTIFICATE_TEMPLATE = "update-certificate-template",
   DELETE_CERTIFICATE_TEMPLATE = "delete-certificate-template",
@@ -243,11 +272,16 @@ export enum EventType {
   GET_CERTIFICATE_TEMPLATE_EST_CONFIG = "get-certificate-template-est-config",
   ATTEMPT_CREATE_SLACK_INTEGRATION = "attempt-create-slack-integration",
   ATTEMPT_REINSTALL_SLACK_INTEGRATION = "attempt-reinstall-slack-integration",
+  GET_PROJECT_SLACK_CONFIG = "get-project-slack-config",
+  UPDATE_PROJECT_SLACK_CONFIG = "update-project-slack-config",
   GET_SLACK_INTEGRATION = "get-slack-integration",
   UPDATE_SLACK_INTEGRATION = "update-slack-integration",
   DELETE_SLACK_INTEGRATION = "delete-slack-integration",
-  GET_PROJECT_SLACK_CONFIG = "get-project-slack-config",
-  UPDATE_PROJECT_SLACK_CONFIG = "update-project-slack-config",
+  GET_PROJECT_WORKFLOW_INTEGRATION_CONFIG = "get-project-workflow-integration-config",
+  UPDATE_PROJECT_WORKFLOW_INTEGRATION_CONFIG = "update-project-workflow-integration-config",
+
+  GET_PROJECT_SSH_CONFIG = "get-project-ssh-config",
+  UPDATE_PROJECT_SSH_CONFIG = "update-project-ssh-config",
   INTEGRATION_SYNCED = "integration-synced",
   CREATE_CMEK = "create-cmek",
   UPDATE_CMEK = "update-cmek",
@@ -317,7 +351,18 @@ export enum EventType {
   DELETE_SECRET_ROTATION = "delete-secret-rotation",
   SECRET_ROTATION_ROTATE_SECRETS = "secret-rotation-rotate-secrets",
 
-  PROJECT_ACCESS_REQUEST = "project-access-request"
+  PROJECT_ACCESS_REQUEST = "project-access-request",
+
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_CREATE = "microsoft-teams-workflow-integration-create",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_DELETE = "microsoft-teams-workflow-integration-delete",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_UPDATE = "microsoft-teams-workflow-integration-update",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_CHECK_INSTALLATION_STATUS = "microsoft-teams-workflow-integration-check-installation-status",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_GET_TEAMS = "microsoft-teams-workflow-integration-get-teams",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_GET = "microsoft-teams-workflow-integration-get",
+  MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_LIST = "microsoft-teams-workflow-integration-list",
+
+  PROJECT_ASSUME_PRIVILEGE_SESSION_START = "project-assume-privileges-session-start",
+  PROJECT_ASSUME_PRIVILEGE_SESSION_END = "project-assume-privileges-session-end"
 }
 
 export const filterableSecretEvents: EventType[] = [
@@ -1006,6 +1051,55 @@ interface GetIdentityAzureAuthEvent {
   };
 }
 
+interface LoginIdentityLdapAuthEvent {
+  type: EventType.LOGIN_IDENTITY_LDAP_AUTH;
+  metadata: {
+    identityId: string;
+    ldapUsername: string;
+    ldapEmail?: string;
+  };
+}
+
+interface AddIdentityLdapAuthEvent {
+  type: EventType.ADD_IDENTITY_LDAP_AUTH;
+  metadata: {
+    identityId: string;
+    accessTokenTTL?: number;
+    accessTokenMaxTTL?: number;
+    accessTokenNumUsesLimit?: number;
+    accessTokenTrustedIps?: Array<TIdentityTrustedIp>;
+    allowedFields?: TAllowedFields[];
+    url: string;
+  };
+}
+
+interface UpdateIdentityLdapAuthEvent {
+  type: EventType.UPDATE_IDENTITY_LDAP_AUTH;
+  metadata: {
+    identityId: string;
+    accessTokenTTL?: number;
+    accessTokenMaxTTL?: number;
+    accessTokenNumUsesLimit?: number;
+    accessTokenTrustedIps?: Array<TIdentityTrustedIp>;
+    allowedFields?: TAllowedFields[];
+    url?: string;
+  };
+}
+
+interface GetIdentityLdapAuthEvent {
+  type: EventType.GET_IDENTITY_LDAP_AUTH;
+  metadata: {
+    identityId: string;
+  };
+}
+
+interface RevokeIdentityLdapAuthEvent {
+  type: EventType.REVOKE_IDENTITY_LDAP_AUTH;
+  metadata: {
+    identityId: string;
+  };
+}
+
 interface LoginIdentityOidcAuthEvent {
   type: EventType.LOGIN_IDENTITY_OIDC_AUTH;
   metadata: {
@@ -1491,14 +1585,10 @@ interface CreateSshHost {
   metadata: {
     sshHostId: string;
     hostname: string;
+    alias: string | null;
     userCertTtl: string;
     hostCertTtl: string;
-    loginMappings: {
-      loginUser: string;
-      allowedPrincipals: {
-        usernames: string[];
-      };
-    }[];
+    loginMappings: TLoginMapping[];
     userSshCaId: string;
     hostSshCaId: string;
   };
@@ -1509,14 +1599,10 @@ interface UpdateSshHost {
   metadata: {
     sshHostId: string;
     hostname?: string;
+    alias?: string | null;
     userCertTtl?: string;
     hostCertTtl?: string;
-    loginMappings?: {
-      loginUser: string;
-      allowedPrincipals: {
-        usernames: string[];
-      };
-    }[];
+    loginMappings?: TLoginMapping[];
     userSshCaId?: string;
     hostSshCaId?: string;
   };
@@ -1557,6 +1643,66 @@ interface IssueSshHostHostCert {
     serialNumber: string;
     principals: string[];
     ttl: string;
+  };
+}
+
+interface GetSshHostGroupEvent {
+  type: EventType.GET_SSH_HOST_GROUP;
+  metadata: {
+    sshHostGroupId: string;
+    name: string;
+  };
+}
+
+interface CreateSshHostGroupEvent {
+  type: EventType.CREATE_SSH_HOST_GROUP;
+  metadata: {
+    sshHostGroupId: string;
+    name: string;
+    loginMappings: TLoginMapping[];
+  };
+}
+
+interface UpdateSshHostGroupEvent {
+  type: EventType.UPDATE_SSH_HOST_GROUP;
+  metadata: {
+    sshHostGroupId: string;
+    name?: string;
+    loginMappings?: TLoginMapping[];
+  };
+}
+
+interface DeleteSshHostGroupEvent {
+  type: EventType.DELETE_SSH_HOST_GROUP;
+  metadata: {
+    sshHostGroupId: string;
+    name: string;
+  };
+}
+
+interface GetSshHostGroupHostsEvent {
+  type: EventType.GET_SSH_HOST_GROUP_HOSTS;
+  metadata: {
+    sshHostGroupId: string;
+    name: string;
+  };
+}
+
+interface AddHostToSshHostGroupEvent {
+  type: EventType.ADD_HOST_TO_SSH_HOST_GROUP;
+  metadata: {
+    sshHostGroupId: string;
+    sshHostId: string;
+    hostname: string;
+  };
+}
+
+interface RemoveHostFromSshHostGroupEvent {
+  type: EventType.REMOVE_HOST_FROM_SSH_HOST_GROUP;
+  metadata: {
+    sshHostGroupId: string;
+    sshHostId: string;
+    hostname: string;
   };
 }
 
@@ -1705,6 +1851,24 @@ interface RevokeCert {
 
 interface GetCertBody {
   type: EventType.GET_CERT_BODY;
+  metadata: {
+    certId: string;
+    cn: string;
+    serialNumber: string;
+  };
+}
+
+interface GetCertPrivateKey {
+  type: EventType.GET_CERT_PRIVATE_KEY;
+  metadata: {
+    certId: string;
+    cn: string;
+    serialNumber: string;
+  };
+}
+
+interface GetCertBundle {
+  type: EventType.GET_CERT_BUNDLE;
   metadata: {
     certId: string;
     cn: string;
@@ -1907,6 +2071,11 @@ interface OrgAdminAccessProjectEvent {
   }; // no metadata yet
 }
 
+interface OrgAdminBypassSSOEvent {
+  type: EventType.ORG_ADMIN_BYPASS_SSO;
+  metadata: Record<string, string>; // no metadata yet
+}
+
 interface CreateCertificateTemplateEstConfig {
   type: EventType.CREATE_CERTIFICATE_TEMPLATE_EST_CONFIG;
   metadata: {
@@ -1968,24 +2137,45 @@ interface GetSlackIntegration {
   };
 }
 
-interface UpdateProjectSlackConfig {
-  type: EventType.UPDATE_PROJECT_SLACK_CONFIG;
+interface UpdateProjectWorkflowIntegrationConfig {
+  type: EventType.UPDATE_PROJECT_WORKFLOW_INTEGRATION_CONFIG;
   metadata: {
     id: string;
-    slackIntegrationId: string;
+    integrationId: string;
+    integration: WorkflowIntegration;
     isAccessRequestNotificationEnabled: boolean;
-    accessRequestChannels: string;
+    accessRequestChannels?: string | { teamId: string; channelIds: string[] };
     isSecretRequestNotificationEnabled: boolean;
-    secretRequestChannels: string;
+    secretRequestChannels?: string | { teamId: string; channelIds: string[] };
   };
 }
 
-interface GetProjectSlackConfig {
-  type: EventType.GET_PROJECT_SLACK_CONFIG;
+interface GetProjectWorkflowIntegrationConfig {
+  type: EventType.GET_PROJECT_WORKFLOW_INTEGRATION_CONFIG;
   metadata: {
     id: string;
+    integration: WorkflowIntegration;
   };
 }
+
+interface GetProjectSshConfig {
+  type: EventType.GET_PROJECT_SSH_CONFIG;
+  metadata: {
+    id: string;
+    projectId: string;
+  };
+}
+
+interface UpdateProjectSshConfig {
+  type: EventType.UPDATE_PROJECT_SSH_CONFIG;
+  metadata: {
+    id: string;
+    projectId: string;
+    defaultUserSshCaId?: string | null;
+    defaultHostSshCaId?: string | null;
+  };
+}
+
 interface IntegrationSyncedEvent {
   type: EventType.INTEGRATION_SYNCED;
   metadata: {
@@ -2425,6 +2615,29 @@ interface ProjectAccessRequestEvent {
   };
 }
 
+interface ProjectAssumePrivilegesEvent {
+  type: EventType.PROJECT_ASSUME_PRIVILEGE_SESSION_START;
+  metadata: {
+    projectId: string;
+    requesterId: string;
+    requesterEmail: string;
+    targetActorType: ActorType;
+    targetActorId: string;
+    duration: string;
+  };
+}
+
+interface ProjectAssumePrivilegesExitEvent {
+  type: EventType.PROJECT_ASSUME_PRIVILEGE_SESSION_END;
+  metadata: {
+    projectId: string;
+    requesterId: string;
+    requesterEmail: string;
+    targetActorType: ActorType;
+    targetActorId: string;
+  };
+}
+
 interface SetupKmipEvent {
   type: EventType.SETUP_KMIP;
   metadata: {
@@ -2507,6 +2720,66 @@ interface RotateSecretRotationEvent {
   };
 }
 
+interface MicrosoftTeamsWorkflowIntegrationCreateEvent {
+  type: EventType.MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_CREATE;
+  metadata: {
+    tenantId: string;
+    slug: string;
+    description?: string;
+  };
+}
+
+interface MicrosoftTeamsWorkflowIntegrationDeleteEvent {
+  type: EventType.MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_DELETE;
+  metadata: {
+    tenantId: string;
+    id: string;
+    slug: string;
+  };
+}
+
+interface MicrosoftTeamsWorkflowIntegrationCheckInstallationStatusEvent {
+  type: EventType.MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_CHECK_INSTALLATION_STATUS;
+  metadata: {
+    tenantId: string;
+    slug: string;
+  };
+}
+
+interface MicrosoftTeamsWorkflowIntegrationGetTeamsEvent {
+  type: EventType.MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_GET_TEAMS;
+  metadata: {
+    tenantId: string;
+    slug: string;
+    id: string;
+  };
+}
+
+interface MicrosoftTeamsWorkflowIntegrationGetEvent {
+  type: EventType.MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_GET;
+  metadata: {
+    tenantId: string;
+    slug: string;
+    id: string;
+  };
+}
+
+interface MicrosoftTeamsWorkflowIntegrationListEvent {
+  type: EventType.MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_LIST;
+  metadata: Record<string, string>;
+}
+
+interface MicrosoftTeamsWorkflowIntegrationUpdateEvent {
+  type: EventType.MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_UPDATE;
+  metadata: {
+    tenantId: string;
+    slug: string;
+    id: string;
+    newSlug?: string;
+    newDescription?: string;
+  };
+}
+
 export type Event =
   | GetSecretsEvent
   | GetSecretEvent
@@ -2578,6 +2851,11 @@ export type Event =
   | UpdateIdentityJwtAuthEvent
   | GetIdentityJwtAuthEvent
   | DeleteIdentityJwtAuthEvent
+  | LoginIdentityLdapAuthEvent
+  | AddIdentityLdapAuthEvent
+  | UpdateIdentityLdapAuthEvent
+  | GetIdentityLdapAuthEvent
+  | RevokeIdentityLdapAuthEvent
   | CreateEnvironmentEvent
   | GetEnvironmentEvent
   | UpdateEnvironmentEvent
@@ -2637,6 +2915,8 @@ export type Event =
   | DeleteCert
   | RevokeCert
   | GetCertBody
+  | GetCertPrivateKey
+  | GetCertBundle
   | CreatePkiAlert
   | GetPkiAlert
   | UpdatePkiAlert
@@ -2656,6 +2936,7 @@ export type Event =
   | GetProjectKmsBackupEvent
   | LoadProjectKmsBackupEvent
   | OrgAdminAccessProjectEvent
+  | OrgAdminBypassSSOEvent
   | CreateCertificateTemplate
   | UpdateCertificateTemplate
   | GetCertificateTemplate
@@ -2668,8 +2949,10 @@ export type Event =
   | UpdateSlackIntegration
   | DeleteSlackIntegration
   | GetSlackIntegration
-  | UpdateProjectSlackConfig
-  | GetProjectSlackConfig
+  | UpdateProjectWorkflowIntegrationConfig
+  | GetProjectWorkflowIntegrationConfig
+  | GetProjectSshConfig
+  | UpdateProjectSshConfig
   | IntegrationSyncedEvent
   | CreateCmekEvent
   | UpdateCmekEvent
@@ -2696,6 +2979,13 @@ export type Event =
   | CreateAppConnectionEvent
   | UpdateAppConnectionEvent
   | DeleteAppConnectionEvent
+  | GetSshHostGroupEvent
+  | CreateSshHostGroupEvent
+  | UpdateSshHostGroupEvent
+  | DeleteSshHostGroupEvent
+  | GetSshHostGroupHostsEvent
+  | AddHostToSshHostGroupEvent
+  | RemoveHostFromSshHostGroupEvent
   | CreateSharedSecretEvent
   | DeleteSharedSecretEvent
   | ReadSharedSecretEvent
@@ -2727,6 +3017,8 @@ export type Event =
   | KmipOperationLocateEvent
   | KmipOperationRegisterEvent
   | ProjectAccessRequestEvent
+  | ProjectAssumePrivilegesEvent
+  | ProjectAssumePrivilegesExitEvent
   | CreateSecretRequestEvent
   | SecretApprovalRequestReview
   | GetSecretRotationsEvent
@@ -2735,4 +3027,11 @@ export type Event =
   | CreateSecretRotationEvent
   | UpdateSecretRotationEvent
   | DeleteSecretRotationEvent
-  | RotateSecretRotationEvent;
+  | RotateSecretRotationEvent
+  | MicrosoftTeamsWorkflowIntegrationCreateEvent
+  | MicrosoftTeamsWorkflowIntegrationDeleteEvent
+  | MicrosoftTeamsWorkflowIntegrationCheckInstallationStatusEvent
+  | MicrosoftTeamsWorkflowIntegrationGetTeamsEvent
+  | MicrosoftTeamsWorkflowIntegrationGetEvent
+  | MicrosoftTeamsWorkflowIntegrationListEvent
+  | MicrosoftTeamsWorkflowIntegrationUpdateEvent;

@@ -2,7 +2,9 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { Knex } from "knex";
 
-import { TUsers, UserDeviceSchema } from "@app/db/schemas";
+import { OrgMembershipRole, OrgMembershipStatus, TableName, TUsers, UserDeviceSchema } from "@app/db/schemas";
+import { TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-service";
+import { EventType } from "@app/ee/services/audit-log/audit-log-types";
 import { isAuthMethodSaml } from "@app/ee/services/permission/permission-fns";
 import { getConfig } from "@app/lib/config/env";
 import { request } from "@app/lib/config/request";
@@ -10,12 +12,16 @@ import { generateSrpServerKey, srpCheckClientProof } from "@app/lib/crypto";
 import { infisicalSymmetricEncypt } from "@app/lib/crypto/encryption";
 import { getUserPrivateKey } from "@app/lib/crypto/srp";
 import { BadRequestError, DatabaseError, ForbiddenRequestError, UnauthorizedError } from "@app/lib/errors";
+import { getMinExpiresIn, removeTrailingSlash } from "@app/lib/fn";
 import { logger } from "@app/lib/logger";
+import { getUserAgentType } from "@app/server/plugins/audit-log";
 import { getServerCfg } from "@app/services/super-admin/super-admin-service";
 
 import { TAuthTokenServiceFactory } from "../auth-token/auth-token-service";
 import { TokenType } from "../auth-token/auth-token-types";
 import { TOrgDALFactory } from "../org/org-dal";
+import { getDefaultOrgMembershipRole } from "../org/org-role-fns";
+import { TOrgMembershipDALFactory } from "../org-membership/org-membership-dal";
 import { SmtpTemplates, TSmtpService } from "../smtp/smtp-service";
 import { LoginMethod } from "../super-admin/super-admin-types";
 import { TTotpServiceFactory } from "../totp/totp-service";
@@ -28,7 +34,14 @@ import {
   TOauthTokenExchangeDTO,
   TVerifyMfaTokenDTO
 } from "./auth-login-type";
-import { AuthMethod, AuthModeJwtTokenPayload, AuthModeMfaJwtTokenPayload, AuthTokenType, MfaMethod } from "./auth-type";
+import {
+  ActorType,
+  AuthMethod,
+  AuthModeJwtTokenPayload,
+  AuthModeMfaJwtTokenPayload,
+  AuthTokenType,
+  MfaMethod
+} from "./auth-type";
 
 type TAuthLoginServiceFactoryDep = {
   userDAL: TUserDALFactory;
@@ -36,6 +49,8 @@ type TAuthLoginServiceFactoryDep = {
   tokenService: TAuthTokenServiceFactory;
   smtpService: TSmtpService;
   totpService: Pick<TTotpServiceFactory, "verifyUserTotp" | "verifyWithUserRecoveryCode">;
+  auditLogService: Pick<TAuditLogServiceFactory, "createAuditLog">;
+  orgMembershipDAL: TOrgMembershipDALFactory;
 };
 
 export type TAuthLoginFactory = ReturnType<typeof authLoginServiceFactory>;
@@ -44,7 +59,9 @@ export const authLoginServiceFactory = ({
   tokenService,
   smtpService,
   orgDAL,
-  totpService
+  orgMembershipDAL,
+  totpService,
+  auditLogService
 }: TAuthLoginServiceFactoryDep) => {
   /*
    * Private
@@ -130,6 +147,17 @@ export const authLoginServiceFactory = ({
     );
     if (!tokenSession) throw new Error("Failed to create token");
 
+    let tokenSessionExpiresIn: string | number = cfg.JWT_AUTH_LIFETIME;
+    let refreshTokenExpiresIn: string | number = cfg.JWT_REFRESH_LIFETIME;
+
+    if (organizationId) {
+      const org = await orgDAL.findById(organizationId);
+      if (org && org.userTokenExpiration) {
+        tokenSessionExpiresIn = getMinExpiresIn(cfg.JWT_AUTH_LIFETIME, org.userTokenExpiration);
+        refreshTokenExpiresIn = org.userTokenExpiration;
+      }
+    }
+
     const accessToken = jwt.sign(
       {
         authMethod,
@@ -142,7 +170,7 @@ export const authLoginServiceFactory = ({
         mfaMethod
       },
       cfg.AUTH_SECRET,
-      { expiresIn: cfg.JWT_AUTH_LIFETIME }
+      { expiresIn: tokenSessionExpiresIn }
     );
 
     const refreshToken = jwt.sign(
@@ -157,7 +185,7 @@ export const authLoginServiceFactory = ({
         mfaMethod
       },
       cfg.AUTH_SECRET,
-      { expiresIn: cfg.JWT_REFRESH_LIFETIME }
+      { expiresIn: refreshTokenExpiresIn }
     );
 
     return { access: accessToken, refresh: refreshToken };
@@ -174,20 +202,25 @@ export const authLoginServiceFactory = ({
     const userEnc = await userDAL.findUserEncKeyByUsername({
       username: email
     });
+
     const serverCfg = await getServerCfg();
+
+    if (!userEnc || (userEnc && !userEnc.isAccepted)) {
+      throw new Error("Failed to find user");
+    }
 
     if (
       serverCfg.enabledLoginMethods &&
       !serverCfg.enabledLoginMethods.includes(LoginMethod.EMAIL) &&
       !providerAuthToken
     ) {
-      throw new BadRequestError({
-        message: "Login with email is disabled by administrator."
-      });
-    }
-
-    if (!userEnc || (userEnc && !userEnc.isAccepted)) {
-      throw new Error("Failed to find user");
+      // bypass server configuration when user is an organization admin - this is to prevent lockout
+      const userOrgs = await orgDAL.findAllOrgsByUserId(userEnc.userId);
+      if (!userOrgs.some((org) => org.userRole === OrgMembershipRole.Admin)) {
+        throw new BadRequestError({
+          message: "Login with email is disabled by administrator."
+        });
+      }
     }
 
     if (!userEnc.authMethods?.includes(AuthMethod.EMAIL)) {
@@ -368,8 +401,8 @@ export const authLoginServiceFactory = ({
     }
 
     const shouldCheckMfa = selectedOrg.enforceMfa || user.isMfaEnabled;
-    const orgMfaMethod = selectedOrg.enforceMfa ? selectedOrg.selectedMfaMethod ?? MfaMethod.EMAIL : undefined;
-    const userMfaMethod = user.isMfaEnabled ? user.selectedMfaMethod ?? MfaMethod.EMAIL : undefined;
+    const orgMfaMethod = selectedOrg.enforceMfa ? (selectedOrg.selectedMfaMethod ?? MfaMethod.EMAIL) : undefined;
+    const userMfaMethod = user.isMfaEnabled ? (user.selectedMfaMethod ?? MfaMethod.EMAIL) : undefined;
     const mfaMethod = orgMfaMethod ?? userMfaMethod;
 
     if (shouldCheckMfa && (!decodedToken.isMfaVerified || decodedToken.mfaMethod !== mfaMethod)) {
@@ -407,8 +440,58 @@ export const authLoginServiceFactory = ({
       mfaMethod: decodedToken.mfaMethod
     });
 
+    // In the event of this being a break-glass request (non-saml / non-oidc, when either is enforced)
+    if (
+      selectedOrg.authEnforced &&
+      selectedOrg.bypassOrgAuthEnabled &&
+      !isAuthMethodSaml(decodedToken.authMethod) &&
+      decodedToken.authMethod !== AuthMethod.OIDC
+    ) {
+      await auditLogService.createAuditLog({
+        orgId: organizationId,
+        ipAddress,
+        userAgent,
+        userAgentType: getUserAgentType(userAgent),
+        actor: {
+          type: ActorType.USER,
+          metadata: {
+            email: user.email,
+            userId: user.id,
+            username: user.username
+          }
+        },
+        event: {
+          type: EventType.ORG_ADMIN_BYPASS_SSO,
+          metadata: {}
+        }
+      });
+
+      // Notify all admins via email (besides the actor)
+      const orgAdmins = await orgDAL.findOrgMembersByRole(organizationId, OrgMembershipRole.Admin);
+      const adminEmails = orgAdmins
+        .filter((admin) => admin.user.id !== user.id)
+        .map((admin) => admin.user.email)
+        .filter(Boolean) as string[];
+
+      if (adminEmails.length > 0) {
+        await smtpService.sendMail({
+          recipients: adminEmails,
+          subjectLine: "Security Alert: Admin SSO Bypass",
+          substitutions: {
+            email: user.email,
+            timestamp: new Date().toISOString(),
+            ip: ipAddress,
+            userAgent,
+            siteUrl: removeTrailingSlash(cfg.SITE_URL || "https://app.infisical.com")
+          },
+          template: SmtpTemplates.OrgAdminBreakglassAccess
+        });
+      }
+    }
+
     return {
       ...tokens,
+      user,
       isMfaEnabled: false
     };
   };
@@ -490,9 +573,9 @@ export const authLoginServiceFactory = ({
   }: TVerifyMfaTokenDTO) => {
     const appCfg = getConfig();
     const user = await userDAL.findById(userId);
-    enforceUserLockStatus(Boolean(user.isLocked), user.temporaryLockDateEnd);
 
     try {
+      enforceUserLockStatus(Boolean(user.isLocked), user.temporaryLockDateEnd);
       if (mfaMethod === MfaMethod.EMAIL) {
         await tokenService.validateTokenForUser({
           type: TokenType.TOKEN_EMAIL_MFA,
@@ -573,28 +656,40 @@ export const authLoginServiceFactory = ({
       switch (authMethod) {
         case AuthMethod.GITHUB: {
           if (!serverCfg.enabledLoginMethods.includes(LoginMethod.GITHUB)) {
-            throw new BadRequestError({
-              message: "Login with Github is disabled by administrator.",
-              name: "Oauth 2 login"
-            });
+            // bypass server configuration when user is an organization admin - this is to prevent lockout
+            const userOrgs = await orgDAL.findAllOrgsByUserId(user.id);
+            if (!userOrgs.some((org) => org.userRole === OrgMembershipRole.Admin)) {
+              throw new BadRequestError({
+                message: "Login with Github is disabled by administrator.",
+                name: "Oauth 2 login"
+              });
+            }
           }
           break;
         }
         case AuthMethod.GOOGLE: {
           if (!serverCfg.enabledLoginMethods.includes(LoginMethod.GOOGLE)) {
-            throw new BadRequestError({
-              message: "Login with Google is disabled by administrator.",
-              name: "Oauth 2 login"
-            });
+            // bypass server configuration when user is an organization admin - this is to prevent lockout
+            const userOrgs = await orgDAL.findAllOrgsByUserId(user.id);
+            if (!userOrgs.some((org) => org.userRole === OrgMembershipRole.Admin)) {
+              throw new BadRequestError({
+                message: "Login with Google is disabled by administrator.",
+                name: "Oauth 2 login"
+              });
+            }
           }
           break;
         }
         case AuthMethod.GITLAB: {
           if (!serverCfg.enabledLoginMethods.includes(LoginMethod.GITLAB)) {
-            throw new BadRequestError({
-              message: "Login with Gitlab is disabled by administrator.",
-              name: "Oauth 2 login"
-            });
+            // bypass server configuration when user is an organization admin - this is to prevent lockout
+            const userOrgs = await orgDAL.findAllOrgsByUserId(user.id);
+            if (!userOrgs.some((org) => org.userRole === OrgMembershipRole.Admin)) {
+              throw new BadRequestError({
+                message: "Login with Gitlab is disabled by administrator.",
+                name: "Oauth 2 login"
+              });
+            }
           }
           break;
         }
@@ -628,6 +723,35 @@ export const authLoginServiceFactory = ({
         authMethods: [authMethod],
         isGhost: false
       });
+
+      if (authMethod === AuthMethod.GITHUB && serverCfg.defaultAuthOrgId && !appCfg.isCloud) {
+        let orgId = "";
+        const defaultOrg = await orgDAL.findOrgById(serverCfg.defaultAuthOrgId);
+        if (!defaultOrg) {
+          throw new BadRequestError({
+            message: `Failed to find default organization with ID ${serverCfg.defaultAuthOrgId}`
+          });
+        }
+        orgId = defaultOrg.id;
+        const [orgMembership] = await orgDAL.findMembership({
+          [`${TableName.OrgMembership}.userId` as "userId"]: user.id,
+          [`${TableName.OrgMembership}.orgId` as "id"]: orgId
+        });
+
+        if (!orgMembership) {
+          const { role, roleId } = await getDefaultOrgMembershipRole(defaultOrg.defaultMembershipRole);
+
+          await orgMembershipDAL.create({
+            userId: user.id,
+            inviteEmail: email,
+            orgId,
+            role,
+            roleId,
+            status: OrgMembershipStatus.Accepted,
+            isActive: true
+          });
+        }
+      }
     } else {
       const isLinkingRequired = !user?.authMethods?.includes(authMethod);
       if (isLinkingRequired) {
@@ -705,7 +829,7 @@ export const authLoginServiceFactory = ({
       organizationId
     });
 
-    return { token, isMfaEnabled: false, user: userEnc } as const;
+    return { token, isMfaEnabled: false, user: userEnc, decodedProviderToken } as const;
   };
 
   /*

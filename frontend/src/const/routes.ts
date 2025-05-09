@@ -17,6 +17,12 @@ export const ROUTE_PATHS = Object.freeze({
     PasswordSetupPage: setRoute("/password-setup", "/_authenticate/password-setup")
   },
   Organization: {
+    Settings: {
+      OauthCallbackPage: setRoute(
+        "/organization/settings/oauth/callback",
+        "/_authenticate/_inject-org-details/_org-layout/organization/settings/oauth/callback"
+      )
+    },
     SecretScanning: setRoute(
       "/organization/secret-scanning",
       "/_authenticate/_inject-org-details/_org-layout/organization/secret-scanning"
@@ -31,7 +37,7 @@ export const ROUTE_PATHS = Object.freeze({
     ),
     SettingsPage: setRoute(
       "/organization/settings",
-      "/_authenticate/_inject-org-details/_org-layout/organization/settings"
+      "/_authenticate/_inject-org-details/_org-layout/organization/settings/"
     ),
     GroupDetailsByIDPage: setRoute(
       "/organization/groups/$groupId",
@@ -281,6 +287,14 @@ export const ROUTE_PATHS = Object.freeze({
       "/cert-manager/$projectId/overview",
       "/_authenticate/_inject-org-details/_org-layout/cert-manager/$projectId/_cert-manager-layout/overview"
     ),
+    CertificateAuthoritiesPage: setRoute(
+      "/cert-manager/$projectId/certificate-authorities",
+      "/_authenticate/_inject-org-details/_org-layout/cert-manager/$projectId/_cert-manager-layout/certificate-authorities"
+    ),
+    AlertingPage: setRoute(
+      "/cert-manager/$projectId/alerting",
+      "/_authenticate/_inject-org-details/_org-layout/cert-manager/$projectId/_cert-manager-layout/alerting"
+    ),
     PkiCollectionDetailsByIDPage: setRoute(
       "/cert-manager/$projectId/pki-collections/$collectionId",
       "/_authenticate/_inject-org-details/_org-layout/cert-manager/$projectId/_cert-manager-layout/pki-collections/$collectionId"
@@ -290,6 +304,10 @@ export const ROUTE_PATHS = Object.freeze({
     SshCaByIDPage: setRoute(
       "/ssh/$projectId/ca/$caId",
       "/_authenticate/_inject-org-details/_org-layout/ssh/$projectId/_ssh-layout/ca/$caId"
+    ),
+    SshHostGroupDetailsByIDPage: setRoute(
+      "/ssh/$projectId/ssh-host-groups/$sshHostGroupId",
+      "/_authenticate/_inject-org-details/_org-layout/ssh/$projectId/_ssh-layout/ssh-host-groups/$sshHostGroupId"
     )
   },
   Public: {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
-import { SecretSyncs } from "@app/lib/api-docs";
+import { ApiDocsTags, SecretSyncs } from "@app/lib/api-docs";
 import { readLimit } from "@app/server/config/rateLimiter";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { AuthMode } from "@app/services/auth/auth-type";
@@ -22,9 +22,12 @@ import { CamundaSyncListItemSchema, CamundaSyncSchema } from "@app/services/secr
 import { DatabricksSyncListItemSchema, DatabricksSyncSchema } from "@app/services/secret-sync/databricks";
 import { GcpSyncListItemSchema, GcpSyncSchema } from "@app/services/secret-sync/gcp";
 import { GitHubSyncListItemSchema, GitHubSyncSchema } from "@app/services/secret-sync/github";
+import { HCVaultSyncListItemSchema, HCVaultSyncSchema } from "@app/services/secret-sync/hc-vault";
 import { HumanitecSyncListItemSchema, HumanitecSyncSchema } from "@app/services/secret-sync/humanitec";
+import { TeamCitySyncListItemSchema, TeamCitySyncSchema } from "@app/services/secret-sync/teamcity";
 import { TerraformCloudSyncListItemSchema, TerraformCloudSyncSchema } from "@app/services/secret-sync/terraform-cloud";
 import { VercelSyncListItemSchema, VercelSyncSchema } from "@app/services/secret-sync/vercel";
+import { WindmillSyncListItemSchema, WindmillSyncSchema } from "@app/services/secret-sync/windmill";
 
 const SecretSyncSchema = z.discriminatedUnion("destination", [
   AwsParameterStoreSyncSchema,
@@ -37,7 +40,10 @@ const SecretSyncSchema = z.discriminatedUnion("destination", [
   HumanitecSyncSchema,
   TerraformCloudSyncSchema,
   CamundaSyncSchema,
-  VercelSyncSchema
+  VercelSyncSchema,
+  WindmillSyncSchema,
+  HCVaultSyncSchema,
+  TeamCitySyncSchema
 ]);
 
 const SecretSyncOptionsSchema = z.discriminatedUnion("destination", [
@@ -51,7 +57,10 @@ const SecretSyncOptionsSchema = z.discriminatedUnion("destination", [
   HumanitecSyncListItemSchema,
   TerraformCloudSyncListItemSchema,
   CamundaSyncListItemSchema,
-  VercelSyncListItemSchema
+  VercelSyncListItemSchema,
+  WindmillSyncListItemSchema,
+  HCVaultSyncListItemSchema,
+  TeamCitySyncListItemSchema
 ]);
 
 export const registerSecretSyncRouter = async (server: FastifyZodProvider) => {
@@ -62,6 +71,8 @@ export const registerSecretSyncRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.SecretSyncs],
       description: "List the available Secret Sync Options.",
       response: {
         200: z.object({
@@ -83,6 +94,8 @@ export const registerSecretSyncRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.SecretSyncs],
       description: "List all the Secret Syncs for the specified project.",
       querystring: z.object({
         projectId: z.string().trim().min(1, "Project ID required").describe(SecretSyncs.LIST().projectId)

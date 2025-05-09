@@ -29,13 +29,32 @@ Used to configure platform-specific security and operational settings
   Specifies the internal port on which the application listens.
 </ParamField>
 
+<ParamField query="HOST" type="string" default="localhost" optional>
+  Specifies the network interface Infisical will bind to when accepting incoming connections.
+
+  By default, Infisical binds to `localhost`, which restricts access to connections from the same machine. 
+
+  To make the application accessible externally (e.g., for self-hosted deployments), set this to `0.0.0.0`, which tells the server to listen on all network interfaces.
+
+  Example values:
+  - `localhost` (default, same as `127.0.0.1`)
+  - `0.0.0.0` (all interfaces, accessible externally)
+  - `192.168.1.100` (specific interface IP)
+</ParamField>
+
 <ParamField query="TELEMETRY_ENABLED" type="string" default="true" optional>
   Telemetry helps us improve Infisical but if you want to disable it you may set
   this to `false`.
 </ParamField>
 
-<ParamField query="ALLOW_INTERNAL_IP_CONNECTIONS" type="bool" default="false" optional>
-    Determines whether App Connections and Dynamic Secrets are permitted to connect with internal/private IP addresses.
+<ParamField
+  query="ALLOW_INTERNAL_IP_CONNECTIONS"
+  type="bool"
+  default="false"
+  optional
+>
+  Determines whether App Connections and Dynamic Secrets are permitted to
+  connect with internal/private IP addresses.
 </ParamField>
 
 ## CORS
@@ -45,23 +64,31 @@ The following environment variables can be used to configure the Infisical Rest 
 
 <ParamField query="CORS_ALLOWED_ORIGINS" type="string" optional>
 
-  Specify a list of origins that are allowed to access the Infisical API.
+Specify a list of origins that are allowed to access the Infisical API.
 
-  An example value would be `CORS_ALLOWED_ORIGINS=["https://example.com"]`.
+An example value would be `CORS_ALLOWED_ORIGINS=["https://example.com"]`.
 
-  Defaults to the same value as your `SITE_URL` environment variable.
+Defaults to the same value as your `SITE_URL` environment variable.
+
 </ParamField>
 
 <ParamField query="CORS_ALLOWED_METHODS" type="string" optional>
   Array of HTTP methods allowed for CORS requests.
 
-  Defaults to reflecting the headers specified in the request's Access-Control-Request-Headers header.
-</ParamField>
+Defaults to reflecting the headers specified in the request's Access-Control-Request-Headers header.
 
+</ParamField>
 
 ## Data Layer
 
 The platform utilizes Postgres to persist all of its data and Redis for caching and backgroud tasks
+
+### PostgreSQL
+
+<Info>
+  Please note that the database user you create must be granted all privileges on the Infisical database.
+  This includes the ability to create new schemas, create, update, delete, modify tables and indexes, etc.
+</Info>
 
 <ParamField query="DB_CONNECTION_URI" type="string" default="" required>
   Postgres database connection string.
@@ -71,10 +98,6 @@ The platform utilizes Postgres to persist all of its data and Redis for caching 
   Configure the SSL certificate for securing a Postgres connection by first encoding it in base64. 
   Use the command below to encode your certificate:
   `echo "<certificate>" | base64`
-</ParamField>
-
-<ParamField query="REDIS_URL" type="string" default="none" required>
-  Redis connection string.
 </ParamField>
 
 <ParamField query="DB_READ_REPLICAS" type="string" default="" optional>
@@ -95,6 +118,12 @@ DB_READ_REPLICAS=[{"DB_CONNECTION_URI":""}]
     </ParamField>
 
   </Expandable>
+</ParamField>
+
+### Redis
+
+<ParamField query="REDIS_URL" type="string" default="none" required>
+  Redis connection string.
 </ParamField>
 
 ## Email Service
@@ -455,6 +484,7 @@ You can configure third-party app connections for re-use across Infisical Projec
     <ParamField query="INF_APP_CONNECTION_AWS_SECRET_ACCESS_KEY" type="string" default="none" optional>
         The AWS IAM User secret key for assuming roles
     </ParamField>
+
 </Accordion>
 
 <Accordion title="GitHub App Connection">
@@ -477,6 +507,7 @@ You can configure third-party app connections for re-use across Infisical Projec
     <ParamField query="INF_APP_CONNECTION_GITHUB_APP_PRIVATE_KEY" type="string" default="none" optional>
         The private key for the GitHub App
     </ParamField>
+
 </Accordion>
 
 <Accordion title="GitHub OAuth Connection">
@@ -487,6 +518,7 @@ You can configure third-party app connections for re-use across Infisical Projec
     <ParamField query="INF_APP_CONNECTION_GITHUB_OAUTH_CLIENT_SECRET" type="string" default="none" optional>
         The OAuth2 client secret for GitHub OAuth Connection
     </ParamField>
+
 </Accordion>
 
 ## Native Secret Integrations
@@ -590,6 +622,26 @@ To help you sync secrets from Infisical to services such as Github and Gitlab, I
 
   <ParamField query="CLIENT_SECRET_GITLAB" type="string" default="none" optional>
     OAuth2 client secret for Gitlab integration
+  </ParamField>
+</Accordion>
+
+## Secret Scanning
+
+<Accordion title="GitHub">
+  <ParamField query="SECRET_SCANNING_GIT_APP_ID" type="string" default="none" optional>
+    The App ID of your GitHub App.
+  </ParamField>
+
+  <ParamField query="SECRET_SCANNING_GIT_APP_SLUG" type="string" default="none" optional>
+    The slug of your GitHub App.
+  </ParamField>
+
+  <ParamField query="SECRET_SCANNING_PRIVATE_KEY" type="string" default="none" optional>
+    A private key for your GitHub App.
+  </ParamField>
+
+  <ParamField query="SECRET_SCANNING_WEBHOOK_SECRET" type="string" default="none" optional>
+    The webhook secret of your GitHub App.
   </ParamField>
 </Accordion>
 

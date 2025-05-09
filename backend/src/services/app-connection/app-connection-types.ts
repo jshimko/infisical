@@ -22,6 +22,12 @@ import {
   TValidateAzureAppConfigurationConnectionCredentialsSchema
 } from "./azure-app-configuration";
 import {
+  TAzureClientSecretsConnection,
+  TAzureClientSecretsConnectionConfig,
+  TAzureClientSecretsConnectionInput,
+  TValidateAzureClientSecretsConnectionCredentialsSchema
+} from "./azure-client-secrets";
+import {
   TAzureKeyVaultConnection,
   TAzureKeyVaultConnectionConfig,
   TAzureKeyVaultConnectionInput,
@@ -52,17 +58,35 @@ import {
   TValidateGitHubConnectionCredentialsSchema
 } from "./github";
 import {
+  THCVaultConnection,
+  THCVaultConnectionConfig,
+  THCVaultConnectionInput,
+  TValidateHCVaultConnectionCredentialsSchema
+} from "./hc-vault";
+import {
   THumanitecConnection,
   THumanitecConnectionConfig,
   THumanitecConnectionInput,
   TValidateHumanitecConnectionCredentialsSchema
 } from "./humanitec";
+import {
+  TLdapConnection,
+  TLdapConnectionConfig,
+  TLdapConnectionInput,
+  TValidateLdapConnectionCredentialsSchema
+} from "./ldap";
 import { TMsSqlConnection, TMsSqlConnectionInput, TValidateMsSqlConnectionCredentialsSchema } from "./mssql";
 import {
   TPostgresConnection,
   TPostgresConnectionInput,
   TValidatePostgresConnectionCredentialsSchema
 } from "./postgres";
+import {
+  TTeamCityConnection,
+  TTeamCityConnectionConfig,
+  TTeamCityConnectionInput,
+  TValidateTeamCityConnectionCredentialsSchema
+} from "./teamcity";
 import {
   TTerraformCloudConnection,
   TTerraformCloudConnectionConfig,
@@ -75,6 +99,12 @@ import {
   TVercelConnectionConfig,
   TVercelConnectionInput
 } from "./vercel";
+import {
+  TValidateWindmillConnectionCredentialsSchema,
+  TWindmillConnection,
+  TWindmillConnectionConfig,
+  TWindmillConnectionInput
+} from "./windmill";
 
 export type TAppConnection = { id: string } & (
   | TAwsConnection
@@ -89,7 +119,12 @@ export type TAppConnection = { id: string } & (
   | TPostgresConnection
   | TMsSqlConnection
   | TCamundaConnection
+  | TAzureClientSecretsConnection
+  | TWindmillConnection
   | TAuth0Connection
+  | THCVaultConnection
+  | TLdapConnection
+  | TTeamCityConnection
 );
 
 export type TAppConnectionRaw = NonNullable<Awaited<ReturnType<TAppConnectionDALFactory["findById"]>>>;
@@ -109,7 +144,12 @@ export type TAppConnectionInput = { id: string } & (
   | TPostgresConnectionInput
   | TMsSqlConnectionInput
   | TCamundaConnectionInput
+  | TAzureClientSecretsConnectionInput
+  | TWindmillConnectionInput
   | TAuth0ConnectionInput
+  | THCVaultConnectionInput
+  | TLdapConnectionInput
+  | TTeamCityConnectionInput
 );
 
 export type TSqlConnectionInput = TPostgresConnectionInput | TMsSqlConnectionInput;
@@ -129,13 +169,18 @@ export type TAppConnectionConfig =
   | TGcpConnectionConfig
   | TAzureKeyVaultConnectionConfig
   | TAzureAppConfigurationConnectionConfig
+  | TAzureClientSecretsConnectionConfig
   | TDatabricksConnectionConfig
   | THumanitecConnectionConfig
   | TTerraformCloudConnectionConfig
   | TSqlConnectionConfig
   | TCamundaConnectionConfig
   | TVercelConnectionConfig
-  | TAuth0ConnectionConfig;
+  | TWindmillConnectionConfig
+  | TAuth0ConnectionConfig
+  | THCVaultConnectionConfig
+  | TLdapConnectionConfig
+  | TTeamCityConnectionConfig;
 
 export type TValidateAppConnectionCredentialsSchema =
   | TValidateAwsConnectionCredentialsSchema
@@ -143,6 +188,7 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateGcpConnectionCredentialsSchema
   | TValidateAzureKeyVaultConnectionCredentialsSchema
   | TValidateAzureAppConfigurationConnectionCredentialsSchema
+  | TValidateAzureClientSecretsConnectionCredentialsSchema
   | TValidateDatabricksConnectionCredentialsSchema
   | TValidateHumanitecConnectionCredentialsSchema
   | TValidatePostgresConnectionCredentialsSchema
@@ -150,12 +196,20 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateCamundaConnectionCredentialsSchema
   | TValidateVercelConnectionCredentialsSchema
   | TValidateTerraformCloudConnectionCredentialsSchema
-  | TValidateAuth0ConnectionCredentialsSchema;
+  | TValidateWindmillConnectionCredentialsSchema
+  | TValidateAuth0ConnectionCredentialsSchema
+  | TValidateHCVaultConnectionCredentialsSchema
+  | TValidateLdapConnectionCredentialsSchema
+  | TValidateTeamCityConnectionCredentialsSchema;
 
 export type TListAwsConnectionKmsKeys = {
   connectionId: string;
   region: AWSRegion;
   destination: SecretSync.AWSParameterStore | SecretSync.AWSSecretsManager;
+};
+
+export type TListAwsConnectionIamUsers = {
+  connectionId: string;
 };
 
 export type TAppConnectionCredentialsValidator = (

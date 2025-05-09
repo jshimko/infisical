@@ -24,7 +24,16 @@ export type TServerConfig = {
   enabledLoginMethods: LoginMethod[];
   authConsentContent?: string;
   pageFrameContent?: string;
+  invalidatingCache: boolean;
 };
+
+export type TUpdateServerConfigDTO = {
+  slackClientId?: string;
+  slackClientSecret?: string;
+  microsoftTeamsAppId?: string;
+  microsoftTeamsClientSecret?: string;
+  microsoftTeamsBotId?: string;
+} & Partial<TServerConfig>;
 
 export type TCreateAdminUserDTO = {
   email: string;
@@ -42,11 +51,6 @@ export type TCreateAdminUserDTO = {
   salt: string;
 };
 
-export type TUpdateAdminSlackConfigDTO = {
-  clientId: string;
-  clientSecret: string;
-};
-
 export type AdminGetUsersFilters = {
   limit: number;
   searchTerm: string;
@@ -58,9 +62,16 @@ export type AdminGetIdentitiesFilters = {
   searchTerm: string;
 };
 
-export type AdminSlackConfig = {
-  clientId: string;
-  clientSecret: string;
+export type AdminIntegrationsConfig = {
+  slack: {
+    clientId: string;
+    clientSecret: string;
+  };
+  microsoftTeams: {
+    appId: string;
+    clientSecret: string;
+    botId: string;
+  };
 };
 
 export type TGetServerRootKmsEncryptionDetails = {
@@ -74,3 +85,16 @@ export enum RootKeyEncryptionStrategy {
   Software = "SOFTWARE",
   HSM = "HSM"
 }
+
+export enum CacheType {
+  ALL = "all",
+  SECRETS = "secrets"
+}
+
+export type TInvalidateCacheDTO = {
+  type: CacheType;
+};
+
+export type TGetInvalidatingCacheStatus = {
+  invalidating: boolean;
+};

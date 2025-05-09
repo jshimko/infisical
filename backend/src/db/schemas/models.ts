@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export enum TableName {
   Users = "users",
+  SshHostGroup = "ssh_host_groups",
+  SshHostGroupMembership = "ssh_host_group_memberships",
   SshHost = "ssh_hosts",
   SshHostLoginUser = "ssh_host_login_users",
   SshHostLoginUserMapping = "ssh_host_login_user_mappings",
@@ -78,6 +80,7 @@ export enum TableName {
   IdentityAwsAuth = "identity_aws_auths",
   IdentityOidcAuth = "identity_oidc_auths",
   IdentityJwtAuth = "identity_jwt_auths",
+  IdentityLdapAuth = "identity_ldap_auths",
   IdentityOrgMembership = "identity_org_memberships",
   IdentityProjectMembership = "identity_project_memberships",
   IdentityProjectMembershipRole = "identity_project_membership_role",
@@ -146,7 +149,11 @@ export enum TableName {
   KmipOrgServerCertificates = "kmip_org_server_certificates",
   KmipClientCertificates = "kmip_client_certificates",
   SecretRotationV2 = "secret_rotations_v2",
-  SecretRotationV2SecretMapping = "secret_rotation_v2_secret_mappings"
+  SecretRotationV2SecretMapping = "secret_rotation_v2_secret_mappings",
+  MicrosoftTeamsIntegrations = "microsoft_teams_integrations",
+  ProjectMicrosoftTeamsConfigs = "project_microsoft_teams_configs",
+  SecretReminderRecipients = "secret_reminder_recipients",
+  GithubOrgSyncConfig = "github_org_sync_configs"
 }
 
 export type TImmutableDBKeys = "id" | "createdAt" | "updatedAt";
@@ -179,11 +186,16 @@ export enum OrgMembershipStatus {
 }
 
 export enum ProjectMembershipRole {
+  // general
   Admin = "admin",
   Member = "member",
   Custom = "custom",
   Viewer = "viewer",
-  NoAccess = "no-access"
+  NoAccess = "no-access",
+  // ssh
+  SshHostBootstrapper = "ssh-host-bootstrapper",
+  // kms
+  KmsCryptographicOperator = "cryptographic-operator"
 }
 
 export enum SecretEncryptionAlgo {
@@ -221,7 +233,8 @@ export enum IdentityAuthMethod {
   AWS_AUTH = "aws-auth",
   AZURE_AUTH = "azure-auth",
   OIDC_AUTH = "oidc-auth",
-  JWT_AUTH = "jwt-auth"
+  JWT_AUTH = "jwt-auth",
+  LDAP_AUTH = "ldap-auth"
 }
 
 export enum ProjectType {

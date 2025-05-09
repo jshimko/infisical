@@ -1,6 +1,7 @@
 import { TListProjectIdentitiesDTO, TSearchProjectsDTO } from "@app/hooks/api/workspace/types";
 
 import type { CaStatus } from "../ca";
+import { WorkflowIntegrationPlatform } from "../workflowIntegrations/types";
 
 export const workspaceKeys = {
   getWorkspaceById: (workspaceId: string) => ["workspaces", { workspaceId }] as const,
@@ -15,7 +16,8 @@ export const workspaceKeys = {
     type ? ["workspaces", { type }] : (["workspaces"] as const),
   getWorkspaceAuditLogs: (workspaceId: string) =>
     [{ workspaceId }, "workspace-audit-logs"] as const,
-  getWorkspaceUsers: (workspaceId: string) => [{ workspaceId }, "workspace-users"] as const,
+  getWorkspaceUsers: (workspaceId: string, includeGroupMembers?: boolean, roles?: string[]) =>
+    [{ workspaceId, includeGroupMembers, roles }, "workspace-users"] as const,
   getWorkspaceUserDetails: (workspaceId: string, membershipId: string) =>
     [{ workspaceId, membershipId }, "workspace-user-details"] as const,
   getWorkspaceIdentityMemberships: (workspaceId: string) =>
@@ -53,12 +55,16 @@ export const workspaceKeys = {
     [{ workspaceId }, "workspace-pki-collections"] as const,
   getWorkspaceCertificateTemplates: (workspaceId: string) =>
     [{ workspaceId }, "workspace-certificate-templates"] as const,
-  getWorkspaceSlackConfig: (workspaceId: string) =>
-    [{ workspaceId }, "workspace-slack-config"] as const,
+  getWorkspaceWorkflowIntegrationConfig: (
+    workspaceId: string,
+    integration: WorkflowIntegrationPlatform
+  ) => [{ workspaceId, integration }, "workspace-workflow-integration-config"] as const,
   getWorkspaceSshCas: (projectId: string) => [{ projectId }, "workspace-ssh-cas"] as const,
   allWorkspaceSshCertificates: (projectId: string) =>
     [{ projectId }, "workspace-ssh-certificates"] as const,
   getWorkspaceSshHosts: (projectId: string) => [{ projectId }, "workspace-ssh-hosts"] as const,
+  getWorkspaceSshHostGroups: (projectId: string) =>
+    [{ projectId }, "workspace-ssh-host-groups"] as const,
   specificWorkspaceSshCertificates: ({
     offset,
     limit,
@@ -69,5 +75,6 @@ export const workspaceKeys = {
     projectId: string;
   }) => [...workspaceKeys.allWorkspaceSshCertificates(projectId), { offset, limit }] as const,
   getWorkspaceSshCertificateTemplates: (projectId: string) =>
-    [{ projectId }, "workspace-ssh-certificate-templates"] as const
+    [{ projectId }, "workspace-ssh-certificate-templates"] as const,
+  getProjectSshConfig: (projectId: string) => [{ projectId }, "project-ssh-config"] as const
 };

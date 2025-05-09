@@ -12,6 +12,7 @@ export type SubscriptionPlan = {
   customAlerts: boolean;
   customRateLimits: boolean;
   pitRecovery: boolean;
+  githubOrgSync: boolean;
   ipAllowlisting: boolean;
   rbac: boolean;
   secretVersioning: boolean;
@@ -23,6 +24,7 @@ export type SubscriptionPlan = {
   workspacesUsed: number;
   environmentLimit: number;
   samlSSO: boolean;
+  sshHostGroups: boolean;
   secretAccessInsights: boolean;
   hsm: boolean;
   oidcSSO: boolean;

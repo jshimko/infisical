@@ -9,7 +9,10 @@ export enum SecretSync {
   Humanitec = "humanitec",
   TerraformCloud = "terraform-cloud",
   Camunda = "camunda",
-  Vercel = "vercel"
+  Vercel = "vercel",
+  Windmill = "windmill",
+  HCVault = "hashicorp-vault",
+  TeamCity = "teamcity"
 }
 
 export enum SecretSyncInitialSyncBehavior {

@@ -83,6 +83,9 @@ import {
   TGitAppOrg,
   TGitAppOrgInsert,
   TGitAppOrgUpdate,
+  TGithubOrgSyncConfigs,
+  TGithubOrgSyncConfigsInsert,
+  TGithubOrgSyncConfigsUpdate,
   TGroupProjectMembershipRoles,
   TGroupProjectMembershipRolesInsert,
   TGroupProjectMembershipRolesUpdate,
@@ -383,6 +386,12 @@ import {
   TSshCertificateTemplates,
   TSshCertificateTemplatesInsert,
   TSshCertificateTemplatesUpdate,
+  TSshHostGroupMemberships,
+  TSshHostGroupMembershipsInsert,
+  TSshHostGroupMembershipsUpdate,
+  TSshHostGroups,
+  TSshHostGroupsInsert,
+  TSshHostGroupsUpdate,
   TSshHostLoginUserMappings,
   TSshHostLoginUserMappingsInsert,
   TSshHostLoginUserMappingsUpdate,
@@ -423,6 +432,26 @@ import {
   TWorkflowIntegrationsInsert,
   TWorkflowIntegrationsUpdate
 } from "@app/db/schemas";
+import {
+  TIdentityLdapAuths,
+  TIdentityLdapAuthsInsert,
+  TIdentityLdapAuthsUpdate
+} from "@app/db/schemas/identity-ldap-auths";
+import {
+  TMicrosoftTeamsIntegrations,
+  TMicrosoftTeamsIntegrationsInsert,
+  TMicrosoftTeamsIntegrationsUpdate
+} from "@app/db/schemas/microsoft-teams-integrations";
+import {
+  TProjectMicrosoftTeamsConfigs,
+  TProjectMicrosoftTeamsConfigsInsert,
+  TProjectMicrosoftTeamsConfigsUpdate
+} from "@app/db/schemas/project-microsoft-teams-configs";
+import {
+  TSecretReminderRecipients,
+  TSecretReminderRecipientsInsert,
+  TSecretReminderRecipientsUpdate
+} from "@app/db/schemas/secret-reminder-recipients";
 
 declare module "knex" {
   namespace Knex {
@@ -437,6 +466,16 @@ declare module "knex/types/tables" {
   interface Tables {
     [TableName.Users]: KnexOriginal.CompositeTableType<TUsers, TUsersInsert, TUsersUpdate>;
     [TableName.Groups]: KnexOriginal.CompositeTableType<TGroups, TGroupsInsert, TGroupsUpdate>;
+    [TableName.SshHostGroup]: KnexOriginal.CompositeTableType<
+      TSshHostGroups,
+      TSshHostGroupsInsert,
+      TSshHostGroupsUpdate
+    >;
+    [TableName.SshHostGroupMembership]: KnexOriginal.CompositeTableType<
+      TSshHostGroupMemberships,
+      TSshHostGroupMembershipsInsert,
+      TSshHostGroupMembershipsUpdate
+    >;
     [TableName.SshHost]: KnexOriginal.CompositeTableType<TSshHosts, TSshHostsInsert, TSshHostsUpdate>;
     [TableName.SshCertificateAuthority]: KnexOriginal.CompositeTableType<
       TSshCertificateAuthorities,
@@ -700,6 +739,11 @@ declare module "knex/types/tables" {
       TIdentityJwtAuths,
       TIdentityJwtAuthsInsert,
       TIdentityJwtAuthsUpdate
+    >;
+    [TableName.IdentityLdapAuth]: KnexOriginal.CompositeTableType<
+      TIdentityLdapAuths,
+      TIdentityLdapAuthsInsert,
+      TIdentityLdapAuthsUpdate
     >;
     [TableName.IdentityUaClientSecret]: KnexOriginal.CompositeTableType<
       TIdentityUaClientSecrets,
@@ -993,6 +1037,26 @@ declare module "knex/types/tables" {
       TSecretRotationV2SecretMappings,
       TSecretRotationV2SecretMappingsInsert,
       TSecretRotationV2SecretMappingsUpdate
+    >;
+    [TableName.MicrosoftTeamsIntegrations]: KnexOriginal.CompositeTableType<
+      TMicrosoftTeamsIntegrations,
+      TMicrosoftTeamsIntegrationsInsert,
+      TMicrosoftTeamsIntegrationsUpdate
+    >;
+    [TableName.ProjectMicrosoftTeamsConfigs]: KnexOriginal.CompositeTableType<
+      TProjectMicrosoftTeamsConfigs,
+      TProjectMicrosoftTeamsConfigsInsert,
+      TProjectMicrosoftTeamsConfigsUpdate
+    >;
+    [TableName.SecretReminderRecipients]: KnexOriginal.CompositeTableType<
+      TSecretReminderRecipients,
+      TSecretReminderRecipientsInsert,
+      TSecretReminderRecipientsUpdate
+    >;
+    [TableName.GithubOrgSyncConfig]: KnexOriginal.CompositeTableType<
+      TGithubOrgSyncConfigs,
+      TGithubOrgSyncConfigsInsert,
+      TGithubOrgSyncConfigsUpdate
     >;
   }
 }

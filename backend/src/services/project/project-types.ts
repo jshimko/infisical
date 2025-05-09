@@ -8,6 +8,7 @@ import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { TProjectSshConfigDALFactory } from "@app/services/project/project-ssh-config-dal";
 
 import { ActorAuthMethod, ActorType } from "../auth/auth-type";
+import { WorkflowIntegration } from "../workflow-integration/workflow-integration-types";
 
 enum KmsType {
   External = "external",
@@ -66,6 +67,10 @@ export type TToggleProjectAutoCapitalizationDTO = {
   autoCapitalization: boolean;
 } & TProjectPermission;
 
+export type TToggleProjectDeleteProtectionDTO = {
+  hasDeleteProtection: boolean;
+} & TProjectPermission;
+
 export type TUpdateProjectVersionLimitDTO = {
   pitVersionLimit: number;
   workspaceSlug: string;
@@ -86,6 +91,7 @@ export type TUpdateProjectDTO = {
     name?: string;
     description?: string;
     autoCapitalization?: boolean;
+    hasDeleteProtection?: boolean;
     slug?: string;
   };
 } & Omit<TProjectPermission, "projectId">;
@@ -154,14 +160,40 @@ export type TListProjectSshCertificatesDTO = {
   limit: number;
 } & TProjectPermission;
 
-export type TGetProjectSlackConfig = TProjectPermission;
+export type TUpdateProjectSshConfig = {
+  defaultUserSshCaId?: string;
+  defaultHostSshCaId?: string;
+} & TProjectPermission;
 
-export type TUpdateProjectSlackConfig = {
-  slackIntegrationId: string;
-  isAccessRequestNotificationEnabled: boolean;
-  accessRequestChannels: string;
-  isSecretRequestNotificationEnabled: boolean;
-  secretRequestChannels: string;
+export type TGetProjectSshConfig = TProjectPermission;
+
+export type TGetProjectWorkflowIntegrationConfig = TProjectPermission & {
+  integration: WorkflowIntegration;
+};
+
+export type TUpdateProjectWorkflowIntegration = (
+  | {
+      integrationId: string;
+      integration: WorkflowIntegration.SLACK;
+      isAccessRequestNotificationEnabled: boolean;
+      isSecretRequestNotificationEnabled: boolean;
+      accessRequestChannels?: string;
+      secretRequestChannels?: string;
+    }
+  | {
+      integrationId: string;
+      integration: WorkflowIntegration.MICROSOFT_TEAMS;
+      isAccessRequestNotificationEnabled: boolean;
+      isSecretRequestNotificationEnabled: boolean;
+      accessRequestChannels?: { teamId: string; channelIds: string[] };
+      secretRequestChannels?: { teamId: string; channelIds: string[] };
+    }
+) &
+  TProjectPermission;
+
+export type TDeleteProjectWorkflowIntegration = {
+  integrationId: string;
+  integration: WorkflowIntegration;
 } & TProjectPermission;
 
 export type TBootstrapSshProjectDTO = {

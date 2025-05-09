@@ -22,6 +22,7 @@ export const getDefaultOnPremFeatures = (): TFeatureSet => ({
   pitRecovery: false,
   ipAllowlisting: false,
   rbac: false,
+  githubOrgSync: false,
   customRateLimits: false,
   customAlerts: false,
   secretAccessInsights: false,
@@ -52,7 +53,8 @@ export const getDefaultOnPremFeatures = (): TFeatureSet => ({
   enforceMfa: false,
   projectTemplates: false,
   kmip: false,
-  gateway: false
+  gateway: false,
+  sshHostGroups: false
 });
 
 export const setupLicenseRequestWithStore = (baseURL: string, refreshUrl: string, licenseKey: string) => {

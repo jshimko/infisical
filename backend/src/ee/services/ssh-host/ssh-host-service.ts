@@ -26,6 +26,7 @@ import {
   getSshPublicKey
 } from "../ssh/ssh-certificate-authority-fns";
 import { SshCertType } from "../ssh/ssh-certificate-authority-types";
+import { createSshLoginMappings } from "./ssh-host-fns";
 import {
   TCreateSshHostDTO,
   TDeleteSshHostDTO,
@@ -119,6 +120,7 @@ export const sshHostServiceFactory = ({
   const createSshHost = async ({
     projectId,
     hostname,
+    alias,
     userCertTtl,
     hostCertTtl,
     loginMappings,
@@ -192,6 +194,7 @@ export const sshHostServiceFactory = ({
         {
           projectId,
           hostname,
+          alias: alias === "" ? null : alias,
           userCertTtl,
           hostCertTtl,
           userSshCaId,
@@ -200,56 +203,18 @@ export const sshHostServiceFactory = ({
         tx
       );
 
-      // (dangtony98): room to optimize
-      for await (const { loginUser, allowedPrincipals } of loginMappings) {
-        const sshHostLoginUser = await sshHostLoginUserDAL.create(
-          {
-            sshHostId: host.id,
-            loginUser
-          },
-          tx
-        );
-
-        if (allowedPrincipals.usernames.length > 0) {
-          const users = await userDAL.find(
-            {
-              $in: {
-                username: allowedPrincipals.usernames
-              }
-            },
-            { tx }
-          );
-
-          const foundUsernames = new Set(users.map((u) => u.username));
-
-          for (const uname of allowedPrincipals.usernames) {
-            if (!foundUsernames.has(uname)) {
-              throw new BadRequestError({
-                message: `Invalid username: ${uname}`
-              });
-            }
-          }
-
-          for await (const user of users) {
-            // check that each user has access to the SSH project
-            await permissionService.getUserProjectPermission({
-              userId: user.id,
-              projectId,
-              authMethod: actorAuthMethod,
-              userOrgId: actorOrgId,
-              actionProjectType: ActionProjectType.SSH
-            });
-          }
-
-          await sshHostLoginUserMappingDAL.insertMany(
-            users.map((user) => ({
-              sshHostLoginUserId: sshHostLoginUser.id,
-              userId: user.id
-            })),
-            tx
-          );
-        }
-      }
+      await createSshLoginMappings({
+        sshHostId: host.id,
+        loginMappings,
+        sshHostLoginUserDAL,
+        sshHostLoginUserMappingDAL,
+        userDAL,
+        permissionService,
+        projectId,
+        actorAuthMethod,
+        actorOrgId,
+        tx
+      });
 
       const newSshHostWithLoginMappings = await sshHostDAL.findSshHostByIdWithLoginMappings(host.id, tx);
       if (!newSshHostWithLoginMappings) {
@@ -265,6 +230,7 @@ export const sshHostServiceFactory = ({
   const updateSshHost = async ({
     sshHostId,
     hostname,
+    alias,
     userCertTtl,
     hostCertTtl,
     loginMappings,
@@ -297,6 +263,7 @@ export const sshHostServiceFactory = ({
         sshHostId,
         {
           hostname,
+          alias: alias === "" ? null : alias,
           userCertTtl,
           hostCertTtl
         },
@@ -306,54 +273,18 @@ export const sshHostServiceFactory = ({
       if (loginMappings) {
         await sshHostLoginUserDAL.delete({ sshHostId: host.id }, tx);
         if (loginMappings.length) {
-          for await (const { loginUser, allowedPrincipals } of loginMappings) {
-            const sshHostLoginUser = await sshHostLoginUserDAL.create(
-              {
-                sshHostId: host.id,
-                loginUser
-              },
-              tx
-            );
-
-            if (allowedPrincipals.usernames.length > 0) {
-              const users = await userDAL.find(
-                {
-                  $in: {
-                    username: allowedPrincipals.usernames
-                  }
-                },
-                { tx }
-              );
-
-              const foundUsernames = new Set(users.map((u) => u.username));
-
-              for (const uname of allowedPrincipals.usernames) {
-                if (!foundUsernames.has(uname)) {
-                  throw new BadRequestError({
-                    message: `Invalid username: ${uname}`
-                  });
-                }
-              }
-
-              for await (const user of users) {
-                await permissionService.getUserProjectPermission({
-                  userId: user.id,
-                  projectId: host.projectId,
-                  authMethod: actorAuthMethod,
-                  userOrgId: actorOrgId,
-                  actionProjectType: ActionProjectType.SSH
-                });
-              }
-
-              await sshHostLoginUserMappingDAL.insertMany(
-                users.map((user) => ({
-                  sshHostLoginUserId: sshHostLoginUser.id,
-                  userId: user.id
-                })),
-                tx
-              );
-            }
-          }
+          await createSshLoginMappings({
+            sshHostId: host.id,
+            loginMappings,
+            sshHostLoginUserDAL,
+            sshHostLoginUserMappingDAL,
+            userDAL,
+            permissionService,
+            projectId: host.projectId,
+            actorAuthMethod,
+            actorOrgId,
+            tx
+          });
         }
       }
 

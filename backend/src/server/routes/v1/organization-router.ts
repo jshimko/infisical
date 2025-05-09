@@ -1,3 +1,4 @@
+import RE2 from "re2";
 import { z } from "zod";
 
 import {
@@ -9,7 +10,7 @@ import {
   UsersSchema
 } from "@app/db/schemas";
 import { EventType, UserAgentType } from "@app/ee/services/audit-log/audit-log-types";
-import { AUDIT_LOGS, ORGANIZATIONS } from "@app/lib/api-docs";
+import { ApiDocsTags, AUDIT_LOGS, ORGANIZATIONS } from "@app/lib/api-docs";
 import { getLastMidnightDateISO, removeTrailingSlash } from "@app/lib/fn";
 import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { GenericResourceNameSchema, slugSchema } from "@app/server/lib/schemas";
@@ -31,7 +32,8 @@ export const registerOrgRouter = async (server: FastifyZodProvider) => {
         200: z.object({
           organizations: sanitizedOrganizationSchema
             .extend({
-              orgAuthMethod: z.string()
+              orgAuthMethod: z.string(),
+              userRole: z.string()
             })
             .array()
         })
@@ -108,6 +110,8 @@ export const registerOrgRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.AuditLogs],
       description: "Get all audit logs for an organization",
       querystring: z.object({
         projectId: z.string().optional().describe(AUDIT_LOGS.EXPORT.projectId),
@@ -259,7 +263,19 @@ export const registerOrgRouter = async (server: FastifyZodProvider) => {
         defaultMembershipRoleSlug: slugSchema({ max: 64, field: "Default Membership Role" }).optional(),
         enforceMfa: z.boolean().optional(),
         selectedMfaMethod: z.nativeEnum(MfaMethod).optional(),
-        allowSecretSharingOutsideOrganization: z.boolean().optional()
+        allowSecretSharingOutsideOrganization: z.boolean().optional(),
+        bypassOrgAuthEnabled: z.boolean().optional(),
+        userTokenExpiration: z
+          .string()
+          .refine((val) => new RE2(/^\d+[mhdw]$/).test(val), "Must be a number followed by m, h, d, or w")
+          .refine(
+            (val) => {
+              const numericPart = val.slice(0, -1);
+              return parseInt(numericPart, 10) >= 1;
+            },
+            { message: "Duration value must be at least 1" }
+          )
+          .optional()
       }),
       response: {
         200: z.object({

@@ -12,6 +12,14 @@ import {
   TIdentityProjectMemberships,
   TProjectMemberships
 } from "@app/db/schemas";
+import {
+  cryptographicOperatorPermissions,
+  projectAdminPermissions,
+  projectMemberPermissions,
+  projectNoAccessPermissions,
+  projectViewerPermission,
+  sshHostBootstrapPermissions
+} from "@app/ee/services/permission/default-roles";
 import { conditionsMatcher } from "@app/lib/casl";
 import { BadRequestError, ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
 import { objectify } from "@app/lib/fn";
@@ -32,14 +40,7 @@ import {
   TGetServiceTokenProjectPermissionArg,
   TGetUserProjectPermissionArg
 } from "./permission-service-types";
-import {
-  buildServiceTokenProjectPermission,
-  projectAdminPermissions,
-  projectMemberPermissions,
-  projectNoAccessPermissions,
-  ProjectPermissionSet,
-  projectViewerPermission
-} from "./project-permission";
+import { buildServiceTokenProjectPermission, ProjectPermissionSet } from "./project-permission";
 
 type TPermissionServiceFactoryDep = {
   orgRoleDAL: Pick<TOrgRoleDALFactory, "findOne">;
@@ -95,6 +96,10 @@ export const permissionServiceFactory = ({
             return projectViewerPermission;
           case ProjectMembershipRole.NoAccess:
             return projectNoAccessPermissions;
+          case ProjectMembershipRole.SshHostBootstrapper:
+            return sshHostBootstrapPermissions;
+          case ProjectMembershipRole.KmsCryptographicOperator:
+            return cryptographicOperatorPermissions;
           case ProjectMembershipRole.Custom: {
             return unpackRules<RawRuleOf<MongoAbility<ProjectPermissionSet>>>(
               permissions as PackRule<RawRuleOf<MongoAbility<ProjectPermissionSet>>>[]
@@ -139,7 +144,12 @@ export const permissionServiceFactory = ({
       throw new ForbiddenRequestError({ name: "You are not logged into this organization" });
     }
 
-    validateOrgSSO(authMethod, membership.orgAuthEnforced);
+    validateOrgSSO(
+      authMethod,
+      membership.orgAuthEnforced,
+      membership.bypassOrgAuthEnabled,
+      membership.role as OrgMembershipRole
+    );
 
     const finalPolicyRoles = [{ role: membership.role, permissions: membership.permissions }].concat(
       membership?.groups?.map(({ role, customRolePermission }) => ({
@@ -226,7 +236,12 @@ export const permissionServiceFactory = ({
       throw new ForbiddenRequestError({ name: "You are not logged into this organization" });
     }
 
-    validateOrgSSO(authMethod, userProjectPermission.orgAuthEnforced);
+    validateOrgSSO(
+      authMethod,
+      userProjectPermission.orgAuthEnforced,
+      userProjectPermission.bypassOrgAuthEnabled,
+      userProjectPermission.orgRole
+    );
 
     if (actionProjectType !== ActionProjectType.Any && actionProjectType !== userProjectPermission.projectType) {
       throw new BadRequestError({
@@ -541,13 +556,26 @@ export const permissionServiceFactory = ({
   };
 
   const getProjectPermission = async <T extends ActorType>({
-    actor,
-    actorId,
+    actor: inputActor,
+    actorId: inputActorId,
     projectId,
     actorAuthMethod,
     actorOrgId,
     actionProjectType
   }: TGetProjectPermissionArg): Promise<TProjectPermissionRT<T>> => {
+    let actor = inputActor;
+    let actorId = inputActorId;
+    const assumedPrivilegeDetailsCtx = requestContext.get("assumedPrivilegeDetails");
+    if (
+      assumedPrivilegeDetailsCtx &&
+      actor === ActorType.USER &&
+      actorId === assumedPrivilegeDetailsCtx.requesterId &&
+      projectId === assumedPrivilegeDetailsCtx.projectId
+    ) {
+      actor = assumedPrivilegeDetailsCtx.actorType;
+      actorId = assumedPrivilegeDetailsCtx.actorId;
+    }
+
     switch (actor) {
       case ActorType.USER:
         return getUserProjectPermission({

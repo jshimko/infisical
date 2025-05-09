@@ -14,7 +14,9 @@ import { sanitizedSshCa } from "@app/ee/services/ssh/ssh-certificate-authority-s
 import { sanitizedSshCertificate } from "@app/ee/services/ssh-certificate/ssh-certificate-schema";
 import { sanitizedSshCertificateTemplate } from "@app/ee/services/ssh-certificate-template/ssh-certificate-template-schema";
 import { loginMappingSchema, sanitizedSshHost } from "@app/ee/services/ssh-host/ssh-host-schema";
-import { PROJECTS } from "@app/lib/api-docs";
+import { LoginMappingSource } from "@app/ee/services/ssh-host/ssh-host-types";
+import { sanitizedSshHostGroup } from "@app/ee/services/ssh-host-group/ssh-host-group-schema";
+import { ApiDocsTags, PROJECTS } from "@app/lib/api-docs";
 import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { slugSchema } from "@app/server/lib/schemas";
 import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
@@ -29,7 +31,8 @@ import { SanitizedProjectSchema } from "../sanitizedSchemas";
 
 const projectWithEnv = SanitizedProjectSchema.extend({
   _id: z.string(),
-  environments: z.object({ name: z.string(), slug: z.string(), id: z.string() }).array()
+  environments: z.object({ name: z.string(), slug: z.string(), id: z.string() }).array(),
+  kmsSecretManagerKeyId: z.string().nullable().optional()
 });
 
 export const registerProjectRouter = async (server: FastifyZodProvider) => {
@@ -150,6 +153,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       rateLimit: writeLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.Projects],
       description: "Create a new project",
       security: [
         {
@@ -165,7 +170,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
           .optional()
           .default(InfisicalProjectTemplate.Default)
           .describe(PROJECTS.CREATE.template),
-        type: z.nativeEnum(ProjectType).default(ProjectType.SecretManager)
+        type: z.nativeEnum(ProjectType).default(ProjectType.SecretManager),
+        shouldCreateDefaultEnvs: z.boolean().optional().default(true)
       }),
       response: {
         200: z.object({
@@ -185,7 +191,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
         slug: req.body.slug,
         kmsKeyId: req.body.kmsKeyId,
         template: req.body.template,
-        type: req.body.type
+        type: req.body.type,
+        createDefaultEnvs: req.body.shouldCreateDefaultEnvs
       });
 
       await server.services.telemetry.sendPostHogEvents({
@@ -224,6 +231,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       rateLimit: writeLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.Projects],
       description: "Delete project",
       security: [
         {
@@ -265,7 +274,7 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
     },
     schema: {
       params: z.object({
-        slug: slugSchema({ min: 5, max: 36 }).describe("The slug of the project to get.")
+        slug: slugSchema({ max: 36 }).describe("The slug of the project to get.")
       }),
       response: {
         200: projectWithEnv
@@ -303,7 +312,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       body: z.object({
         name: z.string().trim().optional().describe(PROJECTS.UPDATE.name),
         description: z.string().trim().optional().describe(PROJECTS.UPDATE.projectDescription),
-        autoCapitalization: z.boolean().optional().describe(PROJECTS.UPDATE.autoCapitalization)
+        autoCapitalization: z.boolean().optional().describe(PROJECTS.UPDATE.autoCapitalization),
+        hasDeleteProtection: z.boolean().optional().describe(PROJECTS.UPDATE.hasDeleteProtection)
       }),
       response: {
         200: SanitizedProjectSchema
@@ -321,7 +331,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
         update: {
           name: req.body.name,
           description: req.body.description,
-          autoCapitalization: req.body.autoCapitalization
+          autoCapitalization: req.body.autoCapitalization,
+          hasDeleteProtection: req.body.hasDeleteProtection
         },
         actorId: req.permission.id,
         actorAuthMethod: req.permission.authMethod,
@@ -340,6 +351,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.PkiCertificateAuthorities],
       params: z.object({
         slug: slugSchema({ min: 5, max: 36 }).describe(PROJECTS.LIST_CAS.slug)
       }),
@@ -381,6 +394,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.PkiCertificates],
       params: z.object({
         slug: slugSchema({ min: 5, max: 36 }).describe(PROJECTS.LIST_CERTIFICATES.slug)
       }),
@@ -549,6 +564,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.SshCertificateTemplates],
       params: z.object({
         projectId: z.string().trim().describe(PROJECTS.LIST_SSH_CERTIFICATE_TEMPLATES.projectId)
       }),
@@ -579,6 +596,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.SshCertificateAuthorities],
       params: z.object({
         projectId: z.string().trim().describe(PROJECTS.LIST_SSH_CAS.projectId)
       }),
@@ -616,7 +635,11 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
         200: z.object({
           hosts: z.array(
             sanitizedSshHost.extend({
-              loginMappings: z.array(loginMappingSchema)
+              loginMappings: loginMappingSchema
+                .extend({
+                  source: z.nativeEnum(LoginMappingSource)
+                })
+                .array()
             })
           )
         })
@@ -633,6 +656,41 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       });
 
       return { hosts };
+    }
+  });
+
+  server.route({
+    method: "GET",
+    url: "/:projectId/ssh-host-groups",
+    config: {
+      rateLimit: readLimit
+    },
+    schema: {
+      params: z.object({
+        projectId: z.string().trim().describe(PROJECTS.LIST_SSH_HOST_GROUPS.projectId)
+      }),
+      response: {
+        200: z.object({
+          groups: z.array(
+            sanitizedSshHostGroup.extend({
+              loginMappings: loginMappingSchema.array(),
+              hostCount: z.number()
+            })
+          )
+        })
+      }
+    },
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
+    handler: async (req) => {
+      const groups = await server.services.project.listProjectSshHostGroups({
+        actorId: req.permission.id,
+        actorOrgId: req.permission.orgId,
+        actorAuthMethod: req.permission.authMethod,
+        actor: req.permission.type,
+        projectId: req.params.projectId
+      });
+
+      return { groups };
     }
   });
 };

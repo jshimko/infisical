@@ -12,6 +12,7 @@ import { accessApprovalPolicyServiceFactory } from "@app/ee/services/access-appr
 import { accessApprovalRequestDALFactory } from "@app/ee/services/access-approval-request/access-approval-request-dal";
 import { accessApprovalRequestReviewerDALFactory } from "@app/ee/services/access-approval-request/access-approval-request-reviewer-dal";
 import { accessApprovalRequestServiceFactory } from "@app/ee/services/access-approval-request/access-approval-request-service";
+import { assumePrivilegeServiceFactory } from "@app/ee/services/assume-privilege/assume-privilege-service";
 import { auditLogDALFactory } from "@app/ee/services/audit-log/audit-log-dal";
 import { auditLogQueueServiceFactory } from "@app/ee/services/audit-log/audit-log-queue";
 import { auditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-service";
@@ -32,6 +33,8 @@ import { gatewayDALFactory } from "@app/ee/services/gateway/gateway-dal";
 import { gatewayServiceFactory } from "@app/ee/services/gateway/gateway-service";
 import { orgGatewayConfigDALFactory } from "@app/ee/services/gateway/org-gateway-config-dal";
 import { projectGatewayDALFactory } from "@app/ee/services/gateway/project-gateway-dal";
+import { githubOrgSyncDALFactory } from "@app/ee/services/github-org-sync/github-org-sync-dal";
+import { githubOrgSyncServiceFactory } from "@app/ee/services/github-org-sync/github-org-sync-service";
 import { groupDALFactory } from "@app/ee/services/group/group-dal";
 import { groupServiceFactory } from "@app/ee/services/group/group-service";
 import { userGroupMembershipDALFactory } from "@app/ee/services/group/user-group-membership-dal";
@@ -100,6 +103,9 @@ import { sshHostDALFactory } from "@app/ee/services/ssh-host/ssh-host-dal";
 import { sshHostLoginUserMappingDALFactory } from "@app/ee/services/ssh-host/ssh-host-login-user-mapping-dal";
 import { sshHostServiceFactory } from "@app/ee/services/ssh-host/ssh-host-service";
 import { sshHostLoginUserDALFactory } from "@app/ee/services/ssh-host/ssh-login-user-dal";
+import { sshHostGroupDALFactory } from "@app/ee/services/ssh-host-group/ssh-host-group-dal";
+import { sshHostGroupMembershipDALFactory } from "@app/ee/services/ssh-host-group/ssh-host-group-membership-dal";
+import { sshHostGroupServiceFactory } from "@app/ee/services/ssh-host-group/ssh-host-group-service";
 import { trustedIpDALFactory } from "@app/ee/services/trusted-ip/trusted-ip-dal";
 import { trustedIpServiceFactory } from "@app/ee/services/trusted-ip/trusted-ip-service";
 import { TKeyStoreFactory } from "@app/keystore/keystore";
@@ -120,6 +126,7 @@ import { tokenDALFactory } from "@app/services/auth-token/auth-token-dal";
 import { tokenServiceFactory } from "@app/services/auth-token/auth-token-service";
 import { certificateBodyDALFactory } from "@app/services/certificate/certificate-body-dal";
 import { certificateDALFactory } from "@app/services/certificate/certificate-dal";
+import { certificateSecretDALFactory } from "@app/services/certificate/certificate-secret-dal";
 import { certificateServiceFactory } from "@app/services/certificate/certificate-service";
 import { certificateAuthorityCertDALFactory } from "@app/services/certificate-authority/certificate-authority-cert-dal";
 import { certificateAuthorityDALFactory } from "@app/services/certificate-authority/certificate-authority-dal";
@@ -153,6 +160,8 @@ import { identityJwtAuthDALFactory } from "@app/services/identity-jwt-auth/ident
 import { identityJwtAuthServiceFactory } from "@app/services/identity-jwt-auth/identity-jwt-auth-service";
 import { identityKubernetesAuthDALFactory } from "@app/services/identity-kubernetes-auth/identity-kubernetes-auth-dal";
 import { identityKubernetesAuthServiceFactory } from "@app/services/identity-kubernetes-auth/identity-kubernetes-auth-service";
+import { identityLdapAuthDALFactory } from "@app/services/identity-ldap-auth/identity-ldap-auth-dal";
+import { identityLdapAuthServiceFactory } from "@app/services/identity-ldap-auth/identity-ldap-auth-service";
 import { identityOidcAuthDALFactory } from "@app/services/identity-oidc-auth/identity-oidc-auth-dal";
 import { identityOidcAuthServiceFactory } from "@app/services/identity-oidc-auth/identity-oidc-auth-service";
 import { identityProjectDALFactory } from "@app/services/identity-project/identity-project-dal";
@@ -171,6 +180,9 @@ import { internalKmsDALFactory } from "@app/services/kms/internal-kms-dal";
 import { kmskeyDALFactory } from "@app/services/kms/kms-key-dal";
 import { kmsRootConfigDALFactory } from "@app/services/kms/kms-root-config-dal";
 import { kmsServiceFactory } from "@app/services/kms/kms-service";
+import { microsoftTeamsIntegrationDALFactory } from "@app/services/microsoft-teams/microsoft-teams-integration-dal";
+import { microsoftTeamsServiceFactory } from "@app/services/microsoft-teams/microsoft-teams-service";
+import { projectMicrosoftTeamsConfigDALFactory } from "@app/services/microsoft-teams/project-microsoft-teams-config-dal";
 import { incidentContactDALFactory } from "@app/services/org/incident-contacts-dal";
 import { orgBotDALFactory } from "@app/services/org/org-bot-dal";
 import { orgDALFactory } from "@app/services/org/org-dal";
@@ -214,6 +226,7 @@ import { secretFolderServiceFactory } from "@app/services/secret-folder/secret-f
 import { secretFolderVersionDALFactory } from "@app/services/secret-folder/secret-folder-version-dal";
 import { secretImportDALFactory } from "@app/services/secret-import/secret-import-dal";
 import { secretImportServiceFactory } from "@app/services/secret-import/secret-import-service";
+import { secretReminderRecipientsDALFactory } from "@app/services/secret-reminder-recipients/secret-reminder-recipients-dal";
 import { secretSharingDALFactory } from "@app/services/secret-sharing/secret-sharing-dal";
 import { secretSharingServiceFactory } from "@app/services/secret-sharing/secret-sharing-service";
 import { secretSyncDALFactory } from "@app/services/secret-sync/secret-sync-dal";
@@ -231,6 +244,7 @@ import { projectSlackConfigDALFactory } from "@app/services/slack/project-slack-
 import { slackIntegrationDALFactory } from "@app/services/slack/slack-integration-dal";
 import { slackServiceFactory } from "@app/services/slack/slack-service";
 import { TSmtpService } from "@app/services/smtp/smtp-service";
+import { invalidateCacheQueueFactory } from "@app/services/super-admin/invalidate-cache-queue";
 import { superAdminDALFactory } from "@app/services/super-admin/super-admin-dal";
 import { getServerCfg, superAdminServiceFactory } from "@app/services/super-admin/super-admin-service";
 import { telemetryDALFactory } from "@app/services/telemetry/telemetry-dal";
@@ -248,6 +262,7 @@ import { workflowIntegrationDALFactory } from "@app/services/workflow-integratio
 import { workflowIntegrationServiceFactory } from "@app/services/workflow-integration/workflow-integration-service";
 
 import { injectAuditLogInfo } from "../plugins/audit-log";
+import { injectAssumePrivilege } from "../plugins/auth/inject-assume-privilege";
 import { injectIdentity } from "../plugins/auth/inject-identity";
 import { injectPermission } from "../plugins/auth/inject-permission";
 import { injectRateLimits } from "../plugins/inject-rate-limits";
@@ -341,6 +356,7 @@ export const registerRoutes = async (
   const identityOidcAuthDAL = identityOidcAuthDALFactory(db);
   const identityJwtAuthDAL = identityJwtAuthDALFactory(db);
   const identityAzureAuthDAL = identityAzureAuthDALFactory(db);
+  const identityLdapAuthDAL = identityLdapAuthDALFactory(db);
 
   const auditLogDAL = auditLogDALFactory(auditLogDb ?? db);
   const auditLogStreamDAL = auditLogStreamDALFactory(db);
@@ -394,6 +410,8 @@ export const registerRoutes = async (
   const sshHostDAL = sshHostDALFactory(db);
   const sshHostLoginUserDAL = sshHostLoginUserDALFactory(db);
   const sshHostLoginUserMappingDAL = sshHostLoginUserMappingDALFactory(db);
+  const sshHostGroupDAL = sshHostGroupDALFactory(db);
+  const sshHostGroupMembershipDAL = sshHostGroupMembershipDALFactory(db);
 
   const kmsDAL = kmskeyDALFactory(db);
   const internalKmsDAL = internalKmsDALFactory(db);
@@ -417,8 +435,12 @@ export const registerRoutes = async (
   const orgGatewayConfigDAL = orgGatewayConfigDALFactory(db);
   const gatewayDAL = gatewayDALFactory(db);
   const projectGatewayDAL = projectGatewayDALFactory(db);
+  const secretReminderRecipientsDAL = secretReminderRecipientsDALFactory(db);
+  const githubOrgSyncDAL = githubOrgSyncDALFactory(db);
 
   const secretRotationV2DAL = secretRotationV2DALFactory(db, folderDAL);
+  const microsoftTeamsIntegrationDAL = microsoftTeamsIntegrationDALFactory(db);
+  const projectMicrosoftTeamsConfigDAL = projectMicrosoftTeamsConfigDALFactory(db);
 
   const permissionService = permissionServiceFactory({
     permissionDAL,
@@ -427,6 +449,11 @@ export const registerRoutes = async (
     serviceTokenDAL,
     projectDAL
   });
+  const assumePrivilegeService = assumePrivilegeServiceFactory({
+    projectDAL,
+    permissionService
+  });
+
   const licenseService = licenseServiceFactory({
     permissionService,
     orgDAL,
@@ -549,6 +576,15 @@ export const registerRoutes = async (
     externalGroupOrgRoleMappingDAL
   });
 
+  const githubOrgSyncConfigService = githubOrgSyncServiceFactory({
+    licenseService,
+    githubOrgSyncDAL,
+    kmsService,
+    permissionService,
+    groupDAL,
+    userGroupMembershipDAL
+  });
+
   const ldapService = ldapConfigServiceFactory({
     ldapConfigDAL,
     ldapGroupMapDAL,
@@ -579,6 +615,11 @@ export const registerRoutes = async (
     queueService
   });
 
+  const invalidateCacheQueue = invalidateCacheQueueFactory({
+    keyStore,
+    queueService
+  });
+
   const userService = userServiceFactory({
     userDAL,
     userAliasDAL,
@@ -596,7 +637,15 @@ export const registerRoutes = async (
     kmsService
   });
 
-  const loginService = authLoginServiceFactory({ userDAL, smtpService, tokenService, orgDAL, totpService });
+  const loginService = authLoginServiceFactory({
+    userDAL,
+    smtpService,
+    tokenService,
+    orgDAL,
+    totpService,
+    orgMembershipDAL,
+    auditLogService
+  });
   const passwordService = authPaswordServiceFactory({
     tokenService,
     smtpService,
@@ -659,6 +708,15 @@ export const registerRoutes = async (
     orgDAL,
     externalGroupOrgRoleMappingDAL
   });
+
+  const microsoftTeamsService = microsoftTeamsServiceFactory({
+    microsoftTeamsIntegrationDAL,
+    permissionService,
+    workflowIntegrationDAL,
+    kmsService,
+    serverCfgDAL: superAdminDAL
+  });
+
   const superAdminService = superAdminServiceFactory({
     userDAL,
     identityDAL,
@@ -672,7 +730,9 @@ export const registerRoutes = async (
     orgService,
     keyStore,
     licenseService,
-    kmsService
+    kmsService,
+    microsoftTeamsService,
+    invalidateCacheQueue
   });
 
   const orgAdminService = orgAdminServiceFactory({
@@ -721,6 +781,7 @@ export const registerRoutes = async (
     projectKeyDAL,
     projectRoleDAL,
     groupProjectDAL,
+    secretReminderRecipientsDAL,
     licenseService
   });
   const projectUserAdditionalPrivilegeService = projectUserAdditionalPrivilegeServiceFactory({
@@ -762,6 +823,7 @@ export const registerRoutes = async (
 
   const certificateDAL = certificateDALFactory(db);
   const certificateBodyDAL = certificateBodyDALFactory(db);
+  const certificateSecretDAL = certificateSecretDALFactory(db);
 
   const pkiAlertDAL = pkiAlertDALFactory(db);
   const pkiCollectionDAL = pkiCollectionDALFactory(db);
@@ -770,6 +832,7 @@ export const registerRoutes = async (
   const certificateService = certificateServiceFactory({
     certificateDAL,
     certificateBodyDAL,
+    certificateSecretDAL,
     certificateAuthorityDAL,
     certificateAuthorityCertDAL,
     certificateAuthorityCrlDAL,
@@ -820,6 +883,18 @@ export const registerRoutes = async (
     kmsService
   });
 
+  const sshHostGroupService = sshHostGroupServiceFactory({
+    projectDAL,
+    sshHostDAL,
+    sshHostGroupDAL,
+    sshHostGroupMembershipDAL,
+    sshHostLoginUserDAL,
+    sshHostLoginUserMappingDAL,
+    userDAL,
+    permissionService,
+    licenseService
+  });
+
   const certificateAuthorityService = certificateAuthorityServiceFactory({
     certificateAuthorityDAL,
     certificateAuthorityCertDAL,
@@ -829,6 +904,7 @@ export const registerRoutes = async (
     certificateAuthorityQueue,
     certificateDAL,
     certificateBodyDAL,
+    certificateSecretDAL,
     pkiCollectionDAL,
     pkiCollectionItemDAL,
     projectDAL,
@@ -954,6 +1030,7 @@ export const registerRoutes = async (
     secretApprovalRequestDAL,
     projectKeyDAL,
     projectUserMembershipRoleDAL,
+    secretReminderRecipientsDAL,
     orgService,
     resourceMetadataDAL,
     secretSyncQueue
@@ -988,6 +1065,7 @@ export const registerRoutes = async (
     sshCertificateDAL,
     sshCertificateTemplateDAL,
     sshHostDAL,
+    sshHostGroupDAL,
     projectUserMembershipRoleDAL,
     identityProjectMembershipRoleDAL,
     keyStore,
@@ -996,6 +1074,8 @@ export const registerRoutes = async (
     certificateTemplateDAL,
     projectSlackConfigDAL,
     slackIntegrationDAL,
+    projectMicrosoftTeamsConfigDAL,
+    microsoftTeamsIntegrationDAL,
     projectTemplateService,
     groupProjectDAL,
     smtpService
@@ -1015,7 +1095,9 @@ export const registerRoutes = async (
     projectRoleDAL,
     projectUserMembershipRoleDAL,
     identityProjectMembershipRoleDAL,
-    projectDAL
+    projectDAL,
+    identityDAL,
+    userDAL
   });
 
   const snapshotService = secretSnapshotServiceFactory({
@@ -1089,7 +1171,8 @@ export const registerRoutes = async (
     secretApprovalRequestSecretDAL,
     kmsService,
     snapshotService,
-    resourceMetadataDAL
+    resourceMetadataDAL,
+    keyStore
   });
 
   const secretApprovalRequestService = secretApprovalRequestServiceFactory({
@@ -1117,7 +1200,9 @@ export const registerRoutes = async (
     userDAL,
     licenseService,
     projectSlackConfigDAL,
-    resourceMetadataDAL
+    resourceMetadataDAL,
+    projectMicrosoftTeamsConfigDAL,
+    microsoftTeamsService
   });
 
   const secretService = secretServiceFactory({
@@ -1179,7 +1264,9 @@ export const registerRoutes = async (
     accessApprovalPolicyApproverDAL,
     projectSlackConfigDAL,
     kmsService,
-    groupDAL
+    groupDAL,
+    microsoftTeamsService,
+    projectMicrosoftTeamsConfigDAL
   });
 
   const secretReplicationService = secretReplicationServiceFactory({
@@ -1361,6 +1448,16 @@ export const registerRoutes = async (
     kmsService
   });
 
+  const identityLdapAuthService = identityLdapAuthServiceFactory({
+    identityLdapAuthDAL,
+    permissionService,
+    kmsService,
+    identityAccessTokenDAL,
+    identityOrgMembershipDAL,
+    licenseService,
+    identityDAL
+  });
+
   const gatewayService = gatewayServiceFactory({
     permissionService,
     gatewayDAL,
@@ -1508,6 +1605,7 @@ export const registerRoutes = async (
 
   const secretSyncService = secretSyncServiceFactory({
     secretSyncDAL,
+    secretImportDAL,
     permissionService,
     appConnectionService,
     folderDAL,
@@ -1576,6 +1674,7 @@ export const registerRoutes = async (
   await dailyResourceCleanUp.startCleanUp();
   await dailyExpiringPkiItemAlert.startSendingAlerts();
   await kmsService.startService();
+  await microsoftTeamsService.start();
 
   // inject all services
   server.decorate<FastifyZodProvider["services"]>("services", {
@@ -1619,6 +1718,7 @@ export const registerRoutes = async (
     identityAzureAuth: identityAzureAuthService,
     identityOidcAuth: identityOidcAuthService,
     identityJwtAuth: identityJwtAuthService,
+    identityLdapAuth: identityLdapAuthService,
     accessApprovalPolicy: accessApprovalPolicyService,
     accessApprovalRequest: accessApprovalRequestService,
     secretApprovalPolicy: secretApprovalPolicyService,
@@ -1635,6 +1735,7 @@ export const registerRoutes = async (
     sshCertificateAuthority: sshCertificateAuthorityService,
     sshCertificateTemplate: sshCertificateTemplateService,
     sshHost: sshHostService,
+    sshHostGroup: sshHostGroupService,
     certificateAuthority: certificateAuthorityService,
     certificateTemplate: certificateTemplateService,
     certificateAuthorityCrl: certificateAuthorityCrlService,
@@ -1667,7 +1768,10 @@ export const registerRoutes = async (
     kmip: kmipService,
     kmipOperation: kmipOperationService,
     gateway: gatewayService,
-    secretRotationV2: secretRotationV2Service
+    secretRotationV2: secretRotationV2Service,
+    microsoftTeams: microsoftTeamsService,
+    assumePrivileges: assumePrivilegeService,
+    githubOrgSync: githubOrgSyncConfigService
   });
 
   const cronJobs: CronJob[] = [];
@@ -1688,6 +1792,7 @@ export const registerRoutes = async (
   });
 
   await server.register(injectIdentity, { userDAL, serviceTokenDAL });
+  await server.register(injectAssumePrivilege);
   await server.register(injectPermission);
   await server.register(injectRateLimits);
   await server.register(injectAuditLogInfo);
@@ -1726,30 +1831,6 @@ export const registerRoutes = async (
       );
 
       logger.info(`Raw event loop stats: ${JSON.stringify(histogram, null, 2)}`);
-
-      // try {
-      //   await db.raw("SELECT NOW()");
-      // } catch (err) {
-      //   logger.error("Health check: database connection failed", err);
-      //   return reply.code(503).send({
-      //     date: new Date(),
-      //     message: "Service unavailable"
-      //   });
-      // }
-
-      // if (cfg.isRedisConfigured) {
-      //   const redis = new Redis(cfg.REDIS_URL);
-      //   try {
-      //     await redis.ping();
-      //     redis.disconnect();
-      //   } catch (err) {
-      //     logger.error("Health check: redis connection failed", err);
-      //     return reply.code(503).send({
-      //       date: new Date(),
-      //       message: "Service unavailable"
-      //     });
-      //   }
-      // }
 
       return {
         date: new Date(),

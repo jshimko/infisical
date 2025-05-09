@@ -31,6 +31,11 @@ export type TAzureAppConfigurationConnectionOption = TAppConnectionOptionBase & 
   oauthClientId?: string;
 };
 
+export type TAzureClientSecretsConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.AzureClientSecrets;
+  oauthClientId?: string;
+};
+
 export type TDatabricksConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.Databricks;
 };
@@ -59,8 +64,24 @@ export type TCamundaConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.Camunda;
 };
 
+export type TWindmillConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Windmill;
+};
+
 export type TAuth0ConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.Auth0;
+};
+
+export type THCVaultConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.HCVault;
+};
+
+export type TLdapConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.LDAP;
+};
+
+export type TTeamCityConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.TeamCity;
 };
 
 export type TAppConnectionOption =
@@ -69,6 +90,7 @@ export type TAppConnectionOption =
   | TGcpConnectionOption
   | TAzureAppConfigurationConnectionOption
   | TAzureKeyVaultConnectionOption
+  | TAzureClientSecretsConnectionOption
   | TDatabricksConnectionOption
   | THumanitecConnectionOption
   | TTerraformCloudConnectionOption
@@ -76,7 +98,10 @@ export type TAppConnectionOption =
   | TPostgresConnectionOption
   | TMsSqlConnectionOption
   | TCamundaConnectionOption
-  | TAuth0ConnectionOption;
+  | TWindmillConnectionOption
+  | TAuth0ConnectionOption
+  | THCVaultConnectionOption
+  | TTeamCityConnectionOption;
 
 export type TAppConnectionOptionMap = {
   [AppConnection.AWS]: TAwsConnectionOption;
@@ -84,6 +109,7 @@ export type TAppConnectionOptionMap = {
   [AppConnection.GCP]: TGcpConnectionOption;
   [AppConnection.AzureKeyVault]: TAzureKeyVaultConnectionOption;
   [AppConnection.AzureAppConfiguration]: TAzureAppConfigurationConnectionOption;
+  [AppConnection.AzureClientSecrets]: TAzureClientSecretsConnectionOption;
   [AppConnection.Databricks]: TDatabricksConnectionOption;
   [AppConnection.Humanitec]: THumanitecConnectionOption;
   [AppConnection.TerraformCloud]: TTerraformCloudConnectionOption;
@@ -91,5 +117,9 @@ export type TAppConnectionOptionMap = {
   [AppConnection.Postgres]: TPostgresConnectionOption;
   [AppConnection.MsSql]: TMsSqlConnectionOption;
   [AppConnection.Camunda]: TCamundaConnectionOption;
+  [AppConnection.Windmill]: TWindmillConnectionOption;
   [AppConnection.Auth0]: TAuth0ConnectionOption;
+  [AppConnection.HCVault]: THCVaultConnectionOption;
+  [AppConnection.LDAP]: TLdapConnectionOption;
+  [AppConnection.TeamCity]: TTeamCityConnectionOption;
 };

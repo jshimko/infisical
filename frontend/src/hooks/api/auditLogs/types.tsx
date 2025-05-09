@@ -1,6 +1,7 @@
 import { CaStatus } from "../ca";
 import { IdentityTrustedIp } from "../identities/types";
 import { PkiItemType } from "../pkiCollections/constants";
+import { WorkflowIntegration } from "../workflowIntegrations/types";
 import { ActorType, EventType, UserAgentType } from "./enums";
 
 export type TGetAuditLogsFilter = {
@@ -619,6 +620,24 @@ interface GetCertBody {
   };
 }
 
+interface GetCertPrivateKey {
+  type: EventType.GET_CERT_PRIVATE_KEY;
+  metadata: {
+    certId: string;
+    cn: string;
+    serialNumber: string;
+  };
+}
+
+interface GetCertBundle {
+  type: EventType.GET_CERT_BUNDLE;
+  metadata: {
+    certId: string;
+    cn: string;
+    serialNumber: string;
+  };
+}
+
 interface CreatePkiAlert {
   type: EventType.CREATE_PKI_ALERT;
   metadata: {
@@ -718,6 +737,11 @@ interface OrgAdminAccessProjectEvent {
   }; // no metadata yet
 }
 
+interface OrgAdminBypassSSOEvent {
+  type: EventType.ORG_ADMIN_BYPASS_SSO;
+  metadata: Record<string, string>; // no metadata yet
+}
+
 interface CreateCertificateTemplate {
   type: EventType.CREATE_CERTIFICATE_TEMPLATE;
   metadata: {
@@ -781,11 +805,12 @@ interface GetCertificateTemplateEstConfig {
   };
 }
 
-interface UpdateProjectSlackConfig {
-  type: EventType.UPDATE_PROJECT_SLACK_CONFIG;
+interface UpdateProjectWorkflowIntegrationConfig {
+  type: EventType.UPDATE_PROJECT_WORKFLOW_INTEGRATION_CONFIG;
   metadata: {
     id: string;
-    slackIntegrationId: string;
+    integrationId: string;
+    integration: WorkflowIntegration;
     isAccessRequestNotificationEnabled: boolean;
     accessRequestChannels: string;
     isSecretRequestNotificationEnabled: boolean;
@@ -793,10 +818,11 @@ interface UpdateProjectSlackConfig {
   };
 }
 
-interface GetProjectSlackConfig {
-  type: EventType.GET_PROJECT_SLACK_CONFIG;
+interface GetProjectWorkflowIntegrationConfig {
+  type: EventType.GET_PROJECT_WORKFLOW_INTEGRATION_CONFIG;
   metadata: {
     id: string;
+    integration: WorkflowIntegration;
   };
 }
 
@@ -873,6 +899,8 @@ export type Event =
   | DeleteCert
   | RevokeCert
   | GetCertBody
+  | GetCertPrivateKey
+  | GetCertBundle
   | CreatePkiAlert
   | GetPkiAlert
   | UpdatePkiAlert
@@ -885,6 +913,7 @@ export type Event =
   | AddPkiCollectionItem
   | DeletePkiCollectionItem
   | OrgAdminAccessProjectEvent
+  | OrgAdminBypassSSOEvent
   | CreateCertificateTemplate
   | UpdateCertificateTemplate
   | GetCertificateTemplate
@@ -892,8 +921,8 @@ export type Event =
   | UpdateCertificateTemplateEstConfig
   | CreateCertificateTemplateEstConfig
   | GetCertificateTemplateEstConfig
-  | UpdateProjectSlackConfig
-  | GetProjectSlackConfig
+  | UpdateProjectWorkflowIntegrationConfig
+  | GetProjectWorkflowIntegrationConfig
   | IntegrationSyncedEvent;
 
 export type AuditLog = {

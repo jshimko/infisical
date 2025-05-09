@@ -4,13 +4,14 @@ import { z } from "zod";
 import { IdentitiesSchema, OrganizationsSchema, SuperAdminSchema, UsersSchema } from "@app/db/schemas";
 import { getConfig } from "@app/lib/config/env";
 import { BadRequestError } from "@app/lib/errors";
-import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
+import { invalidateCacheLimit, readLimit, writeLimit } from "@app/server/config/rateLimiter";
+import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
 import { verifySuperAdmin } from "@app/server/plugins/auth/superAdmin";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { AuthMode } from "@app/services/auth/auth-type";
 import { RootKeyEncryptionStrategy } from "@app/services/kms/kms-types";
 import { getServerCfg } from "@app/services/super-admin/super-admin-service";
-import { LoginMethod } from "@app/services/super-admin/super-admin-types";
+import { CacheType, LoginMethod } from "@app/services/super-admin/super-admin-types";
 import { PostHogEventTypes } from "@app/services/telemetry/telemetry-types";
 
 export const registerAdminRouter = async (server: FastifyZodProvider) => {
@@ -27,7 +28,10 @@ export const registerAdminRouter = async (server: FastifyZodProvider) => {
             createdAt: true,
             updatedAt: true,
             encryptedSlackClientId: true,
-            encryptedSlackClientSecret: true
+            encryptedSlackClientSecret: true,
+            encryptedMicrosoftTeamsAppId: true,
+            encryptedMicrosoftTeamsClientSecret: true,
+            encryptedMicrosoftTeamsBotId: true
           }).extend({
             isMigrationModeOn: z.boolean(),
             defaultAuthOrgSlug: z.string().nullable(),
@@ -74,6 +78,9 @@ export const registerAdminRouter = async (server: FastifyZodProvider) => {
           }),
         slackClientId: z.string().optional(),
         slackClientSecret: z.string().optional(),
+        microsoftTeamsAppId: z.string().optional(),
+        microsoftTeamsClientSecret: z.string().optional(),
+        microsoftTeamsBotId: z.string().optional(),
         authConsentContent: z
           .string()
           .trim()
@@ -197,15 +204,22 @@ export const registerAdminRouter = async (server: FastifyZodProvider) => {
 
   server.route({
     method: "GET",
-    url: "/integrations/slack/config",
+    url: "/integrations",
     config: {
       rateLimit: readLimit
     },
     schema: {
       response: {
         200: z.object({
-          clientId: z.string(),
-          clientSecret: z.string()
+          slack: z.object({
+            clientId: z.string(),
+            clientSecret: z.string()
+          }),
+          microsoftTeams: z.object({
+            appId: z.string(),
+            clientSecret: z.string(),
+            botId: z.string()
+          })
         })
       }
     },
@@ -215,9 +229,9 @@ export const registerAdminRouter = async (server: FastifyZodProvider) => {
       });
     },
     handler: async () => {
-      const adminSlackConfig = await server.services.superAdmin.getAdminSlackConfig();
+      const adminIntegrationsConfig = await server.services.superAdmin.getAdminIntegrationsConfig();
 
-      return adminSlackConfig;
+      return adminIntegrationsConfig;
     }
   });
 
@@ -532,6 +546,71 @@ export const registerAdminRouter = async (server: FastifyZodProvider) => {
         user: user.user,
         organization,
         identity: machineIdentity
+      };
+    }
+  });
+
+  server.route({
+    method: "POST",
+    url: "/invalidate-cache",
+    config: {
+      rateLimit: invalidateCacheLimit
+    },
+    schema: {
+      body: z.object({
+        type: z.nativeEnum(CacheType)
+      }),
+      response: {
+        200: z.object({
+          message: z.string()
+        })
+      }
+    },
+    onRequest: (req, res, done) => {
+      verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN])(req, res, () => {
+        verifySuperAdmin(req, res, done);
+      });
+    },
+    handler: async (req) => {
+      await server.services.superAdmin.invalidateCache(req.body.type);
+
+      await server.services.telemetry.sendPostHogEvents({
+        event: PostHogEventTypes.InvalidateCache,
+        distinctId: getTelemetryDistinctId(req),
+        properties: {
+          ...req.auditLogInfo
+        }
+      });
+
+      return {
+        message: "Cache invalidation job started"
+      };
+    }
+  });
+
+  server.route({
+    method: "GET",
+    url: "/invalidating-cache-status",
+    config: {
+      rateLimit: readLimit
+    },
+    schema: {
+      response: {
+        200: z.object({
+          invalidating: z.boolean()
+        })
+      }
+    },
+    onRequest: (req, res, done) => {
+      verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN])(req, res, () => {
+        verifySuperAdmin(req, res, done);
+      });
+    },
+    handler: async () => {
+      const invalidating = await server.services.superAdmin.checkIfInvalidatingCache();
+
+      return {
+        invalidating
       };
     }
   });

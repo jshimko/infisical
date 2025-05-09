@@ -8,6 +8,54 @@ import { APP_CONNECTION_NAME_MAP } from "@app/services/app-connection/app-connec
 import { SecretSync } from "@app/services/secret-sync/secret-sync-enums";
 import { SECRET_SYNC_CONNECTION_MAP, SECRET_SYNC_NAME_MAP } from "@app/services/secret-sync/secret-sync-maps";
 
+export enum ApiDocsTags {
+  Identities = "Identities",
+  TokenAuth = "Token Auth",
+  UniversalAuth = "Universal Auth",
+  GcpAuth = "GCP Auth",
+  AwsAuth = "AWS Auth",
+  AzureAuth = "Azure Auth",
+  KubernetesAuth = "Kubernetes Auth",
+  JwtAuth = "JWT Auth",
+  OidcAuth = "OIDC Auth",
+  LdapAuth = "LDAP Auth",
+  Groups = "Groups",
+  Organizations = "Organizations",
+  Projects = "Projects",
+  ProjectUsers = "Project Users",
+  ProjectGroups = "Project Groups",
+  ProjectIdentities = "Project Identities",
+  ProjectRoles = "Project Roles",
+  ProjectTemplates = "Project Templates",
+  Environments = "Environments",
+  Folders = "Folders",
+  SecretTags = "Secret Tags",
+  Secrets = "Secrets",
+  DynamicSecrets = "Dynamic Secrets",
+  SecretImports = "Secret Imports",
+  SecretRotations = "Secret Rotations",
+  IdentitySpecificPrivilegesV1 = "Identity Specific Privileges",
+  IdentitySpecificPrivilegesV2 = "Identity Specific Privileges V2",
+  AppConnections = "App Connections",
+  SecretSyncs = "Secret Syncs",
+  Integrations = "Integrations",
+  ServiceTokens = "Service Tokens",
+  AuditLogs = "Audit Logs",
+  PkiCertificateAuthorities = "PKI Certificate Authorities",
+  PkiCertificates = "PKI Certificates",
+  PkiCertificateTemplates = "PKI Certificate Templates",
+  PkiCertificateCollections = "PKI Certificate Collections",
+  PkiAlerting = "PKI Alerting",
+  SshCertificates = "SSH Certificates",
+  SshCertificateAuthorities = "SSH Certificate Authorities",
+  SshCertificateTemplates = "SSH Certificate Templates",
+  SshHosts = "SSH Hosts",
+  SshHostGroups = "SSH Host Groups",
+  KmsKeys = "KMS Keys",
+  KmsEncryption = "KMS Encryption",
+  KmsSigning = "KMS Signing"
+}
+
 export const GROUPS = {
   CREATE: {
     name: "The name of the group to create.",
@@ -134,6 +182,49 @@ export const UNIVERSAL_AUTH = {
   },
   REVOKE_ACCESS_TOKEN: {
     accessToken: "The access token to revoke."
+  }
+} as const;
+
+export const LDAP_AUTH = {
+  LOGIN: {
+    identityId: "The ID of the identity to login.",
+    username: "The username of the LDAP user to login.",
+    password: "The password of the LDAP user to login."
+  },
+  ATTACH: {
+    identityId: "The ID of the identity to attach the configuration onto.",
+    url: "The URL of the LDAP server.",
+    allowedFields:
+      "The comma-separated array of key/value pairs of required fields that the LDAP entry must have in order to authenticate.",
+    searchBase: "The base DN to search for the LDAP user.",
+    searchFilter: "The filter to use to search for the LDAP user.",
+    bindDN: "The DN of the user to bind to the LDAP server.",
+    bindPass: "The password of the user to bind to the LDAP server.",
+    ldapCaCertificate: "The PEM-encoded CA certificate for the LDAP server.",
+    accessTokenTTL: "The lifetime for an access token in seconds.",
+    accessTokenMaxTTL: "The maximum lifetime for an access token in seconds.",
+    accessTokenNumUsesLimit: "The maximum number of times that an access token can be used.",
+    accessTokenTrustedIps: "The IPs or CIDR ranges that access tokens can be used from."
+  },
+  UPDATE: {
+    identityId: "The ID of the identity to update the configuration for.",
+    url: "The new URL of the LDAP server.",
+    allowedFields: "The comma-separated list of allowed fields to return from the LDAP user.",
+    searchBase: "The new base DN to search for the LDAP user.",
+    searchFilter: "The new filter to use to search for the LDAP user.",
+    bindDN: "The new DN of the user to bind to the LDAP server.",
+    bindPass: "The new password of the user to bind to the LDAP server.",
+    ldapCaCertificate: "The new PEM-encoded CA certificate for the LDAP server.",
+    accessTokenTTL: "The new lifetime for an access token in seconds.",
+    accessTokenMaxTTL: "The new maximum lifetime for an access token in seconds.",
+    accessTokenNumUsesLimit: "The new maximum number of times that an access token can be used.",
+    accessTokenTrustedIps: "The new IPs or CIDR ranges that access tokens can be used from."
+  },
+  RETRIEVE: {
+    identityId: "The ID of the identity to retrieve the configuration for."
+  },
+  REVOKE: {
+    identityId: "The ID of the identity to revoke the configuration for."
   }
 } as const;
 
@@ -478,7 +569,8 @@ export const PROJECTS = {
     name: "The new name of the project.",
     projectDescription: "An optional description label for the project.",
     autoCapitalization: "Disable or enable auto-capitalization for the project.",
-    slug: "An optional slug for the project. (must be unique within the organization)"
+    slug: "An optional slug for the project. (must be unique within the organization)",
+    hasDeleteProtection: "Enable or disable delete protection for the project."
   },
   GET_KEY: {
     workspaceId: "The ID of the project to get the key from."
@@ -521,6 +613,9 @@ export const PROJECTS = {
   },
   LIST_SSH_HOSTS: {
     projectId: "The ID of the project to list SSH hosts for."
+  },
+  LIST_SSH_HOST_GROUPS: {
+    projectId: "The ID of the project to list SSH host groups for."
   },
   LIST_SSH_CERTIFICATES: {
     projectId: "The ID of the project to list SSH certificates for.",
@@ -761,6 +856,8 @@ export const RAW_SECRETS = {
     tagIds: "The ID of the tags to be attached to the updated secret.",
     secretReminderRepeatDays: "Interval for secret rotation notifications, measured in days.",
     secretReminderNote: "Note to be attached in notification email.",
+    secretReminderRecipients:
+      "An array of user IDs that will receive the reminder email. If not specified, all project members will receive the reminder email.",
     newSecretName: "The new name for the secret."
   },
   DELETE: {
@@ -887,7 +984,7 @@ export const DYNAMIC_SECRETS = {
     environmentSlug: "The slug of the environment to list folders from.",
     path: "The path to list folders from."
   },
-  LIST_LEAES_BY_NAME: {
+  LIST_LEASES_BY_NAME: {
     projectSlug: "The slug of the project to create dynamic secret in.",
     environmentSlug: "The slug of the environment to list folders from.",
     path: "The path to list folders from.",
@@ -1334,6 +1431,40 @@ export const SSH_CERTIFICATE_TEMPLATES = {
   }
 };
 
+export const SSH_HOST_GROUPS = {
+  GET: {
+    sshHostGroupId: "The ID of the SSH host group to get.",
+    filter: "The filter to apply to the SSH hosts in the SSH host group."
+  },
+  CREATE: {
+    projectId: "The ID of the project to create the SSH host group in.",
+    name: "The name of the SSH host group.",
+    loginMappings:
+      "A list of default login mappings to include on each host in the SSH host group. Each login mapping contains a login user and a list of corresponding allowed principals being usernames of users in the Infisical SSH project."
+  },
+  UPDATE: {
+    sshHostGroupId: "The ID of the SSH host group to update.",
+    name: "The name of the SSH host group to update to.",
+    loginMappings:
+      "A list of default login mappings to include on each host in the SSH host group. Each login mapping contains a login user and a list of corresponding allowed principals being usernames of users in the Infisical SSH project."
+  },
+  DELETE: {
+    sshHostGroupId: "The ID of the SSH host group to delete."
+  },
+  LIST_HOSTS: {
+    offset: "The offset to start from. If you enter 10, it will start from the 10th host",
+    limit: "The number of hosts to return."
+  },
+  ADD_HOST: {
+    sshHostGroupId: "The ID of the SSH host group to add the host to.",
+    hostId: "The ID of the SSH host to add to the SSH host group."
+  },
+  DELETE_HOST: {
+    sshHostGroupId: "The ID of the SSH host group to delete the host from.",
+    hostId: "The ID of the SSH host to delete from the SSH host group."
+  }
+};
+
 export const SSH_HOSTS = {
   GET: {
     sshHostId: "The ID of the SSH host to get."
@@ -1341,6 +1472,7 @@ export const SSH_HOSTS = {
   CREATE: {
     projectId: "The ID of the project to create the SSH host in.",
     hostname: "The hostname of the SSH host.",
+    alias: "The alias for the SSH host.",
     userCertTtl: "The time to live for user certificates issued under this host.",
     hostCertTtl: "The time to live for host certificates issued under this host.",
     loginUser: "A login user on the remote machine (e.g. 'ec2-user', 'deploy', 'admin')",
@@ -1355,6 +1487,7 @@ export const SSH_HOSTS = {
   UPDATE: {
     sshHostId: "The ID of the SSH host to update.",
     hostname: "The hostname of the SSH host to update to.",
+    alias: "The alias for the SSH host to update to.",
     userCertTtl: "The time to live for user certificates issued under this host to update to.",
     hostCertTtl: "The time to live for host certificates issued under this host to update to.",
     loginUser: "A login user on the remote machine (e.g. 'ec2-user', 'deploy', 'admin')",
@@ -1530,7 +1663,8 @@ export const CERTIFICATES = {
     serialNumber: "The serial number of the certificate to get the certificate body and certificate chain for.",
     certificate: "The certificate body of the certificate.",
     certificateChain: "The certificate chain of the certificate.",
-    serialNumberRes: "The serial number of the certificate."
+    serialNumberRes: "The serial number of the certificate.",
+    privateKey: "The private key of the certificate."
   }
 };
 
@@ -1732,8 +1866,12 @@ export const KMS = {
 };
 
 export const ProjectTemplates = {
+  LIST: {
+    type: "The type of project template to list."
+  },
   CREATE: {
     name: "The name of the project template to be created. Must be slug-friendly.",
+    type: "The type of project template to be created.",
     description: "An optional description of the project template.",
     roles: "The roles to be created when the template is applied to a project.",
     environments: "The environments to be created when the template is applied to a project."
@@ -1807,6 +1945,35 @@ export const AppConnections = {
     CAMUNDA: {
       clientId: "The client ID used to authenticate with Camunda.",
       clientSecret: "The client secret used to authenticate with Camunda."
+    },
+    WINDMILL: {
+      instanceUrl: "The Windmill instance URL to connect with (defaults to https://app.windmill.dev).",
+      accessToken: "The access token to use to connect with Windmill."
+    },
+    HC_VAULT: {
+      instanceUrl: "The Hashicrop Vault instance URL to connect with.",
+      namespace: "The Hashicrop Vault namespace to connect with.",
+      accessToken: "The access token used to connect with Hashicorp Vault.",
+      roleId: "The Role ID used to connect with Hashicorp Vault.",
+      secretId: "The Secret ID used to connect with Hashicorp Vault."
+    },
+    LDAP: {
+      provider: "The type of LDAP provider. Determines provider-specific behaviors.",
+      url: "The LDAP/LDAPS URL to connect to (e.g., 'ldap://domain-or-ip:389' or 'ldaps://domain-or-ip:636').",
+      dn: "The Distinguished Name (DN) of the principal to bind with (e.g., 'CN=John,CN=Users,DC=example,DC=com').",
+      password: "The password to bind with for authentication.",
+      sslRejectUnauthorized:
+        "Whether or not to reject unauthorized SSL certificates (true/false) when using ldaps://. Set to false only in test environments.",
+      sslCertificate:
+        "The SSL certificate (PEM format) to use for secure connection when using ldaps:// with a self-signed certificate."
+    },
+    TEAMCITY: {
+      instanceUrl: "The TeamCity instance URL to connect with.",
+      accessToken: "The access token to use to connect with TeamCity."
+    },
+    AZURE_CLIENT_SECRETS: {
+      code: "The OAuth code to use to connect with Azure Client Secrets.",
+      tenantId: "The Tenant ID to use to connect with Azure Client Secrets."
     }
   }
 };
@@ -1942,6 +2109,18 @@ export const SecretSyncs = {
       env: "The ID of the Vercel environment to sync secrets to.",
       branch: "The branch to sync preview secrets to.",
       teamId: "The ID of the Vercel team to sync secrets to."
+    },
+    WINDMILL: {
+      workspace: "The Windmill workspace to sync secrets to.",
+      path: "The Windmill workspace path to sync secrets to."
+    },
+    HC_VAULT: {
+      mount: "The Hashicorp Vault Secrets Engine Mount to sync secrets to.",
+      path: "The Hashicorp Vault path to sync secrets to."
+    },
+    TEAMCITY: {
+      project: "The TeamCity project to sync secrets to.",
+      buildConfig: "The TeamCity build configuration to sync secrets to."
     }
   }
 };
@@ -2006,6 +2185,31 @@ export const SecretRotations = {
     },
     AUTH0_CLIENT_SECRET: {
       clientId: "The client ID of the Auth0 Application to rotate the client secret for."
+    },
+    AZURE_CLIENT_SECRET: {
+      objectId: "The ID of the Azure Application to rotate the client secret for.",
+      appName: "The name of the Azure Application to rotate the client secret for.",
+      clientId: "The client ID of the Azure Application to rotate the client secret for."
+    },
+    LDAP_PASSWORD: {
+      dn: "The Distinguished Name (DN) of the principal to rotate the password for."
+    },
+    GENERAL: {
+      PASSWORD_REQUIREMENTS: {
+        base: "The password requirements to use when generating the new password.",
+        length: "The length of the password to generate.",
+        required: {
+          digits: "The amount of digits to require in the generated password.",
+          lowercase: "The amount of lowercase characters to require in the generated password.",
+          uppercase: "The amount of uppercase characters to require in the generated password.",
+          symbols: "The amount of symbols to require in the generated password."
+        },
+        allowedSymbols: 'The allowed symbols to use in the generated password (defaults to "-_.~!*").'
+      }
+    },
+    AWS_IAM_USER_SECRET: {
+      userName: "The name of the client to rotate credentials for.",
+      region: "The AWS region the client is present in."
     }
   },
   SECRETS_MAPPING: {
@@ -2016,6 +2220,18 @@ export const SecretRotations = {
     AUTH0_CLIENT_SECRET: {
       clientId: "The name of the secret that the client ID will be mapped to.",
       clientSecret: "The name of the secret that the rotated client secret will be mapped to."
+    },
+    AZURE_CLIENT_SECRET: {
+      clientId: "The name of the secret that the client ID will be mapped to.",
+      clientSecret: "The name of the secret that the rotated client secret will be mapped to."
+    },
+    LDAP_PASSWORD: {
+      dn: "The name of the secret that the Distinguished Name (DN) of the principal will be mapped to.",
+      password: "The name of the secret that the rotated password will be mapped to."
+    },
+    AWS_IAM_USER_SECRET: {
+      accessKeyId: "The name of the secret that the access key ID will be mapped to.",
+      secretAccessKey: "The name of the secret that the rotated secret access key will be mapped to."
     }
   }
 };

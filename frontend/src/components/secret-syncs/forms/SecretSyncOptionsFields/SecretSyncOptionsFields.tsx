@@ -42,6 +42,9 @@ export const SecretSyncOptionsFields = ({ hideInitialSync }: Props) => {
     case SecretSync.TerraformCloud:
     case SecretSync.Camunda:
     case SecretSync.Vercel:
+    case SecretSync.Windmill:
+    case SecretSync.HCVault:
+    case SecretSync.TeamCity:
       AdditionalSyncOptionsFieldsComponent = null;
       break;
     default:

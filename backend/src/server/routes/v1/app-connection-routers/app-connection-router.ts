@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
+import { ApiDocsTags } from "@app/lib/api-docs";
 import { readLimit } from "@app/server/config/rateLimiter";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { Auth0ConnectionListItemSchema, SanitizedAuth0ConnectionSchema } from "@app/services/app-connection/auth0";
@@ -9,6 +10,10 @@ import {
   AzureAppConfigurationConnectionListItemSchema,
   SanitizedAzureAppConfigurationConnectionSchema
 } from "@app/services/app-connection/azure-app-configuration";
+import {
+  AzureClientSecretsConnectionListItemSchema,
+  SanitizedAzureClientSecretsConnectionSchema
+} from "@app/services/app-connection/azure-client-secrets";
 import {
   AzureKeyVaultConnectionListItemSchema,
   SanitizedAzureKeyVaultConnectionSchema
@@ -24,19 +29,32 @@ import {
 import { GcpConnectionListItemSchema, SanitizedGcpConnectionSchema } from "@app/services/app-connection/gcp";
 import { GitHubConnectionListItemSchema, SanitizedGitHubConnectionSchema } from "@app/services/app-connection/github";
 import {
+  HCVaultConnectionListItemSchema,
+  SanitizedHCVaultConnectionSchema
+} from "@app/services/app-connection/hc-vault";
+import {
   HumanitecConnectionListItemSchema,
   SanitizedHumanitecConnectionSchema
 } from "@app/services/app-connection/humanitec";
+import { LdapConnectionListItemSchema, SanitizedLdapConnectionSchema } from "@app/services/app-connection/ldap";
 import { MsSqlConnectionListItemSchema, SanitizedMsSqlConnectionSchema } from "@app/services/app-connection/mssql";
 import {
   PostgresConnectionListItemSchema,
   SanitizedPostgresConnectionSchema
 } from "@app/services/app-connection/postgres";
 import {
+  SanitizedTeamCityConnectionSchema,
+  TeamCityConnectionListItemSchema
+} from "@app/services/app-connection/teamcity";
+import {
   SanitizedTerraformCloudConnectionSchema,
   TerraformCloudConnectionListItemSchema
 } from "@app/services/app-connection/terraform-cloud";
 import { SanitizedVercelConnectionSchema, VercelConnectionListItemSchema } from "@app/services/app-connection/vercel";
+import {
+  SanitizedWindmillConnectionSchema,
+  WindmillConnectionListItemSchema
+} from "@app/services/app-connection/windmill";
 import { AuthMode } from "@app/services/auth/auth-type";
 
 // can't use discriminated due to multiple schemas for certain apps
@@ -53,7 +71,12 @@ const SanitizedAppConnectionSchema = z.union([
   ...SanitizedPostgresConnectionSchema.options,
   ...SanitizedMsSqlConnectionSchema.options,
   ...SanitizedCamundaConnectionSchema.options,
-  ...SanitizedAuth0ConnectionSchema.options
+  ...SanitizedAuth0ConnectionSchema.options,
+  ...SanitizedHCVaultConnectionSchema.options,
+  ...SanitizedAzureClientSecretsConnectionSchema.options,
+  ...SanitizedWindmillConnectionSchema.options,
+  ...SanitizedLdapConnectionSchema.options,
+  ...SanitizedTeamCityConnectionSchema.options
 ]);
 
 const AppConnectionOptionsSchema = z.discriminatedUnion("app", [
@@ -69,7 +92,12 @@ const AppConnectionOptionsSchema = z.discriminatedUnion("app", [
   PostgresConnectionListItemSchema,
   MsSqlConnectionListItemSchema,
   CamundaConnectionListItemSchema,
-  Auth0ConnectionListItemSchema
+  Auth0ConnectionListItemSchema,
+  HCVaultConnectionListItemSchema,
+  AzureClientSecretsConnectionListItemSchema,
+  WindmillConnectionListItemSchema,
+  LdapConnectionListItemSchema,
+  TeamCityConnectionListItemSchema
 ]);
 
 export const registerAppConnectionRouter = async (server: FastifyZodProvider) => {
@@ -80,6 +108,8 @@ export const registerAppConnectionRouter = async (server: FastifyZodProvider) =>
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.AppConnections],
       description: "List the available App Connection Options.",
       response: {
         200: z.object({
@@ -101,6 +131,8 @@ export const registerAppConnectionRouter = async (server: FastifyZodProvider) =>
       rateLimit: readLimit
     },
     schema: {
+      hide: false,
+      tags: [ApiDocsTags.AppConnections],
       description: "List all the App Connections for the current organization.",
       response: {
         200: z.object({ appConnections: SanitizedAppConnectionSchema.array() })

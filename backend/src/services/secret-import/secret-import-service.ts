@@ -698,7 +698,6 @@ export const secretImportServiceFactory = ({
         projectId
       });
       const importedSecrets = await fnSecretsV2FromImports({
-        projectId,
         secretImports,
         folderDAL,
         viewSecretValue: true,
@@ -809,7 +808,7 @@ export const secretImportServiceFactory = ({
     actorOrgId,
     secrets
   }: TGetSecretImportsDTO & {
-    secrets: { secretKey: string; secretValue: string }[] | undefined;
+    secrets: { secretKey: string; secretValue: string; id: string }[] | undefined;
   }) => {
     const { permission } = await permissionService.getProjectPermission({
       actor,
@@ -878,7 +877,8 @@ export const secretImportServiceFactory = ({
             )
             .map((otherSecret) => ({
               secretId: secret.secretKey,
-              referencedSecretKey: otherSecret.secretKey
+              referencedSecretKey: otherSecret.secretKey,
+              referencedSecretEnv: environment
             }));
         }) || [];
     if (locallyReferenced.length > 0) {

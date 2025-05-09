@@ -44,7 +44,9 @@ Prerequisites:
       To configure OIDC via the custom endpoints, set the **Configuration Type** field to **Custom** and input the required endpoint fields.
       ![OIDC general custom config](../../../images/sso/general-oidc/custom-oidc-form.png)
 
-      2.3. Optionally, you can define a whitelist of allowed email domains.
+      2.3. Select the appropriate JWT signature algorithm for your IdP. Currently, the supported options are RS256, RS512, HS256, and EdDSA.
+
+      2.4. Optionally, you can define a whitelist of allowed email domains.
 
       Finally, fill out the **Client ID** and **Client Secret** fields and press **Update** to complete the required configuration.
 
@@ -66,6 +68,9 @@ Prerequisites:
       <Warning>
          We recommend ensuring that your account is provisioned using the identity provider prior to enforcing OIDC SSO to prevent any unintended issues.
       </Warning>
+      <Info>
+         In case of a lockout, an organization admin can use the admin login portal in the `/login/admin` path e.g. https://app.infisical.com/login/admin.
+      </Info>
     </Step>
 
   </Steps>

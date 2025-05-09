@@ -6,11 +6,11 @@ import { organizationKeys } from "../organization/queries";
 import { User } from "../users/types";
 import { adminQueryKeys, adminStandaloneKeys } from "./queries";
 import {
-  AdminSlackConfig,
   RootKeyEncryptionStrategy,
   TCreateAdminUserDTO,
+  TInvalidateCacheDTO,
   TServerConfig,
-  TUpdateAdminSlackConfigDTO
+  TUpdateServerConfigDTO
 } from "./types";
 
 export const useCreateAdminUser = () => {
@@ -34,11 +34,7 @@ export const useCreateAdminUser = () => {
 export const useUpdateServerConfig = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<
-    TServerConfig,
-    object,
-    Partial<TServerConfig & { slackClientId: string; slackClientSecret: string }>
-  >({
+  return useMutation<TServerConfig, object, TUpdateServerConfigDTO>({
     mutationFn: async (opt) => {
       const { data } = await apiRequest.patch<{ config: TServerConfig }>(
         "/api/v1/admin/config",
@@ -48,6 +44,7 @@ export const useUpdateServerConfig = () => {
     },
     onSuccess: (data) => {
       queryClient.setQueryData(adminQueryKeys.serverConfig(), data);
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.getAdminIntegrationsConfig() });
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.serverConfig() });
       queryClient.invalidateQueries({ queryKey: organizationKeys.getUserOrganizations });
     }
@@ -119,23 +116,6 @@ export const useAdminGrantServerAdminAccess = () => {
   });
 };
 
-export const useUpdateAdminSlackConfig = () => {
-  const queryClient = useQueryClient();
-  return useMutation<AdminSlackConfig, object, TUpdateAdminSlackConfigDTO>({
-    mutationFn: async (dto) => {
-      const { data } = await apiRequest.put<AdminSlackConfig>(
-        "/api/v1/admin/integrations/slack/config",
-        dto
-      );
-
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: adminQueryKeys.getAdminSlackConfig() });
-    }
-  });
-};
-
 export const useUpdateServerEncryptionStrategy = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -144,6 +124,18 @@ export const useUpdateServerEncryptionStrategy = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.getServerEncryptionStrategies() });
+    }
+  });
+};
+
+export const useInvalidateCache = () => {
+  const queryClient = useQueryClient();
+  return useMutation<void, object, TInvalidateCacheDTO>({
+    mutationFn: async (dto) => {
+      await apiRequest.post("/api/v1/admin/invalidate-cache", dto);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.getInvalidateCache() });
     }
   });
 };

@@ -5,6 +5,7 @@ import { Redis } from "ioredis";
 import { TUsers } from "@app/db/schemas";
 import { TAccessApprovalPolicyServiceFactory } from "@app/ee/services/access-approval-policy/access-approval-policy-service";
 import { TAccessApprovalRequestServiceFactory } from "@app/ee/services/access-approval-request/access-approval-request-service";
+import { TAssumePrivilegeServiceFactory } from "@app/ee/services/assume-privilege/assume-privilege-service";
 import { TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-service";
 import { TCreateAuditLogDTO } from "@app/ee/services/audit-log/audit-log-types";
 import { TAuditLogStreamServiceFactory } from "@app/ee/services/audit-log-stream/audit-log-stream-service";
@@ -14,6 +15,7 @@ import { TDynamicSecretServiceFactory } from "@app/ee/services/dynamic-secret/dy
 import { TDynamicSecretLeaseServiceFactory } from "@app/ee/services/dynamic-secret-lease/dynamic-secret-lease-service";
 import { TExternalKmsServiceFactory } from "@app/ee/services/external-kms/external-kms-service";
 import { TGatewayServiceFactory } from "@app/ee/services/gateway/gateway-service";
+import { TGithubOrgSyncServiceFactory } from "@app/ee/services/github-org-sync/github-org-sync-service";
 import { TGroupServiceFactory } from "@app/ee/services/group/group-service";
 import { TIdentityProjectAdditionalPrivilegeServiceFactory } from "@app/ee/services/identity-project-additional-privilege/identity-project-additional-privilege-service";
 import { TIdentityProjectAdditionalPrivilegeV2ServiceFactory } from "@app/ee/services/identity-project-additional-privilege-v2/identity-project-additional-privilege-v2-service";
@@ -39,6 +41,7 @@ import { TSecretSnapshotServiceFactory } from "@app/ee/services/secret-snapshot/
 import { TSshCertificateAuthorityServiceFactory } from "@app/ee/services/ssh/ssh-certificate-authority-service";
 import { TSshCertificateTemplateServiceFactory } from "@app/ee/services/ssh-certificate-template/ssh-certificate-template-service";
 import { TSshHostServiceFactory } from "@app/ee/services/ssh-host/ssh-host-service";
+import { TSshHostGroupServiceFactory } from "@app/ee/services/ssh-host-group/ssh-host-group-service";
 import { TTrustedIpServiceFactory } from "@app/ee/services/trusted-ip/trusted-ip-service";
 import { TAuthMode } from "@app/server/plugins/auth/inject-identity";
 import { TApiKeyServiceFactory } from "@app/services/api-key/api-key-service";
@@ -63,12 +66,15 @@ import { TIdentityAzureAuthServiceFactory } from "@app/services/identity-azure-a
 import { TIdentityGcpAuthServiceFactory } from "@app/services/identity-gcp-auth/identity-gcp-auth-service";
 import { TIdentityJwtAuthServiceFactory } from "@app/services/identity-jwt-auth/identity-jwt-auth-service";
 import { TIdentityKubernetesAuthServiceFactory } from "@app/services/identity-kubernetes-auth/identity-kubernetes-auth-service";
+import { TIdentityLdapAuthServiceFactory } from "@app/services/identity-ldap-auth/identity-ldap-auth-service";
+import { TAllowedFields } from "@app/services/identity-ldap-auth/identity-ldap-auth-types";
 import { TIdentityOidcAuthServiceFactory } from "@app/services/identity-oidc-auth/identity-oidc-auth-service";
 import { TIdentityProjectServiceFactory } from "@app/services/identity-project/identity-project-service";
 import { TIdentityTokenAuthServiceFactory } from "@app/services/identity-token-auth/identity-token-auth-service";
 import { TIdentityUaServiceFactory } from "@app/services/identity-ua/identity-ua-service";
 import { TIntegrationServiceFactory } from "@app/services/integration/integration-service";
 import { TIntegrationAuthServiceFactory } from "@app/services/integration-auth/integration-auth-service";
+import { TMicrosoftTeamsServiceFactory } from "@app/services/microsoft-teams/microsoft-teams-service";
 import { TOrgRoleServiceFactory } from "@app/services/org/org-role-service";
 import { TOrgServiceFactory } from "@app/services/org/org-service";
 import { TOrgAdminServiceFactory } from "@app/services/org-admin/org-admin-service";
@@ -109,12 +115,14 @@ declare module "@fastify/request-context" {
       };
     };
     identityPermissionMetadata?: Record<string, unknown>; // filled by permission service
+    assumedPrivilegeDetails?: { requesterId: string; actorId: string; actorType: ActorType; projectId: string };
   }
 }
 
 declare module "fastify" {
   interface Session {
     callbackPort: string;
+    isAdminLogin: boolean;
   }
 
   interface FastifyRequest {
@@ -136,8 +144,16 @@ declare module "fastify" {
     rateLimits: RateLimitConfiguration;
     // passport data
     passportUser: {
-      isUserCompleted: string;
+      isUserCompleted: boolean;
       providerAuthToken: string;
+      externalProviderAccessToken?: string;
+    };
+    passportMachineIdentity: {
+      identityId: string;
+      user: {
+        uid: string;
+        mail?: string;
+      };
     };
     kmipUser: {
       projectId: string;
@@ -146,7 +162,9 @@ declare module "fastify" {
     };
     auditLogInfo: Pick<TCreateAuditLogDTO, "userAgent" | "userAgentType" | "ipAddress" | "actor">;
     ssoConfig: Awaited<ReturnType<TSamlConfigServiceFactory["getSaml"]>>;
-    ldapConfig: Awaited<ReturnType<TLdapConfigServiceFactory["getLdapCfg"]>>;
+    ldapConfig: Awaited<ReturnType<TLdapConfigServiceFactory["getLdapCfg"]>> & {
+      allowedFields?: TAllowedFields[];
+    };
   }
 
   interface FastifyInstance {
@@ -192,6 +210,7 @@ declare module "fastify" {
       identityAzureAuth: TIdentityAzureAuthServiceFactory;
       identityOidcAuth: TIdentityOidcAuthServiceFactory;
       identityJwtAuth: TIdentityJwtAuthServiceFactory;
+      identityLdapAuth: TIdentityLdapAuthServiceFactory;
       accessApprovalPolicy: TAccessApprovalPolicyServiceFactory;
       accessApprovalRequest: TAccessApprovalRequestServiceFactory;
       secretApprovalPolicy: TSecretApprovalPolicyServiceFactory;
@@ -208,6 +227,7 @@ declare module "fastify" {
       sshCertificateAuthority: TSshCertificateAuthorityServiceFactory;
       sshCertificateTemplate: TSshCertificateTemplateServiceFactory;
       sshHost: TSshHostServiceFactory;
+      sshHostGroup: TSshHostGroupServiceFactory;
       certificateAuthority: TCertificateAuthorityServiceFactory;
       certificateAuthorityCrl: TCertificateAuthorityCrlServiceFactory;
       certificateEst: TCertificateEstServiceFactory;
@@ -241,6 +261,9 @@ declare module "fastify" {
       kmipOperation: TKmipOperationServiceFactory;
       gateway: TGatewayServiceFactory;
       secretRotationV2: TSecretRotationV2ServiceFactory;
+      microsoftTeams: TMicrosoftTeamsServiceFactory;
+      assumePrivileges: TAssumePrivilegeServiceFactory;
+      githubOrgSync: TGithubOrgSyncServiceFactory;
     };
     // this is exclusive use for middlewares in which we need to inject data
     // everywhere else access using service layer

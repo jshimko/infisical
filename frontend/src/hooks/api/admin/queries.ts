@@ -7,7 +7,8 @@ import { User } from "../types";
 import {
   AdminGetIdentitiesFilters,
   AdminGetUsersFilters,
-  AdminSlackConfig,
+  AdminIntegrationsConfig,
+  TGetInvalidatingCacheStatus,
   TGetServerRootKmsEncryptionDetails,
   TServerConfig
 } from "./types";
@@ -23,7 +24,9 @@ export const adminQueryKeys = {
   getIdentities: (filters: AdminGetIdentitiesFilters) =>
     [adminStandaloneKeys.getIdentities, { filters }] as const,
   getAdminSlackConfig: () => ["admin-slack-config"] as const,
-  getServerEncryptionStrategies: () => ["server-encryption-strategies"] as const
+  getServerEncryptionStrategies: () => ["server-encryption-strategies"] as const,
+  getInvalidateCache: () => ["admin-invalidate-cache"] as const,
+  getAdminIntegrationsConfig: () => ["admin-integrations-config"] as const
 };
 
 export const fetchServerConfig = async () => {
@@ -95,13 +98,11 @@ export const useAdminGetIdentities = (filters: AdminGetIdentitiesFilters) => {
   });
 };
 
-export const useGetAdminSlackConfig = () => {
+export const useGetAdminIntegrationsConfig = () => {
   return useQuery({
-    queryKey: adminQueryKeys.getAdminSlackConfig(),
+    queryKey: adminQueryKeys.getAdminIntegrationsConfig(),
     queryFn: async () => {
-      const { data } = await apiRequest.get<AdminSlackConfig>(
-        "/api/v1/admin/integrations/slack/config"
-      );
+      const { data } = await apiRequest.get<AdminIntegrationsConfig>("/api/v1/admin/integrations");
 
       return data;
     }
@@ -118,5 +119,20 @@ export const useGetServerRootKmsEncryptionDetails = () => {
 
       return data;
     }
+  });
+};
+
+export const useGetInvalidatingCacheStatus = (enabled = true) => {
+  return useQuery({
+    queryKey: adminQueryKeys.getInvalidateCache(),
+    queryFn: async () => {
+      const { data } = await apiRequest.get<TGetInvalidatingCacheStatus>(
+        "/api/v1/admin/invalidating-cache-status"
+      );
+
+      return data.invalidating;
+    },
+    enabled,
+    refetchInterval: (data) => (data ? 3000 : false)
   });
 };

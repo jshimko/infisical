@@ -31,6 +31,7 @@ import {
 import { IdentityPanel } from "@app/pages/admin/OverviewPage/components/IdentityPanel";
 
 import { AuthPanel } from "./components/AuthPanel";
+import { CachingPanel } from "./components/CachingPanel";
 import { EncryptionPanel } from "./components/EncryptionPanel";
 import { IntegrationPanel } from "./components/IntegrationPanel";
 import { UserPanel } from "./components/UserPanel";
@@ -42,7 +43,8 @@ enum TabSections {
   Integrations = "integrations",
   Users = "users",
   Identities = "identities",
-  Kmip = "kmip"
+  Kmip = "kmip",
+  Caching = "caching"
 }
 
 enum SignUpModes {
@@ -164,6 +166,7 @@ export const OverviewPage = () => {
                     <Tab value={TabSections.Integrations}>Integrations</Tab>
                     <Tab value={TabSections.Users}>User Identities</Tab>
                     <Tab value={TabSections.Identities}>Machine Identities</Tab>
+                    <Tab value={TabSections.Caching}>Caching</Tab>
                   </div>
                 </TabList>
                 <TabPanel value={TabSections.Settings}>
@@ -235,7 +238,7 @@ export const OverviewPage = () => {
                         Default organization
                       </div>
                       <div className="mb-4 max-w-sm text-sm text-mineshaft-400">
-                        Select the default organization you want to set for SAML/LDAP/OIDC based
+                        Select the default organization you want to set for SAML/LDAP/OIDC/Github
                         logins. When selected, user logins will be automatically scoped to the
                         selected organization.
                       </div>
@@ -407,6 +410,9 @@ export const OverviewPage = () => {
                 </TabPanel>
                 <TabPanel value={TabSections.Identities}>
                   <IdentityPanel />
+                </TabPanel>
+                <TabPanel value={TabSections.Caching}>
+                  <CachingPanel />
                 </TabPanel>
               </Tabs>
             </div>

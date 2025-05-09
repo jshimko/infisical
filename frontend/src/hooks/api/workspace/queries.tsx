@@ -18,9 +18,13 @@ import { EncryptedSecret } from "../secrets/types";
 import { TSshCertificate, TSshCertificateAuthority } from "../sshCa/types";
 import { TSshCertificateTemplate } from "../sshCertificateTemplates/types";
 import { TSshHost } from "../sshHost/types";
+import { TSshHostGroup } from "../sshHostGroup/types";
 import { userKeys } from "../users/query-keys";
 import { TWorkspaceUser } from "../users/types";
-import { ProjectSlackConfig } from "../workflowIntegrations/types";
+import {
+  ProjectWorkflowIntegrationConfig,
+  WorkflowIntegrationPlatform
+} from "../workflowIntegrations/types";
 import { workspaceKeys } from "./query-keys";
 import {
   CreateEnvironmentDTO,
@@ -33,6 +37,8 @@ import {
   TGetUpgradeProjectStatusDTO,
   TListProjectIdentitiesDTO,
   ToggleAutoCapitalizationDTO,
+  ToggleDeleteProjectProtectionDTO,
+  TProjectSshConfig,
   TSearchProjectsDTO,
   TUpdateWorkspaceIdentityRoleDTO,
   TUpdateWorkspaceUserRoleDTO,
@@ -306,6 +312,25 @@ export const useToggleAutoCapitalization = () => {
   });
 };
 
+export const useToggleDeleteProjectProtection = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Workspace, object, ToggleDeleteProjectProtectionDTO>({
+    mutationFn: async ({ workspaceID, state }) => {
+      const { data } = await apiRequest.post<{ workspace: Workspace }>(
+        `/api/v1/workspace/${workspaceID}/delete-protection`,
+        {
+          hasDeleteProtection: state
+        }
+      );
+      return data.workspace;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.getAllUserWorkspace() });
+    }
+  });
+};
+
 export const useUpdateWorkspaceVersionLimit = () => {
   const queryClient = useQueryClient();
 
@@ -316,8 +341,8 @@ export const useUpdateWorkspaceVersionLimit = () => {
       });
       return data.workspace;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.getAllUserWorkspace() });
+    onSuccess: (dto) => {
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.getAllUserWorkspace(dto.type) });
     }
   });
 };
@@ -410,9 +435,13 @@ export const useDeleteWsEnvironment = () => {
   });
 };
 
-export const useGetWorkspaceUsers = (workspaceId: string, includeGroupMembers?: boolean) => {
+export const useGetWorkspaceUsers = (
+  workspaceId: string,
+  includeGroupMembers?: boolean,
+  roles?: string[]
+) => {
   return useQuery({
-    queryKey: workspaceKeys.getWorkspaceUsers(workspaceId),
+    queryKey: workspaceKeys.getWorkspaceUsers(workspaceId, includeGroupMembers, roles),
     queryFn: async () => {
       const {
         data: { users }
@@ -420,7 +449,11 @@ export const useGetWorkspaceUsers = (workspaceId: string, includeGroupMembers?: 
         `/api/v1/workspace/${workspaceId}/users`,
         {
           params: {
-            includeGroupMembers
+            includeGroupMembers,
+            roles:
+              roles && roles.length > 0
+                ? roles.map((role) => encodeURIComponent(role)).join(",")
+                : undefined
           }
         }
       );
@@ -841,6 +874,21 @@ export const useListWorkspaceSshHosts = (projectId: string) => {
   });
 };
 
+export const useListWorkspaceSshHostGroups = (projectId: string) => {
+  return useQuery({
+    queryKey: workspaceKeys.getWorkspaceSshHostGroups(projectId),
+    queryFn: async () => {
+      const {
+        data: { groups }
+      } = await apiRequest.get<{ groups: (TSshHostGroup & { hostCount: number })[] }>(
+        `/api/v2/workspace/${projectId}/ssh-host-groups`
+      );
+      return groups;
+    },
+    enabled: Boolean(projectId)
+  });
+};
+
 export const useListWorkspaceSshCertificateTemplates = (projectId: string) => {
   return useQuery({
     queryKey: workspaceKeys.getWorkspaceSshCertificateTemplates(projectId),
@@ -854,16 +902,44 @@ export const useListWorkspaceSshCertificateTemplates = (projectId: string) => {
   });
 };
 
-export const useGetWorkspaceSlackConfig = ({ workspaceId }: { workspaceId: string }) => {
+export const useGetWorkspaceWorkflowIntegrationConfig = ({
+  workspaceId,
+  integration
+}: {
+  workspaceId: string;
+  integration: WorkflowIntegrationPlatform;
+}) => {
   return useQuery({
-    queryKey: workspaceKeys.getWorkspaceSlackConfig(workspaceId),
+    queryKey: workspaceKeys.getWorkspaceWorkflowIntegrationConfig(workspaceId, integration),
     queryFn: async () => {
-      const { data } = await apiRequest.get<ProjectSlackConfig>(
-        `/api/v1/workspace/${workspaceId}/slack-config`
-      );
+      const { data } = await apiRequest
+        .get<ProjectWorkflowIntegrationConfig>(
+          `/api/v1/workspace/${workspaceId}/workflow-integration-config/${integration}`
+        )
+        .catch((err) => {
+          if (err.response.status === 404) {
+            return { data: null };
+          }
+
+          throw err;
+        });
 
       return data;
     },
     enabled: Boolean(workspaceId)
+  });
+};
+
+export const useGetProjectSshConfig = (projectId: string) => {
+  return useQuery({
+    queryKey: workspaceKeys.getProjectSshConfig(projectId),
+    queryFn: async () => {
+      const { data } = await apiRequest.get<TProjectSshConfig>(
+        `/api/v1/workspace/${projectId}/ssh-config`
+      );
+
+      return data;
+    },
+    enabled: Boolean(projectId)
   });
 };

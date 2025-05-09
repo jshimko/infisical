@@ -20,12 +20,15 @@ import { KMS_ROOT_CONFIG_UUID } from "../kms/kms-fns";
 import { TKmsRootConfigDALFactory } from "../kms/kms-root-config-dal";
 import { TKmsServiceFactory } from "../kms/kms-service";
 import { RootKeyEncryptionStrategy } from "../kms/kms-types";
+import { TMicrosoftTeamsServiceFactory } from "../microsoft-teams/microsoft-teams-service";
 import { TOrgServiceFactory } from "../org/org-service";
 import { TUserDALFactory } from "../user/user-dal";
 import { TUserAliasDALFactory } from "../user-alias/user-alias-dal";
 import { UserAliasType } from "../user-alias/user-alias-types";
+import { TInvalidateCacheQueueFactory } from "./invalidate-cache-queue";
 import { TSuperAdminDALFactory } from "./super-admin-dal";
 import {
+  CacheType,
   LoginMethod,
   TAdminBootstrapInstanceDTO,
   TAdminGetIdentitiesDTO,
@@ -45,8 +48,10 @@ type TSuperAdminServiceFactoryDep = {
   kmsService: Pick<TKmsServiceFactory, "encryptWithRootKey" | "decryptWithRootKey" | "updateEncryptionStrategy">;
   kmsRootConfigDAL: TKmsRootConfigDALFactory;
   orgService: Pick<TOrgServiceFactory, "createOrganization">;
-  keyStore: Pick<TKeyStoreFactory, "getItem" | "setItemWithExpiry" | "deleteItem">;
+  keyStore: Pick<TKeyStoreFactory, "getItem" | "setItemWithExpiry" | "deleteItem" | "deleteItems">;
   licenseService: Pick<TLicenseServiceFactory, "onPremFeatures">;
+  microsoftTeamsService: Pick<TMicrosoftTeamsServiceFactory, "initializeTeamsBot">;
+  invalidateCacheQueue: TInvalidateCacheQueueFactory;
 };
 
 export type TSuperAdminServiceFactory = ReturnType<typeof superAdminServiceFactory>;
@@ -62,7 +67,7 @@ export let getServerCfg: () => Promise<
 
 const ADMIN_CONFIG_KEY = "infisical-admin-cfg";
 const ADMIN_CONFIG_KEY_EXP = 60; // 60s
-const ADMIN_CONFIG_DB_UUID = "00000000-0000-0000-0000-000000000000";
+export const ADMIN_CONFIG_DB_UUID = "00000000-0000-0000-0000-000000000000";
 
 export const superAdminServiceFactory = ({
   serverCfgDAL,
@@ -77,7 +82,9 @@ export const superAdminServiceFactory = ({
   licenseService,
   identityAccessTokenDAL,
   identityTokenAuthDAL,
-  identityOrgMembershipDAL
+  identityOrgMembershipDAL,
+  microsoftTeamsService,
+  invalidateCacheQueue
 }: TSuperAdminServiceFactoryDep) => {
   const initServerCfg = async () => {
     // TODO(akhilmhdh): bad  pattern time less change this later to me itself
@@ -125,7 +132,13 @@ export const superAdminServiceFactory = ({
   };
 
   const updateServerCfg = async (
-    data: TSuperAdminUpdate & { slackClientId?: string; slackClientSecret?: string },
+    data: TSuperAdminUpdate & {
+      slackClientId?: string;
+      slackClientSecret?: string;
+      microsoftTeamsAppId?: string;
+      microsoftTeamsClientSecret?: string;
+      microsoftTeamsBotId?: string;
+    },
     userId: string
   ) => {
     const updatedData = data;
@@ -163,8 +176,8 @@ export const superAdminServiceFactory = ({
 
       const canServerAdminAccessAfterApply =
         data.enabledLoginMethods.some((loginMethod) =>
-          loginMethodToAuthMethod[loginMethod as LoginMethod].some(
-            (authMethod) => superAdminUser.authMethods?.includes(authMethod)
+          loginMethodToAuthMethod[loginMethod as LoginMethod].some((authMethod) =>
+            superAdminUser.authMethods?.includes(authMethod)
           )
         ) ||
         isUserSamlAccessEnabled ||
@@ -192,9 +205,50 @@ export const superAdminServiceFactory = ({
       updatedData.slackClientSecret = undefined;
     }
 
+    let microsoftTeamsSettingsUpdated = false;
+    if (data.microsoftTeamsAppId) {
+      const encryptedClientId = encryptWithRoot(Buffer.from(data.microsoftTeamsAppId));
+
+      updatedData.encryptedMicrosoftTeamsAppId = encryptedClientId;
+      updatedData.microsoftTeamsAppId = undefined;
+      microsoftTeamsSettingsUpdated = true;
+    }
+
+    if (data.microsoftTeamsClientSecret) {
+      const encryptedClientSecret = encryptWithRoot(Buffer.from(data.microsoftTeamsClientSecret));
+
+      updatedData.encryptedMicrosoftTeamsClientSecret = encryptedClientSecret;
+      updatedData.microsoftTeamsClientSecret = undefined;
+      microsoftTeamsSettingsUpdated = true;
+    }
+
+    if (data.microsoftTeamsBotId) {
+      const encryptedBotId = encryptWithRoot(Buffer.from(data.microsoftTeamsBotId));
+
+      updatedData.encryptedMicrosoftTeamsBotId = encryptedBotId;
+      updatedData.microsoftTeamsBotId = undefined;
+      microsoftTeamsSettingsUpdated = true;
+    }
     const updatedServerCfg = await serverCfgDAL.updateById(ADMIN_CONFIG_DB_UUID, updatedData);
 
     await keyStore.setItemWithExpiry(ADMIN_CONFIG_KEY, ADMIN_CONFIG_KEY_EXP, JSON.stringify(updatedServerCfg));
+
+    if (
+      updatedServerCfg.encryptedMicrosoftTeamsAppId &&
+      updatedServerCfg.encryptedMicrosoftTeamsClientSecret &&
+      updatedServerCfg.encryptedMicrosoftTeamsBotId &&
+      microsoftTeamsSettingsUpdated
+    ) {
+      const decryptWithRoot = kmsService.decryptWithRootKey();
+      decryptWithRoot(updatedServerCfg.encryptedMicrosoftTeamsBotId); // validate that we're able to decrypt the bot ID
+      const decryptedAppId = decryptWithRoot(updatedServerCfg.encryptedMicrosoftTeamsAppId);
+      const decryptedAppPassword = decryptWithRoot(updatedServerCfg.encryptedMicrosoftTeamsClientSecret);
+
+      await microsoftTeamsService.initializeTeamsBot({
+        botAppId: decryptedAppId.toString(),
+        botAppPassword: decryptedAppPassword.toString()
+      });
+    }
 
     return updatedServerCfg;
   };
@@ -488,29 +542,40 @@ export const superAdminServiceFactory = ({
     await userDAL.updateById(userId, { superAdmin: true });
   };
 
-  const getAdminSlackConfig = async () => {
+  const getAdminIntegrationsConfig = async () => {
     const serverCfg = await serverCfgDAL.findById(ADMIN_CONFIG_DB_UUID);
 
     if (!serverCfg) {
       throw new NotFoundError({ name: "AdminConfig", message: "Admin config not found" });
     }
 
-    let clientId = "";
-    let clientSecret = "";
-
     const decrypt = kmsService.decryptWithRootKey();
 
-    if (serverCfg.encryptedSlackClientId) {
-      clientId = decrypt(serverCfg.encryptedSlackClientId).toString();
-    }
+    const slackClientId = serverCfg.encryptedSlackClientId ? decrypt(serverCfg.encryptedSlackClientId).toString() : "";
+    const slackClientSecret = serverCfg.encryptedSlackClientSecret
+      ? decrypt(serverCfg.encryptedSlackClientSecret).toString()
+      : "";
 
-    if (serverCfg.encryptedSlackClientSecret) {
-      clientSecret = decrypt(serverCfg.encryptedSlackClientSecret).toString();
-    }
+    const microsoftAppId = serverCfg.encryptedMicrosoftTeamsAppId
+      ? decrypt(serverCfg.encryptedMicrosoftTeamsAppId).toString()
+      : "";
+    const microsoftClientSecret = serverCfg.encryptedMicrosoftTeamsClientSecret
+      ? decrypt(serverCfg.encryptedMicrosoftTeamsClientSecret).toString()
+      : "";
+    const microsoftBotId = serverCfg.encryptedMicrosoftTeamsBotId
+      ? decrypt(serverCfg.encryptedMicrosoftTeamsBotId).toString()
+      : "";
 
     return {
-      clientId,
-      clientSecret
+      slack: {
+        clientSecret: slackClientSecret,
+        clientId: slackClientId
+      },
+      microsoftTeams: {
+        appId: microsoftAppId,
+        clientSecret: microsoftClientSecret,
+        botId: microsoftBotId
+      }
     };
   };
 
@@ -570,6 +635,16 @@ export const superAdminServiceFactory = ({
     await kmsService.updateEncryptionStrategy(strategy);
   };
 
+  const invalidateCache = async (type: CacheType) => {
+    await invalidateCacheQueue.startInvalidate({
+      data: { type }
+    });
+  };
+
+  const checkIfInvalidatingCache = async () => {
+    return (await keyStore.getItem("invalidating-cache")) !== null;
+  };
+
   return {
     initServerCfg,
     updateServerCfg,
@@ -578,11 +653,13 @@ export const superAdminServiceFactory = ({
     getUsers,
     deleteUser,
     getIdentities,
-    getAdminSlackConfig,
+    getAdminIntegrationsConfig,
     updateRootEncryptionStrategy,
     getConfiguredEncryptionStrategies,
     grantServerAdminAccessToUser,
     deleteIdentitySuperAdminAccess,
-    deleteUserSuperAdminAccess
+    deleteUserSuperAdminAccess,
+    invalidateCache,
+    checkIfInvalidatingCache
   };
 };

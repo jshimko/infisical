@@ -29,6 +29,12 @@ import {
 } from "@app/services/secret-sync/github";
 import { TSecretSyncDALFactory } from "@app/services/secret-sync/secret-sync-dal";
 import { SecretSync, SecretSyncImportBehavior } from "@app/services/secret-sync/secret-sync-enums";
+import {
+  TWindmillSync,
+  TWindmillSyncInput,
+  TWindmillSyncListItem,
+  TWindmillSyncWithCredentials
+} from "@app/services/secret-sync/windmill";
 
 import {
   TAwsParameterStoreSync,
@@ -50,11 +56,23 @@ import {
 } from "./azure-key-vault";
 import { TGcpSync, TGcpSyncInput, TGcpSyncListItem, TGcpSyncWithCredentials } from "./gcp";
 import {
+  THCVaultSync,
+  THCVaultSyncInput,
+  THCVaultSyncListItem,
+  THCVaultSyncWithCredentials
+} from "./hc-vault/hc-vault-sync-types";
+import {
   THumanitecSync,
   THumanitecSyncInput,
   THumanitecSyncListItem,
   THumanitecSyncWithCredentials
 } from "./humanitec";
+import {
+  TTeamCitySync,
+  TTeamCitySyncInput,
+  TTeamCitySyncListItem,
+  TTeamCitySyncWithCredentials
+} from "./teamcity/teamcity-sync-types";
 import {
   TTerraformCloudSync,
   TTerraformCloudSyncInput,
@@ -74,7 +92,10 @@ export type TSecretSync =
   | THumanitecSync
   | TTerraformCloudSync
   | TCamundaSync
-  | TVercelSync;
+  | TVercelSync
+  | TWindmillSync
+  | THCVaultSync
+  | TTeamCitySync;
 
 export type TSecretSyncWithCredentials =
   | TAwsParameterStoreSyncWithCredentials
@@ -87,7 +108,10 @@ export type TSecretSyncWithCredentials =
   | THumanitecSyncWithCredentials
   | TTerraformCloudSyncWithCredentials
   | TCamundaSyncWithCredentials
-  | TVercelSyncWithCredentials;
+  | TVercelSyncWithCredentials
+  | TWindmillSyncWithCredentials
+  | THCVaultSyncWithCredentials
+  | TTeamCitySyncWithCredentials;
 
 export type TSecretSyncInput =
   | TAwsParameterStoreSyncInput
@@ -100,7 +124,10 @@ export type TSecretSyncInput =
   | THumanitecSyncInput
   | TTerraformCloudSyncInput
   | TCamundaSyncInput
-  | TVercelSyncInput;
+  | TVercelSyncInput
+  | TWindmillSyncInput
+  | THCVaultSyncInput
+  | TTeamCitySyncInput;
 
 export type TSecretSyncListItem =
   | TAwsParameterStoreSyncListItem
@@ -113,7 +140,10 @@ export type TSecretSyncListItem =
   | THumanitecSyncListItem
   | TTerraformCloudSyncListItem
   | TCamundaSyncListItem
-  | TVercelSyncListItem;
+  | TVercelSyncListItem
+  | TWindmillSyncListItem
+  | THCVaultSyncListItem
+  | TTeamCitySyncListItem;
 
 export type TSyncOptionsConfig = {
   canImportSecrets: boolean;
@@ -121,6 +151,13 @@ export type TSyncOptionsConfig = {
 
 export type TListSecretSyncsByProjectId = {
   projectId: string;
+  destination?: SecretSync;
+};
+
+export type TListSecretSyncsByFolderId = {
+  projectId: string;
+  secretPath: string;
+  environment: string;
   destination?: SecretSync;
 };
 

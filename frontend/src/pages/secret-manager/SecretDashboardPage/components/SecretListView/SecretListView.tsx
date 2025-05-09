@@ -8,6 +8,7 @@ import { DeleteActionModal } from "@app/components/v2";
 import { usePopUp } from "@app/hooks";
 import { useCreateSecretV3, useDeleteSecretV3, useUpdateSecretV3 } from "@app/hooks/api";
 import { dashboardKeys } from "@app/hooks/api/dashboard/queries";
+import { UsedBySecretSyncs } from "@app/hooks/api/dashboard/types";
 import { secretApprovalRequestKeys } from "@app/hooks/api/secretApprovalRequest/queries";
 import { secretKeys } from "@app/hooks/api/secrets/queries";
 import { SecretType, SecretV3RawSanitized } from "@app/hooks/api/secrets/types";
@@ -29,11 +30,12 @@ type Props = {
   tags?: WsTag[];
   isVisible?: boolean;
   isProtectedBranch?: boolean;
+  usedBySecretSyncs?: UsedBySecretSyncs[];
   importedBy?: {
     environment: { name: string; slug: string };
     folders: {
       name: string;
-      secrets?: { secretId: string; referencedSecretKey: string }[];
+      secrets?: { secretId: string; referencedSecretKey: string; referencedSecretEnv: string }[];
       isImported: boolean;
     }[];
   }[];
@@ -47,6 +49,7 @@ export const SecretListView = ({
   tags: wsTags = [],
   isVisible,
   isProtectedBranch = false,
+  usedBySecretSyncs,
   importedBy
 }: Props) => {
   const queryClient = useQueryClient();
@@ -85,6 +88,7 @@ export const SecretListView = ({
       comment,
       reminderRepeatDays,
       reminderNote,
+      reminderRecipients,
       tags,
       skipMultilineEncoding,
       newKey,
@@ -96,6 +100,7 @@ export const SecretListView = ({
       comment: string;
       reminderRepeatDays: number | null;
       reminderNote: string | null;
+      reminderRecipients?: string[] | null;
       tags: string[];
       skipMultilineEncoding: boolean;
       newKey: string;
@@ -131,6 +136,7 @@ export const SecretListView = ({
         secretComment: comment,
         secretReminderRepeatDays: reminderRepeatDays,
         secretReminderNote: reminderNote,
+        secretReminderRecipients: reminderRecipients,
         skipMultilineEncoding,
         secretMetadata
       });
@@ -172,6 +178,7 @@ export const SecretListView = ({
         comment,
         reminderRepeatDays,
         reminderNote,
+        reminderRecipients,
         secretMetadata,
         isReminderEvent
       } = modSecret;
@@ -180,6 +187,12 @@ export const SecretListView = ({
       const tagIds = tags?.map(({ id }) => id);
       const oldTagIds = (orgSecret?.tags || []).map(({ id }) => id);
       const isSameTags = JSON.stringify(tagIds) === JSON.stringify(oldTagIds);
+
+      const isSameRecipients =
+        !reminderRecipients?.some(
+          (newId) => !orgSecret.secretReminderRecipients?.find((oldId) => newId === oldId.user.id)
+        ) && reminderRecipients?.length === orgSecret.secretReminderRecipients?.length;
+
       const isSharedSecUnchanged =
         (
           [
@@ -189,9 +202,12 @@ export const SecretListView = ({
             "skipMultilineEncoding",
             "reminderRepeatDays",
             "reminderNote",
+            "reminderRecipients",
             "secretMetadata"
           ] as const
-        ).every((el) => orgSecret[el] === modSecret[el]) && isSameTags;
+        ).every((el) => orgSecret[el] === modSecret[el]) &&
+        isSameTags &&
+        isSameRecipients;
 
       try {
         // personal secret change
@@ -224,6 +240,7 @@ export const SecretListView = ({
             comment,
             reminderRepeatDays,
             reminderNote,
+            reminderRecipients,
             secretId: orgSecret.id,
             newKey: hasKeyChanged ? key : undefined,
             skipMultilineEncoding: modSecret.skipMultilineEncoding,
@@ -352,6 +369,7 @@ export const SecretListView = ({
           onSaveSecret={handleSaveSecret}
           onDeleteSecret={onDeleteSecret}
           onDetailViewSecret={onDetailViewSecret}
+          importedBy={importedBy}
           onCreateTag={onCreateTag}
           handleSecretShare={() =>
             handlePopUpOpen("createSharedSecret", {
@@ -368,10 +386,11 @@ export const SecretListView = ({
         onDeleteApproved={handleSecretDelete}
         buttonText="Delete Secret"
         formContent={
-          importedBy &&
-          importedBy.length > 0 && (
+          ((importedBy && importedBy.length > 0) ||
+            (usedBySecretSyncs && usedBySecretSyncs?.length > 0)) && (
             <CollapsibleSecretImports
               importedBy={importedBy}
+              usedBySecretSyncs={usedBySecretSyncs}
               secretsToDelete={[(popUp.deleteSecret?.data as SecretV3RawSanitized)?.key || ""]}
             />
           )

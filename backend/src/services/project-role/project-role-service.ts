@@ -1,7 +1,8 @@
 import { ForbiddenError, MongoAbility, RawRuleOf } from "@casl/ability";
 import { PackRule, packRules, unpackRules } from "@casl/ability/extra";
+import { requestContext } from "@fastify/request-context";
 
-import { ActionProjectType, ProjectMembershipRole, TableName } from "@app/db/schemas";
+import { ActionProjectType, ProjectMembershipRole, ProjectType, TableName, TProjects } from "@app/db/schemas";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
 import {
   ProjectPermissionActions,
@@ -12,10 +13,12 @@ import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { validateHandlebarTemplate } from "@app/lib/template/validate-handlebars";
 import { UnpackedPermissionSchema } from "@app/server/routes/sanitizedSchema/permission";
 
-import { ActorAuthMethod } from "../auth/auth-type";
+import { ActorAuthMethod, ActorType } from "../auth/auth-type";
+import { TIdentityDALFactory } from "../identity/identity-dal";
 import { TIdentityProjectMembershipRoleDALFactory } from "../identity-project/identity-project-membership-role-dal";
 import { TProjectDALFactory } from "../project/project-dal";
 import { TProjectUserMembershipRoleDALFactory } from "../project-membership/project-user-membership-role-dal";
+import { TUserDALFactory } from "../user/user-dal";
 import { TProjectRoleDALFactory } from "./project-role-dal";
 import { getPredefinedRoles } from "./project-role-fns";
 import {
@@ -29,7 +32,9 @@ import {
 
 type TProjectRoleServiceFactoryDep = {
   projectRoleDAL: TProjectRoleDALFactory;
-  projectDAL: Pick<TProjectDALFactory, "findProjectBySlug">;
+  identityDAL: Pick<TIdentityDALFactory, "findById">;
+  userDAL: Pick<TUserDALFactory, "findById">;
+  projectDAL: Pick<TProjectDALFactory, "findProjectBySlug" | "findProjectById">;
   permissionService: Pick<TPermissionServiceFactory, "getProjectPermission" | "getUserProjectPermission">;
   identityProjectMembershipRoleDAL: TIdentityProjectMembershipRoleDALFactory;
   projectUserMembershipRoleDAL: TProjectUserMembershipRoleDALFactory;
@@ -47,7 +52,9 @@ export const projectRoleServiceFactory = ({
   permissionService,
   identityProjectMembershipRoleDAL,
   projectUserMembershipRoleDAL,
-  projectDAL
+  projectDAL,
+  identityDAL,
+  userDAL
 }: TProjectRoleServiceFactoryDep) => {
   const createRole = async ({ data, actor, actorId, actorAuthMethod, actorOrgId, filter }: TCreateRoleDTO) => {
     let projectId = "";
@@ -91,30 +98,37 @@ export const projectRoleServiceFactory = ({
     roleSlug,
     filter
   }: TGetRoleDetailsDTO) => {
-    let projectId = "";
+    let project: TProjects;
     if (filter.type === ProjectRoleServiceIdentifierType.SLUG) {
-      const project = await projectDAL.findProjectBySlug(filter.projectSlug, actorOrgId);
-      if (!project) throw new NotFoundError({ message: "Project not found" });
-      projectId = project.id;
+      project = await projectDAL.findProjectBySlug(filter.projectSlug, actorOrgId);
     } else {
-      projectId = filter.projectId;
+      project = await projectDAL.findProjectById(filter.projectId);
     }
+
+    if (!project) throw new NotFoundError({ message: "Project not found" });
 
     const { permission } = await permissionService.getProjectPermission({
       actor,
       actorId,
-      projectId,
+      projectId: project.id,
       actorAuthMethod,
       actorOrgId,
       actionProjectType: ActionProjectType.Any
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Role);
     if (roleSlug !== "custom" && Object.values(ProjectMembershipRole).includes(roleSlug as ProjectMembershipRole)) {
-      const predefinedRole = getPredefinedRoles(projectId, roleSlug as ProjectMembershipRole)[0];
+      const [predefinedRole] = getPredefinedRoles({
+        projectId: project.id,
+        projectType: project.type as ProjectType,
+        roleFilter: roleSlug as ProjectMembershipRole
+      });
+
+      if (!predefinedRole) throw new NotFoundError({ message: `Default role with slug '${roleSlug}' not found` });
+
       return { ...predefinedRole, permissions: UnpackedPermissionSchema.array().parse(predefinedRole.permissions) };
     }
 
-    const customRole = await projectRoleDAL.findOne({ slug: roleSlug, projectId });
+    const customRole = await projectRoleDAL.findOne({ slug: roleSlug, projectId: project.id });
     if (!customRole) throw new NotFoundError({ message: `Project role with slug '${roleSlug}' not found` });
     return { ...customRole, permissions: unpackPermissions(customRole.permissions) };
   };
@@ -187,29 +201,32 @@ export const projectRoleServiceFactory = ({
   };
 
   const listRoles = async ({ actorOrgId, actorAuthMethod, actorId, actor, filter }: TListRolesDTO) => {
-    let projectId = "";
+    let project: TProjects;
     if (filter.type === ProjectRoleServiceIdentifierType.SLUG) {
-      const project = await projectDAL.findProjectBySlug(filter.projectSlug, actorOrgId);
-      if (!project) throw new BadRequestError({ message: "Project not found" });
-      projectId = project.id;
+      project = await projectDAL.findProjectBySlug(filter.projectSlug, actorOrgId);
     } else {
-      projectId = filter.projectId;
+      project = await projectDAL.findProjectById(filter.projectId);
     }
+
+    if (!project) throw new BadRequestError({ message: "Project not found" });
 
     const { permission } = await permissionService.getProjectPermission({
       actor,
       actorId,
-      projectId,
+      projectId: project.id,
       actorAuthMethod,
       actorOrgId,
       actionProjectType: ActionProjectType.Any
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Role);
     const customRoles = await projectRoleDAL.find(
-      { projectId },
+      { projectId: project.id },
       { sort: [[`${TableName.ProjectRoles}.slug` as "slug", "asc"]] }
     );
-    const roles = [...getPredefinedRoles(projectId), ...(customRoles || [])];
+    const roles = [
+      ...getPredefinedRoles({ projectId: project.id, projectType: project.type as ProjectType }),
+      ...(customRoles || [])
+    ];
 
     return roles;
   };
@@ -220,14 +237,42 @@ export const projectRoleServiceFactory = ({
     actorAuthMethod: ActorAuthMethod,
     actorOrgId: string | undefined
   ) => {
-    const { permission, membership } = await permissionService.getUserProjectPermission({
-      userId,
+    const { permission, membership } = await permissionService.getProjectPermission({
+      actor: ActorType.USER,
+      actorId: userId,
       projectId,
-      authMethod: actorAuthMethod,
-      userOrgId: actorOrgId,
+      actorAuthMethod,
+      actorOrgId,
       actionProjectType: ActionProjectType.Any
     });
-    return { permissions: packRules(permission.rules), membership };
+    // just to satisfy ts
+    if (!("roles" in membership)) throw new BadRequestError({ message: "Service token not allowed" });
+
+    const assumedPrivilegeDetailsCtx = requestContext.get("assumedPrivilegeDetails");
+    const isAssumingPrivilege = assumedPrivilegeDetailsCtx?.projectId === projectId;
+    const assumedPrivilegeDetails = isAssumingPrivilege
+      ? {
+          actorId: assumedPrivilegeDetailsCtx?.actorId,
+          actorType: assumedPrivilegeDetailsCtx?.actorType,
+          actorName: "",
+          actorEmail: ""
+        }
+      : undefined;
+
+    if (assumedPrivilegeDetails?.actorType === ActorType.IDENTITY) {
+      const identityDetails = await identityDAL.findById(assumedPrivilegeDetails.actorId);
+      if (!identityDetails)
+        throw new NotFoundError({ message: `Identity with ID ${assumedPrivilegeDetails.actorId} not found` });
+      assumedPrivilegeDetails.actorName = identityDetails.name;
+    } else if (assumedPrivilegeDetails?.actorType === ActorType.USER) {
+      const userDetails = await userDAL.findById(assumedPrivilegeDetails?.actorId);
+      if (!userDetails)
+        throw new NotFoundError({ message: `User with ID ${assumedPrivilegeDetails.actorId} not found` });
+      assumedPrivilegeDetails.actorName = `${userDetails?.firstName} ${userDetails?.lastName || ""}`;
+      assumedPrivilegeDetails.actorEmail = userDetails?.email || "";
+    }
+
+    return { permissions: packRules(permission.rules), membership, assumedPrivilegeDetails };
   };
 
   return { createRole, updateRole, deleteRole, listRoles, getUserPermission, getRoleBySlug };
