@@ -2,6 +2,7 @@ import { AbilityBuilder, createMongoAbility, MongoAbility } from "@casl/ability"
 
 import {
   ProjectPermissionActions,
+  ProjectPermissionApprovalActions,
   ProjectPermissionCertificateActions,
   ProjectPermissionCmekActions,
   ProjectPermissionDynamicSecretActions,
@@ -25,7 +26,6 @@ const buildAdminPermissionRules = () => {
   [
     ProjectPermissionSub.SecretFolders,
     ProjectPermissionSub.SecretImports,
-    ProjectPermissionSub.SecretApproval,
     ProjectPermissionSub.Role,
     ProjectPermissionSub.Integrations,
     ProjectPermissionSub.Webhooks,
@@ -54,6 +54,17 @@ const buildAdminPermissionRules = () => {
       el
     );
   });
+
+  can(
+    [
+      ProjectPermissionApprovalActions.Read,
+      ProjectPermissionApprovalActions.Edit,
+      ProjectPermissionApprovalActions.Create,
+      ProjectPermissionApprovalActions.Delete,
+      ProjectPermissionApprovalActions.AllowChangeBypass
+    ],
+    ProjectPermissionSub.SecretApproval
+  );
 
   can(
     [
@@ -126,7 +137,6 @@ const buildAdminPermissionRules = () => {
 
   can(
     [
-      ProjectPermissionSecretActions.DescribeAndReadValue,
       ProjectPermissionSecretActions.DescribeSecret,
       ProjectPermissionSecretActions.ReadValue,
       ProjectPermissionSecretActions.Create,
@@ -207,7 +217,6 @@ const buildMemberPermissionRules = () => {
 
   can(
     [
-      ProjectPermissionSecretActions.DescribeAndReadValue,
       ProjectPermissionSecretActions.DescribeSecret,
       ProjectPermissionSecretActions.ReadValue,
       ProjectPermissionSecretActions.Edit,
@@ -245,7 +254,7 @@ const buildMemberPermissionRules = () => {
     ProjectPermissionSub.SecretImports
   );
 
-  can([ProjectPermissionActions.Read], ProjectPermissionSub.SecretApproval);
+  can([ProjectPermissionApprovalActions.Read], ProjectPermissionSub.SecretApproval);
   can([ProjectPermissionSecretRotationActions.Read], ProjectPermissionSub.SecretRotation);
 
   can([ProjectPermissionActions.Read, ProjectPermissionActions.Create], ProjectPermissionSub.SecretRollback);
@@ -386,13 +395,14 @@ const buildMemberPermissionRules = () => {
 const buildViewerPermissionRules = () => {
   const { can, rules } = new AbilityBuilder<MongoAbility<ProjectPermissionSet>>(createMongoAbility);
 
-  can(ProjectPermissionSecretActions.DescribeAndReadValue, ProjectPermissionSub.Secrets);
-  can(ProjectPermissionSecretActions.DescribeSecret, ProjectPermissionSub.Secrets);
-  can(ProjectPermissionSecretActions.ReadValue, ProjectPermissionSub.Secrets);
+  can(
+    [ProjectPermissionSecretActions.DescribeSecret, ProjectPermissionSecretActions.ReadValue],
+    ProjectPermissionSub.Secrets
+  );
   can(ProjectPermissionActions.Read, ProjectPermissionSub.SecretFolders);
   can(ProjectPermissionDynamicSecretActions.ReadRootCredential, ProjectPermissionSub.DynamicSecrets);
   can(ProjectPermissionActions.Read, ProjectPermissionSub.SecretImports);
-  can(ProjectPermissionActions.Read, ProjectPermissionSub.SecretApproval);
+  can(ProjectPermissionApprovalActions.Read, ProjectPermissionSub.SecretApproval);
   can(ProjectPermissionActions.Read, ProjectPermissionSub.SecretRollback);
   can(ProjectPermissionSecretRotationActions.Read, ProjectPermissionSub.SecretRotation);
   can(ProjectPermissionMemberActions.Read, ProjectPermissionSub.Member);
