@@ -1,6 +1,12 @@
 import { Job } from "bullmq";
 
 import { AuditLogInfo } from "@app/ee/services/audit-log/audit-log-types";
+import {
+  TOCIVaultSync,
+  TOCIVaultSyncInput,
+  TOCIVaultSyncListItem,
+  TOCIVaultSyncWithCredentials
+} from "@app/ee/services/secret-sync/oci-vault";
 import { QueueJobs } from "@app/queue";
 import { ResourceMetadataDTO } from "@app/services/resource-metadata/resource-metadata-schema";
 import {
@@ -37,6 +43,12 @@ import {
 } from "@app/services/secret-sync/windmill";
 
 import {
+  TOnePassSync,
+  TOnePassSyncInput,
+  TOnePassSyncListItem,
+  TOnePassSyncWithCredentials
+} from "./1password/1password-sync-types";
+import {
   TAwsParameterStoreSync,
   TAwsParameterStoreSyncInput,
   TAwsParameterStoreSyncListItem,
@@ -49,11 +61,18 @@ import {
   TAzureAppConfigurationSyncWithCredentials
 } from "./azure-app-configuration";
 import {
+  TAzureDevOpsSync,
+  TAzureDevOpsSyncInput,
+  TAzureDevOpsSyncListItem,
+  TAzureDevOpsSyncWithCredentials
+} from "./azure-devops";
+import {
   TAzureKeyVaultSync,
   TAzureKeyVaultSyncInput,
   TAzureKeyVaultSyncListItem,
   TAzureKeyVaultSyncWithCredentials
 } from "./azure-key-vault";
+import { TFlyioSync, TFlyioSyncInput, TFlyioSyncListItem, TFlyioSyncWithCredentials } from "./flyio/flyio-sync-types";
 import { TGcpSync, TGcpSyncInput, TGcpSyncListItem, TGcpSyncWithCredentials } from "./gcp";
 import {
   THCVaultSync,
@@ -61,13 +80,19 @@ import {
   THCVaultSyncListItem,
   THCVaultSyncWithCredentials
 } from "./hc-vault/hc-vault-sync-types";
+import { THerokuSync, THerokuSyncInput, THerokuSyncListItem, THerokuSyncWithCredentials } from "./heroku";
 import {
   THumanitecSync,
   THumanitecSyncInput,
   THumanitecSyncListItem,
   THumanitecSyncWithCredentials
 } from "./humanitec";
-import { TOCIVaultSync, TOCIVaultSyncInput, TOCIVaultSyncListItem, TOCIVaultSyncWithCredentials } from "./oci-vault";
+import {
+  TRenderSync,
+  TRenderSyncInput,
+  TRenderSyncListItem,
+  TRenderSyncWithCredentials
+} from "./render/render-sync-types";
 import {
   TTeamCitySync,
   TTeamCitySyncInput,
@@ -89,6 +114,7 @@ export type TSecretSync =
   | TGcpSync
   | TAzureKeyVaultSync
   | TAzureAppConfigurationSync
+  | TAzureDevOpsSync
   | TDatabricksSync
   | THumanitecSync
   | TTerraformCloudSync
@@ -97,7 +123,11 @@ export type TSecretSync =
   | TWindmillSync
   | THCVaultSync
   | TTeamCitySync
-  | TOCIVaultSync;
+  | TOCIVaultSync
+  | TOnePassSync
+  | THerokuSync
+  | TRenderSync
+  | TFlyioSync;
 
 export type TSecretSyncWithCredentials =
   | TAwsParameterStoreSyncWithCredentials
@@ -106,6 +136,7 @@ export type TSecretSyncWithCredentials =
   | TGcpSyncWithCredentials
   | TAzureKeyVaultSyncWithCredentials
   | TAzureAppConfigurationSyncWithCredentials
+  | TAzureDevOpsSyncWithCredentials
   | TDatabricksSyncWithCredentials
   | THumanitecSyncWithCredentials
   | TTerraformCloudSyncWithCredentials
@@ -114,7 +145,11 @@ export type TSecretSyncWithCredentials =
   | TWindmillSyncWithCredentials
   | THCVaultSyncWithCredentials
   | TTeamCitySyncWithCredentials
-  | TOCIVaultSyncWithCredentials;
+  | TOCIVaultSyncWithCredentials
+  | TOnePassSyncWithCredentials
+  | THerokuSyncWithCredentials
+  | TRenderSyncWithCredentials
+  | TFlyioSyncWithCredentials;
 
 export type TSecretSyncInput =
   | TAwsParameterStoreSyncInput
@@ -123,6 +158,7 @@ export type TSecretSyncInput =
   | TGcpSyncInput
   | TAzureKeyVaultSyncInput
   | TAzureAppConfigurationSyncInput
+  | TAzureDevOpsSyncInput
   | TDatabricksSyncInput
   | THumanitecSyncInput
   | TTerraformCloudSyncInput
@@ -131,7 +167,11 @@ export type TSecretSyncInput =
   | TWindmillSyncInput
   | THCVaultSyncInput
   | TTeamCitySyncInput
-  | TOCIVaultSyncInput;
+  | TOCIVaultSyncInput
+  | TOnePassSyncInput
+  | THerokuSyncInput
+  | TRenderSyncInput
+  | TFlyioSyncInput;
 
 export type TSecretSyncListItem =
   | TAwsParameterStoreSyncListItem
@@ -140,6 +180,7 @@ export type TSecretSyncListItem =
   | TGcpSyncListItem
   | TAzureKeyVaultSyncListItem
   | TAzureAppConfigurationSyncListItem
+  | TAzureDevOpsSyncListItem
   | TDatabricksSyncListItem
   | THumanitecSyncListItem
   | TTerraformCloudSyncListItem
@@ -148,7 +189,11 @@ export type TSecretSyncListItem =
   | TWindmillSyncListItem
   | THCVaultSyncListItem
   | TTeamCitySyncListItem
-  | TOCIVaultSyncListItem;
+  | TOCIVaultSyncListItem
+  | TOnePassSyncListItem
+  | THerokuSyncListItem
+  | TRenderSyncListItem
+  | TFlyioSyncListItem;
 
 export type TSyncOptionsConfig = {
   canImportSecrets: boolean;

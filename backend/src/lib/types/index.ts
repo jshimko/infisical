@@ -1,3 +1,4 @@
+import { TDynamicSecrets } from "@app/db/schemas";
 import { ActorAuthMethod, ActorType } from "@app/services/auth/auth-type";
 
 export type TGenericPermission = {
@@ -78,3 +79,13 @@ export type OrgServiceActor = {
   authMethod: ActorAuthMethod;
   orgId: string;
 };
+
+export enum QueueWorkerProfile {
+  All = "all",
+  Standard = "standard",
+  SecretScanning = "secret-scanning"
+}
+
+export interface TDynamicSecretWithMetadata extends TDynamicSecrets {
+  metadata: { id: string; key: string; value: string }[];
+}

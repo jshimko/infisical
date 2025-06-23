@@ -55,15 +55,25 @@ export const getDefaultOnPremFeatures = (): TFeatureSet => ({
   projectTemplates: false,
   kmip: false,
   gateway: false,
-  sshHostGroups: false
+  sshHostGroups: false,
+  secretScanning: false,
+  enterpriseSecretSyncs: false,
+  enterpriseAppConnections: false
 });
 
-export const setupLicenseRequestWithStore = (baseURL: string, refreshUrl: string, licenseKey: string) => {
+export const setupLicenseRequestWithStore = (
+  baseURL: string,
+  refreshUrl: string,
+  licenseKey: string,
+  region?: string
+) => {
   let token: string;
   const licenseReq = axios.create({
     baseURL,
-    timeout: 35 * 1000
-    // signal: AbortSignal.timeout(60 * 1000)
+    timeout: 35 * 1000,
+    headers: {
+      "x-region": region
+    }
   });
 
   const refreshLicense = async () => {

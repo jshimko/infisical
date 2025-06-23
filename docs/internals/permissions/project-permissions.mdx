@@ -12,7 +12,7 @@ Each permission consists of:
 - **Subject**: The resource the permission applies to (e.g., secrets, members, settings)
 - **Action**: The operation that can be performed (e.g., read, create, edit, delete)
 
-Some project-level resources—specifically `secrets`, `secret-folders`, `secret-imports`, and `dynamic-secrets`—support conditional permissions and permission inversion for more granular access control. Conditions allow you to specify criteria (like environment, secret path, or tags) that must be met for the permission to apply.
+Some project-level resources—specifically `secrets`, `secret-folders`, `secret-imports`, `dynamic-secrets`, and `secret-syncs`, support conditional permissions and permission inversion for more granular access control. Conditions allow you to specify criteria (like environment, secret path, or tags) that must be met for the permission to apply.
 
 ## Available Project Permissions
 
@@ -176,15 +176,23 @@ Supports conditions and permission inversion
 | `read`   | View secret versions and snapshots |
 | `create` | Roll back secrets to snapshots     |
 
+#### Subject: `commits`
+
+| Action   | Description                        |
+| -------- | ---------------------------------- |
+| `read`   | View commits and changes across folders |
+| `perform-rollback` | Roll back commits changes and restore folders to previous state|
+
 #### Subject: `secret-approval`
 
-| Action                | Description                                                                  |
-| --------------------- | ---------------------------------------------------------------------------- |
-| `read`                | View approval policies and requests                                          |
-| `create`              | Create new approval policies                                                 |
-| `edit`                | Modify approval policies                                                     |
-| `delete`              | Remove approval policies                                                     |
-| `allow-change-bypass` | Allow request creators to bypass policy in break-glass situations            |
+| Action                | Description                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `read`                | View approval policies and requests                                                 |
+| `create`              | Create new approval policies                                                        |
+| `edit`                | Modify approval policies                                                            |
+| `delete`              | Remove approval policies                                                            |
+| `allow-change-bypass` | Allow request creators to merge changes without approval in break-glass situations  |
+| `allow-access-bypass` | Allow request creators to access secrets without approval in break-glass situations |
 
 #### Subject: `secret-rotation`
 
@@ -199,6 +207,8 @@ Supports conditions and permission inversion
 | `delete`                       | Remove secret rotation configurations          |
 
 #### Subject: `secret-syncs`
+
+Supports conditions and permission inversion.
 
 | Action           | Description                                        |
 | ---------------- | -------------------------------------------------- |
@@ -315,3 +325,32 @@ Supports conditions and permission inversion
 | `create` | Create new SSH certificate templates |
 | `edit`   | Modify SSH template configurations   |
 | `delete` | Remove SSH certificate templates     |
+
+### Secret Scanning
+
+#### Subject: `secret-scanning-data-sources`
+
+| Action   | Description                                          |
+| -------- | ---------------------------------------------------- |
+| `read-data-sources`          | View Data Sources                |
+| `create-data-sources`        | Create new Data Sources          |
+| `edit-data-sources`          | Modify Data Sources              |
+| `delete-data-sources`        | Remove Data Sources              |
+| `read-data-source-resources` | View Data Source Resources       |
+| `read-data-source-scans`     | View Data Source Scans           |
+| `trigger-data-source-scans`  | Trigger Data Source Secret Scans |
+
+#### Subject: `secret-scanning-findings`
+
+| Action   | Description                       |
+| -------- | --------------------------------- |
+| `read-findings`     | View Secret Scanning Findings   |
+| `update-findings`   | Update Secret Scanning Findings |
+
+
+#### Subject: `secret-scanning-configs`
+
+| Action           | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `read-configs`   | View Secret Scanning Project Configuration       |
+| `update-configs` | Update Secret Scanning Project Configuration     |

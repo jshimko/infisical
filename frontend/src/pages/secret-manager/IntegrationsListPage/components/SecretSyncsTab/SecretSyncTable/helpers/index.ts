@@ -1,5 +1,6 @@
 import { TerraformCloudSyncScope } from "@app/hooks/api/appConnections/terraform-cloud";
 import { SecretSync, TSecretSync } from "@app/hooks/api/secretSyncs";
+import { GcpSyncScope } from "@app/hooks/api/secretSyncs/types/gcp-sync";
 import {
   GitHubSyncScope,
   GitHubSyncVisibility
@@ -47,7 +48,8 @@ export const getSecretSyncDestinationColValues = (secretSync: TSecretSync) => {
       break;
     case SecretSync.GCPSecretManager:
       primaryText = destinationConfig.projectId;
-      secondaryText = "Global";
+      secondaryText =
+        destinationConfig.scope === GcpSyncScope.Global ? "Global" : destinationConfig.locationId;
       break;
     case SecretSync.AzureKeyVault:
       primaryText = destinationConfig.vaultBaseUrl;
@@ -105,6 +107,26 @@ export const getSecretSyncDestinationColValues = (secretSync: TSecretSync) => {
     case SecretSync.OCIVault:
       primaryText = destinationConfig.compartmentOcid;
       secondaryText = destinationConfig.vaultOcid;
+      break;
+    case SecretSync.OnePass:
+      primaryText = destinationConfig.vaultId;
+      secondaryText = "Vault ID";
+      break;
+    case SecretSync.AzureDevOps:
+      primaryText = destinationConfig.devopsProjectName;
+      secondaryText = destinationConfig.devopsProjectId;
+      break;
+    case SecretSync.Heroku:
+      primaryText = destinationConfig.appName;
+      secondaryText = destinationConfig.app;
+      break;
+    case SecretSync.Render:
+      primaryText = destinationConfig.serviceName ?? destinationConfig.serviceId;
+      secondaryText = "Service";
+      break;
+    case SecretSync.Flyio:
+      primaryText = destinationConfig.appId;
+      secondaryText = "App ID";
       break;
     default:
       throw new Error(`Unhandled Destination Col Values ${destination}`);

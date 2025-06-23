@@ -4,6 +4,7 @@ import { TDbClient } from "@app/db";
 import {
   TableName,
   TIdentities,
+  TIdentityAlicloudAuths,
   TIdentityAwsAuths,
   TIdentityAzureAuths,
   TIdentityGcpAuths,
@@ -58,6 +59,11 @@ export const identityProjectDALFactory = (db: TDbClient) => {
           `${TableName.IdentityGcpAuth}.identityId`
         )
         .leftJoin(
+          TableName.IdentityAliCloudAuth,
+          `${TableName.IdentityProjectMembership}.identityId`,
+          `${TableName.IdentityAliCloudAuth}.identityId`
+        )
+        .leftJoin(
           TableName.IdentityAwsAuth,
           `${TableName.IdentityProjectMembership}.identityId`,
           `${TableName.IdentityAwsAuth}.identityId`
@@ -95,6 +101,7 @@ export const identityProjectDALFactory = (db: TDbClient) => {
 
           db.ref("id").as("identityId").withSchema(TableName.Identity),
           db.ref("name").as("identityName").withSchema(TableName.Identity),
+          db.ref("hasDeleteProtection").withSchema(TableName.Identity),
           db.ref("id").withSchema(TableName.IdentityProjectMembership),
           db.ref("role").withSchema(TableName.IdentityProjectMembershipRole),
           db.ref("id").withSchema(TableName.IdentityProjectMembershipRole).as("membershipRoleId"),
@@ -111,6 +118,7 @@ export const identityProjectDALFactory = (db: TDbClient) => {
           db.ref("type").as("projectType").withSchema(TableName.Project),
           db.ref("id").as("uaId").withSchema(TableName.IdentityUniversalAuth),
           db.ref("id").as("gcpId").withSchema(TableName.IdentityGcpAuth),
+          db.ref("id").as("alicloudId").withSchema(TableName.IdentityAliCloudAuth),
           db.ref("id").as("awsId").withSchema(TableName.IdentityAwsAuth),
           db.ref("id").as("kubernetesId").withSchema(TableName.IdentityKubernetesAuth),
           db.ref("id").as("ociId").withSchema(TableName.IdentityOciAuth),
@@ -123,6 +131,7 @@ export const identityProjectDALFactory = (db: TDbClient) => {
         data: docs,
         parentMapper: ({
           identityName,
+          hasDeleteProtection,
           uaId,
           awsId,
           gcpId,
@@ -144,6 +153,7 @@ export const identityProjectDALFactory = (db: TDbClient) => {
           identity: {
             id: identityId,
             name: identityName,
+            hasDeleteProtection,
             authMethods: buildAuthMethods({
               uaId,
               awsId,
@@ -267,6 +277,11 @@ export const identityProjectDALFactory = (db: TDbClient) => {
           `${TableName.Identity}.id`,
           `${TableName.IdentityGcpAuth}.identityId`
         )
+        .leftJoin<TIdentityAlicloudAuths>(
+          TableName.IdentityAliCloudAuth,
+          `${TableName.Identity}.id`,
+          `${TableName.IdentityAliCloudAuth}.identityId`
+        )
         .leftJoin<TIdentityAwsAuths>(
           TableName.IdentityAwsAuth,
           `${TableName.Identity}.id`,
@@ -319,6 +334,7 @@ export const identityProjectDALFactory = (db: TDbClient) => {
           db.ref("name").as("projectName").withSchema(TableName.Project),
           db.ref("id").as("uaId").withSchema(TableName.IdentityUniversalAuth),
           db.ref("id").as("gcpId").withSchema(TableName.IdentityGcpAuth),
+          db.ref("id").as("alicloudId").withSchema(TableName.IdentityAliCloudAuth),
           db.ref("id").as("awsId").withSchema(TableName.IdentityAwsAuth),
           db.ref("id").as("kubernetesId").withSchema(TableName.IdentityKubernetesAuth),
           db.ref("id").as("ociId").withSchema(TableName.IdentityOciAuth),
@@ -346,6 +362,7 @@ export const identityProjectDALFactory = (db: TDbClient) => {
           identityId,
           identityName,
           uaId,
+          alicloudId,
           awsId,
           gcpId,
           kubernetesId,
@@ -367,6 +384,7 @@ export const identityProjectDALFactory = (db: TDbClient) => {
             name: identityName,
             authMethods: buildAuthMethods({
               uaId,
+              alicloudId,
               awsId,
               gcpId,
               kubernetesId,
@@ -412,7 +430,15 @@ export const identityProjectDALFactory = (db: TDbClient) => {
           }
         ]
       });
-      return members;
+
+      return members.map((el) => ({
+        ...el,
+        roles: el.roles.sort((a, b) => {
+          const roleA = (a.customRoleName || a.role).toLowerCase();
+          const roleB = (b.customRoleName || b.role).toLowerCase();
+          return roleA.localeCompare(roleB);
+        })
+      }));
     } catch (error) {
       throw new DatabaseError({ error, name: "FindByProjectId" });
     }

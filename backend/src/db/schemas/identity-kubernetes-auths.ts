@@ -18,7 +18,7 @@ export const IdentityKubernetesAuthsSchema = z.object({
   createdAt: z.date(),
   updatedAt: z.date(),
   identityId: z.string().uuid(),
-  kubernetesHost: z.string(),
+  kubernetesHost: z.string().nullable().optional(),
   encryptedCaCert: z.string().nullable().optional(),
   caCertIV: z.string().nullable().optional(),
   caCertTag: z.string().nullable().optional(),
@@ -30,7 +30,9 @@ export const IdentityKubernetesAuthsSchema = z.object({
   allowedAudience: z.string(),
   encryptedKubernetesTokenReviewerJwt: zodBuffer.nullable().optional(),
   encryptedKubernetesCaCertificate: zodBuffer.nullable().optional(),
-  gatewayId: z.string().uuid().nullable().optional()
+  gatewayId: z.string().uuid().nullable().optional(),
+  accessTokenPeriod: z.coerce.number().default(0),
+  tokenReviewMode: z.string().default("api")
 });
 
 export type TIdentityKubernetesAuths = z.infer<typeof IdentityKubernetesAuthsSchema>;

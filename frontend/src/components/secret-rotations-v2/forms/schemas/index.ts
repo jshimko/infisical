@@ -5,9 +5,12 @@ import { AwsIamUserSecretRotationSchema } from "@app/components/secret-rotations
 import { AzureClientSecretRotationSchema } from "@app/components/secret-rotations-v2/forms/schemas/azure-client-secret-rotation-schema";
 import { LdapPasswordRotationSchema } from "@app/components/secret-rotations-v2/forms/schemas/ldap-password-rotation-schema";
 import { MsSqlCredentialsRotationSchema } from "@app/components/secret-rotations-v2/forms/schemas/mssql-credentials-rotation-schema";
+import { MySqlCredentialsRotationSchema } from "@app/components/secret-rotations-v2/forms/schemas/mysql-credentials-rotation-schema";
 import { PostgresCredentialsRotationSchema } from "@app/components/secret-rotations-v2/forms/schemas/postgres-credentials-rotation-schema";
 import { SecretRotation } from "@app/hooks/api/secretRotationsV2";
 import { LdapPasswordRotationMethod } from "@app/hooks/api/secretRotationsV2/types/ldap-password-rotation";
+
+import { OracleDBCredentialsRotationSchema } from "./oracledb-credentials-rotation-schema";
 
 export const SecretRotationV2FormSchema = (isUpdate: boolean) =>
   z
@@ -17,6 +20,8 @@ export const SecretRotationV2FormSchema = (isUpdate: boolean) =>
         AzureClientSecretRotationSchema,
         PostgresCredentialsRotationSchema,
         MsSqlCredentialsRotationSchema,
+        MySqlCredentialsRotationSchema,
+        OracleDBCredentialsRotationSchema,
         LdapPasswordRotationSchema,
         AwsIamUserSecretRotationSchema
       ]),

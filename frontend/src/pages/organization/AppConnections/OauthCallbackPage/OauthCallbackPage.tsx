@@ -8,12 +8,15 @@ import { APP_CONNECTION_MAP } from "@app/helpers/appConnections";
 import {
   AzureAppConfigurationConnectionMethod,
   AzureClientSecretsConnectionMethod,
+  AzureDevOpsConnectionMethod,
   AzureKeyVaultConnectionMethod,
   GitHubConnectionMethod,
   TAzureAppConfigurationConnection,
   TAzureClientSecretsConnection,
+  TAzureDevOpsConnection,
   TAzureKeyVaultConnection,
   TGitHubConnection,
+  TGitHubRadarConnection,
   useCreateAppConnection,
   useUpdateAppConnection
 } from "@app/hooks/api/appConnections";
@@ -25,6 +28,9 @@ type BaseFormData = {
 };
 
 type GithubFormData = BaseFormData & Pick<TGitHubConnection, "name" | "method" | "description">;
+
+type GithubRadarFormData = BaseFormData &
+  Pick<TGitHubRadarConnection, "name" | "method" | "description">;
 
 type AzureKeyVaultFormData = BaseFormData &
   Pick<TAzureKeyVaultConnection, "name" | "method" | "description"> &
@@ -38,8 +44,22 @@ type AzureClientSecretsFormData = BaseFormData &
   Pick<TAzureClientSecretsConnection, "name" | "method" | "description"> &
   Pick<TAzureClientSecretsConnection["credentials"], "tenantId">;
 
+type OAuthCredentials = Extract<
+  TAzureDevOpsConnection,
+  { method: AzureDevOpsConnectionMethod.OAuth }
+>["credentials"];
+type AccessTokenCredentials = Extract<
+  TAzureDevOpsConnection,
+  { method: AzureDevOpsConnectionMethod.AccessToken }
+>["credentials"];
+
+type AzureDevOpsFormData = BaseFormData &
+  Pick<TAzureDevOpsConnection, "name" | "method" | "description"> &
+  (Pick<OAuthCredentials, "tenantId" | "orgName"> | Pick<AccessTokenCredentials, "orgName">);
+
 type FormDataMap = {
   [AppConnection.GitHub]: GithubFormData & { app: AppConnection.GitHub };
+  [AppConnection.GitHubRadar]: GithubRadarFormData & { app: AppConnection.GitHubRadar };
   [AppConnection.AzureKeyVault]: AzureKeyVaultFormData & { app: AppConnection.AzureKeyVault };
   [AppConnection.AzureAppConfiguration]: AzureAppConfigurationFormData & {
     app: AppConnection.AzureAppConfiguration;
@@ -47,13 +67,18 @@ type FormDataMap = {
   [AppConnection.AzureClientSecrets]: AzureClientSecretsFormData & {
     app: AppConnection.AzureClientSecrets;
   };
+  [AppConnection.AzureDevOps]: AzureDevOpsFormData & {
+    app: AppConnection.AzureDevOps;
+  };
 };
 
 const formDataStorageFieldMap: Partial<Record<AppConnection, string>> = {
   [AppConnection.GitHub]: "githubConnectionFormData",
+  [AppConnection.GitHubRadar]: "githubRadarConnectionFormData",
   [AppConnection.AzureKeyVault]: "azureKeyVaultConnectionFormData",
   [AppConnection.AzureAppConfiguration]: "azureAppConfigurationConnectionFormData",
-  [AppConnection.AzureClientSecrets]: "azureClientSecretsConnectionFormData"
+  [AppConnection.AzureClientSecrets]: "azureClientSecretsConnectionFormData",
+  [AppConnection.AzureDevOps]: "azureDevOpsConnectionFormData"
 };
 
 export const OAuthCallbackPage = () => {
@@ -252,6 +277,60 @@ export const OAuthCallbackPage = () => {
     };
   }, []);
 
+  const handleAzureDevOps = useCallback(async () => {
+    const formData = getFormData(AppConnection.AzureDevOps);
+    if (formData === null) return null;
+
+    clearState(AppConnection.AzureDevOps);
+
+    const { connectionId, name, description, returnUrl } = formData;
+
+    try {
+      if (!("tenantId" in formData)) {
+        throw new Error("Expected OAuth form data but got access token data");
+      }
+
+      if (connectionId) {
+        await updateAppConnection.mutateAsync({
+          app: AppConnection.AzureDevOps,
+          connectionId,
+          credentials: {
+            code: code as string,
+            tenantId: formData.tenantId as string,
+            orgName: formData.orgName
+          }
+        });
+      } else {
+        await createAppConnection.mutateAsync({
+          app: AppConnection.AzureDevOps,
+          name,
+          description,
+          method: AzureDevOpsConnectionMethod.OAuth,
+          credentials: {
+            code: code as string,
+            tenantId: formData.tenantId as string,
+            orgName: formData.orgName
+          }
+        });
+      }
+    } catch (err: any) {
+      createNotification({
+        title: `Failed to ${connectionId ? "update" : "add"} Azure DevOps Connection`,
+        text: err?.message,
+        type: "error"
+      });
+      navigate({
+        to: returnUrl ?? "/organization/app-connections"
+      });
+    }
+
+    return {
+      connectionId,
+      returnUrl,
+      appConnectionName: formData.app
+    };
+  }, []);
+
   const handleGithub = useCallback(async () => {
     const formData = getFormData(AppConnection.GitHub);
     if (formData === null) return null;
@@ -318,6 +397,54 @@ export const OAuthCallbackPage = () => {
     };
   }, []);
 
+  const handleGithubRadar = useCallback(async () => {
+    const formData = getFormData(AppConnection.GitHubRadar);
+    if (formData === null) return null;
+
+    clearState(AppConnection.GitHubRadar);
+
+    const { connectionId, name, description, returnUrl } = formData;
+
+    try {
+      if (connectionId) {
+        await updateAppConnection.mutateAsync({
+          app: AppConnection.GitHubRadar,
+          connectionId,
+          credentials: {
+            code: code as string,
+            installationId: installationId as string
+          }
+        });
+      } else {
+        await createAppConnection.mutateAsync({
+          app: AppConnection.GitHubRadar,
+          name,
+          description,
+          method: GitHubConnectionMethod.App,
+          credentials: {
+            code: code as string,
+            installationId: installationId as string
+          }
+        });
+      }
+    } catch (e: any) {
+      createNotification({
+        title: `Failed to ${connectionId ? "update" : "add"} GitHub Radar Connection`,
+        text: e.message,
+        type: "error"
+      });
+      navigate({
+        to: returnUrl ?? "/organization/app-connections"
+      });
+    }
+
+    return {
+      connectionId,
+      returnUrl,
+      appConnectionName: formData.app
+    };
+  }, []);
+
   // Ensure that the localstorage is ready for use, to avoid the form data being malformed
   useEffect(() => {
     if (!isReady) {
@@ -334,12 +461,16 @@ export const OAuthCallbackPage = () => {
 
       if (appConnection === AppConnection.GitHub) {
         data = await handleGithub();
+      } else if (appConnection === AppConnection.GitHubRadar) {
+        data = await handleGithubRadar();
       } else if (appConnection === AppConnection.AzureKeyVault) {
         data = await handleAzureKeyVault();
       } else if (appConnection === AppConnection.AzureAppConfiguration) {
         data = await handleAzureAppConfiguration();
       } else if (appConnection === AppConnection.AzureClientSecrets) {
         data = await handleAzureClientSecrets();
+      } else if (appConnection === AppConnection.AzureDevOps) {
+        data = await handleAzureDevOps();
       }
 
       if (data) {

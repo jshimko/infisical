@@ -11,7 +11,7 @@ import {
   constructPermissionErrorMessage,
   validatePrivilegeChangeOperation
 } from "@app/ee/services/permission/permission-fns";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { getConfig } from "@app/lib/config/env";
 import { BadRequestError, NotFoundError, PermissionBoundaryError, UnauthorizedError } from "@app/lib/errors";
 import { extractIPDetails, isValidIpOrCidr } from "@app/lib/ip";
@@ -94,7 +94,9 @@ export const identityAwsAuthServiceFactory = ({
 
     const headers: TAwsGetCallerIdentityHeaders = JSON.parse(Buffer.from(iamRequestHeaders, "base64").toString());
     const body: string = Buffer.from(iamRequestBody, "base64").toString();
-    const region = headers.Authorization ? awsRegionFromHeader(headers.Authorization) : null;
+
+    const authHeader = headers.Authorization || headers.authorization;
+    const region = authHeader ? awsRegionFromHeader(authHeader) : null;
 
     if (!isValidAwsRegion(region)) {
       throw new BadRequestError({ message: "Invalid AWS region" });

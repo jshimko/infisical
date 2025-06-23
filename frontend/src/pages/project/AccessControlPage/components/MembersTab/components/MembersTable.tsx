@@ -9,8 +9,8 @@ import {
   faFilter,
   faMagnifyingGlass,
   faSearch,
-  faTrash,
-  faUsers
+  faUsers,
+  faUserXmark
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useNavigate } from "@tanstack/react-router";
@@ -51,6 +51,11 @@ import {
   useWorkspace
 } from "@app/context";
 import { formatProjectRoleName } from "@app/helpers/roles";
+import {
+  getUserTablePreference,
+  PreferenceKey,
+  setUserTablePreference
+} from "@app/helpers/userTablePreferences";
 import { usePagination, useResetPageHelper } from "@app/hooks";
 import { useGetProjectRoles, useGetWorkspaceUsers } from "@app/hooks/api";
 import { OrderByDirection } from "@app/hooks/api/generic/types";
@@ -101,12 +106,12 @@ export const MembersTable = ({ handlePopUpOpen }: Props) => {
     setOrderDirection,
     toggleOrderDirection
   } = usePagination<MembersOrderBy>(MembersOrderBy.Name, {
-    initPerPage: parseInt(localStorage.getItem("PROJECT_MEMBERS_TABLE_PER_PAGE") || "20", 10)
+    initPerPage: getUserTablePreference("projectMembersTable", PreferenceKey.PerPage, 20)
   });
 
   const handlePerPageChange = (newPerPage: number) => {
     setPerPage(newPerPage);
-    localStorage.setItem("PROJECT_MEMBERS_TABLE_PER_PAGE", newPerPage.toString());
+    setUserTablePreference("projectMembersTable", PreferenceKey.PerPage, newPerPage);
   };
 
   const { data: members = [], isPending: isMembersLoading } = useGetWorkspaceUsers(
@@ -411,32 +416,40 @@ export const MembersTable = ({ handlePopUpOpen }: Props) => {
                     </Td>
                     <Td>
                       {userId !== u?.id && (
-                        <div className="flex items-center space-x-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                          <ProjectPermissionCan
-                            I={ProjectPermissionActions.Delete}
-                            a={ProjectPermissionSub.Member}
-                          >
-                            {(isAllowed) => (
+                        <Tooltip className="max-w-sm text-center" content="Options">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
                               <IconButton
-                                colorSchema="danger"
+                                ariaLabel="Options"
+                                colorSchema="secondary"
+                                className="w-6"
                                 variant="plain"
-                                ariaLabel="update"
-                                className="ml-4"
-                                isDisabled={userId === u?.id || !isAllowed}
-                                onClick={(evt) => {
-                                  evt.preventDefault();
-                                  evt.stopPropagation();
-                                  handlePopUpOpen("removeMember", { username: u.username });
-                                }}
                               >
-                                <FontAwesomeIcon icon={faTrash} />
+                                <FontAwesomeIcon icon={faEllipsisV} />
                               </IconButton>
-                            )}
-                          </ProjectPermissionCan>
-                          <IconButton ariaLabel="more-icon" variant="plain">
-                            <FontAwesomeIcon icon={faEllipsisV} />
-                          </IconButton>
-                        </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent sideOffset={2} align="end">
+                              <ProjectPermissionCan
+                                I={ProjectPermissionActions.Delete}
+                                a={ProjectPermissionSub.Member}
+                              >
+                                {(isAllowed) => (
+                                  <DropdownMenuItem
+                                    icon={<FontAwesomeIcon icon={faUserXmark} />}
+                                    isDisabled={!isAllowed}
+                                    onClick={(evt) => {
+                                      evt.preventDefault();
+                                      evt.stopPropagation();
+                                      handlePopUpOpen("removeMember", { username: u.username });
+                                    }}
+                                  >
+                                    Remove User From Project
+                                  </DropdownMenuItem>
+                                )}
+                              </ProjectPermissionCan>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </Tooltip>
                       )}
                     </Td>
                   </Tr>

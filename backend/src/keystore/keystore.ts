@@ -1,9 +1,8 @@
-import { Redis } from "ioredis";
-
+import { buildRedisFromConfig, TRedisConfigKeys } from "@app/lib/config/redis";
 import { pgAdvisoryLockHashText } from "@app/lib/crypto/hashtext";
 import { applyJitter } from "@app/lib/dates";
 import { delay as delayMs } from "@app/lib/delay";
-import { Redlock, Settings } from "@app/lib/red-lock";
+import { ExecutionResult, Redlock, Settings } from "@app/lib/red-lock";
 
 export const PgSqlLock = {
   BootUpMigration: 2023,
@@ -11,10 +10,9 @@ export const PgSqlLock = {
   KmsRootKeyInit: 2025,
   OrgGatewayRootCaInit: (orgId: string) => pgAdvisoryLockHashText(`org-gateway-root-ca:${orgId}`),
   OrgGatewayCertExchange: (orgId: string) => pgAdvisoryLockHashText(`org-gateway-cert-exchange:${orgId}`),
-  SecretRotationV2Creation: (folderId: string) => pgAdvisoryLockHashText(`secret-rotation-v2-creation:${folderId}`)
+  SecretRotationV2Creation: (folderId: string) => pgAdvisoryLockHashText(`secret-rotation-v2-creation:${folderId}`),
+  CreateProject: (orgId: string) => pgAdvisoryLockHashText(`create-project:${orgId}`)
 } as const;
-
-export type TKeyStoreFactory = ReturnType<typeof keyStoreFactory>;
 
 // all the key prefixes used must be set here to avoid conflict
 export const KeyStorePrefixes = {
@@ -27,6 +25,7 @@ export const KeyStorePrefixes = {
   KmsOrgDataKeyCreation: "kms-org-data-key-creation-lock",
   WaitUntilReadyKmsOrgKeyCreation: "wait-until-ready-kms-org-key-creation-",
   WaitUntilReadyKmsOrgDataKeyCreation: "wait-until-ready-kms-org-data-key-creation-",
+  FolderTreeCheckpoint: (envId: string) => `folder-tree-checkpoint-${envId}`,
 
   WaitUntilReadyProjectEnvironmentOperation: (projectId: string) =>
     `wait-until-ready-project-environments-operation-${projectId}`,
@@ -37,6 +36,10 @@ export const KeyStorePrefixes = {
     `sync-integration-last-run-${projectId}-${environmentSlug}-${secretPath}` as const,
   SecretSyncLock: (syncId: string) => `secret-sync-mutex-${syncId}` as const,
   SecretRotationLock: (rotationId: string) => `secret-rotation-v2-mutex-${rotationId}` as const,
+  SecretScanningLock: (dataSourceId: string, resourceExternalId: string) =>
+    `secret-scanning-v2-mutex-${dataSourceId}-${resourceExternalId}` as const,
+  CaOrderCertificateForSubscriberLock: (subscriberId: string) =>
+    `ca-order-certificate-for-subscriber-lock-${subscriberId}` as const,
   SecretSyncLastRunTimestamp: (syncId: string) => `secret-sync-last-run-${syncId}` as const,
   IdentityAccessTokenStatusUpdate: (identityAccessTokenId: string) =>
     `identity-access-token-status:${identityAccessTokenId}`,
@@ -66,8 +69,29 @@ type TWaitTillReady = {
   jitter?: number;
 };
 
-export const keyStoreFactory = (redisUrl: string) => {
-  const redis = new Redis(redisUrl);
+export type TKeyStoreFactory = {
+  setItem: (key: string, value: string | number | Buffer, prefix?: string) => Promise<"OK">;
+  getItem: (key: string, prefix?: string) => Promise<string | null>;
+  setExpiry: (key: string, expiryInSeconds: number) => Promise<number>;
+  setItemWithExpiry: (
+    key: string,
+    expiryInSeconds: number | string,
+    value: string | number | Buffer,
+    prefix?: string
+  ) => Promise<"OK">;
+  deleteItem: (key: string) => Promise<number>;
+  deleteItems: (arg: TDeleteItems) => Promise<number>;
+  incrementBy: (key: string, value: number) => Promise<number>;
+  acquireLock(
+    resources: string[],
+    duration: number,
+    settings?: Partial<Settings>
+  ): Promise<{ release: () => Promise<ExecutionResult> }>;
+  waitTillReady: ({ key, waitingCb, keyCheckCb, waitIteration, delay, jitter }: TWaitTillReady) => Promise<void>;
+};
+
+export const keyStoreFactory = (redisConfigKeys: TRedisConfigKeys): TKeyStoreFactory => {
+  const redis = buildRedisFromConfig(redisConfigKeys);
   const redisLock = new Redlock([redis], { retryCount: 2, retryDelay: 200 });
 
   const setItem = async (key: string, value: string | number | Buffer, prefix?: string) =>
@@ -103,7 +127,6 @@ export const keyStoreFactory = (redisUrl: string) => {
         // eslint-disable-next-line no-await-in-loop
         await pipeline.exec();
         totalDeleted += batch.length;
-        console.log("BATCH DONE");
 
         // eslint-disable-next-line no-await-in-loop
         await delayMs(Math.max(0, applyJitter(delay, jitter)));

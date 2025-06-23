@@ -35,6 +35,12 @@ export type TAdminGetIdentitiesDTO = {
   searchTerm: string;
 };
 
+export type TGetOrganizationsDTO = {
+  offset: number;
+  limit: number;
+  searchTerm: string;
+};
+
 export enum LoginMethod {
   EMAIL = "email",
   GOOGLE = "google",
@@ -49,3 +55,22 @@ export enum CacheType {
   ALL = "all",
   SECRETS = "secrets"
 }
+
+export type TAdminIntegrationConfig = {
+  slack: {
+    clientSecret: string;
+    clientId: string;
+  };
+  microsoftTeams: {
+    appId: string;
+    clientSecret: string;
+    botId: string;
+  };
+  gitHubAppConnection: {
+    clientId: string;
+    clientSecret: string;
+    appSlug: string;
+    appId: string;
+    privateKey: string;
+  };
+};

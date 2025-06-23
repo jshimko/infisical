@@ -3,6 +3,7 @@ import { Knex } from "knex";
 import { TDbClient } from "@app/db";
 import {
   TableName,
+  TIdentityAlicloudAuths,
   TIdentityAwsAuths,
   TIdentityAzureAuths,
   TIdentityGcpAuths,
@@ -53,6 +54,11 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           `${TableName.IdentityOrgMembership}.identityId`,
           `${TableName.IdentityGcpAuth}.identityId`
         )
+        .leftJoin<TIdentityAlicloudAuths>(
+          TableName.IdentityAliCloudAuth,
+          `${TableName.IdentityOrgMembership}.identityId`,
+          `${TableName.IdentityAliCloudAuth}.identityId`
+        )
         .leftJoin<TIdentityAwsAuths>(
           TableName.IdentityAwsAuth,
           `${TableName.IdentityOrgMembership}.identityId`,
@@ -99,6 +105,7 @@ export const identityOrgDALFactory = (db: TDbClient) => {
 
           db.ref("id").as("uaId").withSchema(TableName.IdentityUniversalAuth),
           db.ref("id").as("gcpId").withSchema(TableName.IdentityGcpAuth),
+          db.ref("id").as("alicloudId").withSchema(TableName.IdentityAliCloudAuth),
           db.ref("id").as("awsId").withSchema(TableName.IdentityAwsAuth),
           db.ref("id").as("kubernetesId").withSchema(TableName.IdentityKubernetesAuth),
           db.ref("id").as("ociId").withSchema(TableName.IdentityOciAuth),
@@ -107,16 +114,18 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           db.ref("id").as("tokenId").withSchema(TableName.IdentityTokenAuth),
           db.ref("id").as("jwtId").withSchema(TableName.IdentityJwtAuth),
           db.ref("id").as("ldapId").withSchema(TableName.IdentityLdapAuth),
-          db.ref("name").withSchema(TableName.Identity)
+          db.ref("name").withSchema(TableName.Identity),
+          db.ref("hasDeleteProtection").withSchema(TableName.Identity)
         );
 
       if (data) {
-        const { name } = data;
+        const { name, hasDeleteProtection } = data;
         return {
           ...data,
           identity: {
             id: data.identityId,
             name,
+            hasDeleteProtection,
             authMethods: buildAuthMethods(data)
           }
         };
@@ -148,7 +157,8 @@ export const identityOrgDALFactory = (db: TDbClient) => {
         .orderBy(`${TableName.Identity}.${orderBy}`, orderDirection)
         .select(
           selectAllTableCols(TableName.IdentityOrgMembership),
-          db.ref("name").withSchema(TableName.Identity).as("identityName")
+          db.ref("name").withSchema(TableName.Identity).as("identityName"),
+          db.ref("hasDeleteProtection").withSchema(TableName.Identity)
         )
         .where(filter)
         .as("paginatedIdentity");
@@ -182,6 +192,11 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           TableName.IdentityGcpAuth,
           "paginatedIdentity.identityId",
           `${TableName.IdentityGcpAuth}.identityId`
+        )
+        .leftJoin<TIdentityAlicloudAuths>(
+          TableName.IdentityAliCloudAuth,
+          "paginatedIdentity.identityId",
+          `${TableName.IdentityAliCloudAuth}.identityId`
         )
         .leftJoin<TIdentityAwsAuths>(
           TableName.IdentityAwsAuth,
@@ -233,9 +248,11 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           db.ref("updatedAt").withSchema("paginatedIdentity"),
           db.ref("identityId").withSchema("paginatedIdentity").as("identityId"),
           db.ref("identityName").withSchema("paginatedIdentity"),
+          db.ref("hasDeleteProtection").withSchema("paginatedIdentity"),
 
           db.ref("id").as("uaId").withSchema(TableName.IdentityUniversalAuth),
           db.ref("id").as("gcpId").withSchema(TableName.IdentityGcpAuth),
+          db.ref("id").as("alicloudId").withSchema(TableName.IdentityAliCloudAuth),
           db.ref("id").as("awsId").withSchema(TableName.IdentityAwsAuth),
           db.ref("id").as("kubernetesId").withSchema(TableName.IdentityKubernetesAuth),
           db.ref("id").as("ociId").withSchema(TableName.IdentityOciAuth),
@@ -273,11 +290,13 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           crName,
           identityId,
           identityName,
+          hasDeleteProtection,
           role,
           roleId,
           id,
           orgId,
           uaId,
+          alicloudId,
           awsId,
           gcpId,
           jwtId,
@@ -310,8 +329,10 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           identity: {
             id: identityId,
             name: identityName,
+            hasDeleteProtection,
             authMethods: buildAuthMethods({
               uaId,
+              alicloudId,
               awsId,
               gcpId,
               kubernetesId,
@@ -407,6 +428,11 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           `${TableName.IdentityGcpAuth}.identityId`
         )
         .leftJoin(
+          TableName.IdentityAliCloudAuth,
+          `${TableName.IdentityOrgMembership}.identityId`,
+          `${TableName.IdentityAliCloudAuth}.identityId`
+        )
+        .leftJoin(
           TableName.IdentityAwsAuth,
           `${TableName.IdentityOrgMembership}.identityId`,
           `${TableName.IdentityAwsAuth}.identityId`
@@ -456,9 +482,11 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           db.ref("updatedAt").withSchema(TableName.IdentityOrgMembership),
           db.ref("identityId").withSchema(TableName.IdentityOrgMembership).as("identityId"),
           db.ref("name").withSchema(TableName.Identity).as("identityName"),
+          db.ref("hasDeleteProtection").withSchema(TableName.Identity),
 
           db.ref("id").as("uaId").withSchema(TableName.IdentityUniversalAuth),
           db.ref("id").as("gcpId").withSchema(TableName.IdentityGcpAuth),
+          db.ref("id").as("alicloudId").withSchema(TableName.IdentityAliCloudAuth),
           db.ref("id").as("awsId").withSchema(TableName.IdentityAwsAuth),
           db.ref("id").as("kubernetesId").withSchema(TableName.IdentityKubernetesAuth),
           db.ref("id").as("ociId").withSchema(TableName.IdentityOciAuth),
@@ -497,11 +525,13 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           crName,
           identityId,
           identityName,
+          hasDeleteProtection,
           role,
           roleId,
           total_count,
           id,
           uaId,
+          alicloudId,
           awsId,
           gcpId,
           jwtId,
@@ -534,8 +564,10 @@ export const identityOrgDALFactory = (db: TDbClient) => {
           identity: {
             id: identityId,
             name: identityName,
+            hasDeleteProtection,
             authMethods: buildAuthMethods({
               uaId,
+              alicloudId,
               awsId,
               gcpId,
               kubernetesId,

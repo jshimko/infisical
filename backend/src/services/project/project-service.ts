@@ -6,29 +6,33 @@ import {
   ProjectMembershipRole,
   ProjectType,
   ProjectVersion,
+  TableName,
   TProjectEnvironments
 } from "@app/db/schemas";
 import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
 import { OrgPermissionActions, OrgPermissionSubjects } from "@app/ee/services/permission/org-permission";
 import { throwIfMissingSecretReadValueOrDescribePermission } from "@app/ee/services/permission/permission-fns";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import {
   ProjectPermissionActions,
   ProjectPermissionCertificateActions,
   ProjectPermissionPkiSubscriberActions,
+  ProjectPermissionPkiTemplateActions,
   ProjectPermissionSecretActions,
   ProjectPermissionSshHostActions,
   ProjectPermissionSub
 } from "@app/ee/services/permission/project-permission";
-import { TProjectTemplateServiceFactory } from "@app/ee/services/project-template/project-template-service";
-import { InfisicalProjectTemplate } from "@app/ee/services/project-template/project-template-types";
+import {
+  InfisicalProjectTemplate,
+  TProjectTemplateServiceFactory
+} from "@app/ee/services/project-template/project-template-types";
 import { TSshCertificateAuthorityDALFactory } from "@app/ee/services/ssh/ssh-certificate-authority-dal";
 import { TSshCertificateAuthoritySecretDALFactory } from "@app/ee/services/ssh/ssh-certificate-authority-secret-dal";
 import { TSshCertificateDALFactory } from "@app/ee/services/ssh-certificate/ssh-certificate-dal";
 import { TSshCertificateTemplateDALFactory } from "@app/ee/services/ssh-certificate-template/ssh-certificate-template-dal";
 import { TSshHostDALFactory } from "@app/ee/services/ssh-host/ssh-host-dal";
 import { TSshHostGroupDALFactory } from "@app/ee/services/ssh-host-group/ssh-host-group-dal";
-import { TKeyStoreFactory } from "@app/keystore/keystore";
+import { PgSqlLock, TKeyStoreFactory } from "@app/keystore/keystore";
 import { getConfig } from "@app/lib/config/env";
 import { infisicalSymmetricEncypt } from "@app/lib/crypto/encryption";
 import { BadRequestError, ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
@@ -41,6 +45,7 @@ import { TPkiSubscriberDALFactory } from "@app/services/pki-subscriber/pki-subsc
 import { ActorType } from "../auth/auth-type";
 import { TCertificateDALFactory } from "../certificate/certificate-dal";
 import { TCertificateAuthorityDALFactory } from "../certificate-authority/certificate-authority-dal";
+import { expandInternalCa } from "../certificate-authority/certificate-authority-fns";
 import { TCertificateTemplateDALFactory } from "../certificate-template/certificate-template-dal";
 import { TGroupProjectDALFactory } from "../group-project/group-project-dal";
 import { TIdentityOrgDALFactory } from "../identity/identity-org-dal";
@@ -149,7 +154,7 @@ type TProjectServiceFactoryDep = {
   >;
   projectUserMembershipRoleDAL: Pick<TProjectUserMembershipRoleDALFactory, "create">;
   pkiSubscriberDAL: Pick<TPkiSubscriberDALFactory, "find">;
-  certificateAuthorityDAL: Pick<TCertificateAuthorityDALFactory, "find">;
+  certificateAuthorityDAL: Pick<TCertificateAuthorityDALFactory, "find" | "findWithAssociatedCa">;
   certificateDAL: Pick<TCertificateDALFactory, "find" | "countCertificatesInProject">;
   certificateTemplateDAL: Pick<TCertificateTemplateDALFactory, "getCertTemplatesByProjectId">;
   pkiAlertDAL: Pick<TPkiAlertDALFactory, "find">;
@@ -162,7 +167,7 @@ type TProjectServiceFactoryDep = {
   sshHostGroupDAL: Pick<TSshHostGroupDALFactory, "find" | "findSshHostGroupsWithLoginMappings">;
   permissionService: TPermissionServiceFactory;
   orgService: Pick<TOrgServiceFactory, "addGhostUser">;
-  licenseService: Pick<TLicenseServiceFactory, "getPlan">;
+  licenseService: Pick<TLicenseServiceFactory, "getPlan" | "invalidateGetPlan">;
   queueService: Pick<TQueueServiceFactory, "stopRepeatableJob">;
   smtpService: Pick<TSmtpService, "sendMail">;
   orgDAL: Pick<TOrgDALFactory, "findOne">;
@@ -256,16 +261,21 @@ export const projectServiceFactory = ({
     );
     ForbiddenError.from(permission).throwUnlessCan(OrgPermissionActions.Create, OrgPermissionSubjects.Workspace);
 
-    const plan = await licenseService.getPlan(organization.id);
-    if (plan.workspaceLimit !== null && plan.workspacesUsed >= plan.workspaceLimit) {
-      // case: limit imposed on number of workspaces allowed
-      // case: number of workspaces used exceeds the number of workspaces allowed
-      throw new BadRequestError({
-        message: "Failed to create workspace due to plan limit reached. Upgrade plan to add more workspaces."
-      });
-    }
-
     const results = await (trx || projectDAL).transaction(async (tx) => {
+      await tx.raw("SELECT pg_advisory_xact_lock(?)", [PgSqlLock.CreateProject(organization.id)]);
+
+      const plan = await licenseService.getPlan(organization.id);
+      if (
+        plan.workspaceLimit !== null &&
+        plan.workspacesUsed >= plan.workspaceLimit &&
+        type === ProjectType.SecretManager
+      ) {
+        // case: limit imposed on number of workspaces allowed
+        // case: number of workspaces used exceeds the number of workspaces allowed
+        throw new BadRequestError({
+          message: "Failed to create workspace due to plan limit reached. Upgrade plan to add more workspaces."
+        });
+      }
       const ghostUser = await orgService.addGhostUser(organization.id, tx);
 
       if (kmsKeyId) {
@@ -490,6 +500,10 @@ export const projectServiceFactory = ({
         );
       }
 
+      // no need to invalidate if there was no limit
+      if (plan.workspaceLimit) {
+        await licenseService.invalidateGetPlan(organization.id);
+      }
       return {
         ...project,
         environments: envs,
@@ -570,12 +584,16 @@ export const projectServiceFactory = ({
 
   const getProjects = async ({
     actorId,
+    actor,
     includeRoles,
     actorAuthMethod,
     actorOrgId,
     type = ProjectType.SecretManager
   }: TListProjectsDTO) => {
-    const workspaces = await projectDAL.findUserProjects(actorId, actorOrgId, type);
+    const workspaces =
+      actor === ActorType.IDENTITY
+        ? await projectDAL.findIdentityProjects(actorId, actorOrgId, type)
+        : await projectDAL.findUserProjects(actorId, actorOrgId, type);
 
     if (includeRoles) {
       const { permission } = await permissionService.getUserOrgPermission(
@@ -659,7 +677,8 @@ export const projectServiceFactory = ({
       enforceCapitalization: update.autoCapitalization,
       hasDeleteProtection: update.hasDeleteProtection,
       slug: update.slug,
-      secretSharing: update.secretSharing
+      secretSharing: update.secretSharing,
+      showSnapshotsLegacy: update.showSnapshotsLegacy
     });
 
     return updatedProject;
@@ -914,17 +933,20 @@ export const projectServiceFactory = ({
       ProjectPermissionSub.CertificateAuthorities
     );
 
-    const cas = await certificateAuthorityDAL.find(
+    const cas = await certificateAuthorityDAL.findWithAssociatedCa(
       {
-        projectId,
-        ...(status && { status }),
-        ...(friendlyName && { friendlyName }),
-        ...(commonName && { commonName })
+        [`${TableName.CertificateAuthority}.projectId` as "projectId"]: projectId,
+        $notNull: [`${TableName.InternalCertificateAuthority}.id` as "id"],
+        ...(status && { [`${TableName.CertificateAuthority}.status` as "status"]: status }),
+        ...(friendlyName && {
+          [`${TableName.InternalCertificateAuthority}.friendlyName` as "friendlyName"]: friendlyName
+        }),
+        ...(commonName && { [`${TableName.InternalCertificateAuthority}.commonName` as "commonName"]: commonName })
       },
       { offset, limit, sort: [["updatedAt", "desc"]] }
     );
 
-    return cas;
+    return cas.map((ca) => expandInternalCa(ca));
   };
 
   /**
@@ -965,13 +987,9 @@ export const projectServiceFactory = ({
       ProjectPermissionSub.Certificates
     );
 
-    const cas = await certificateAuthorityDAL.find({ projectId });
-
     const certificates = await certificateDAL.find(
       {
-        $in: {
-          caId: cas.map((ca) => ca.id)
-        },
+        projectId,
         ...(friendlyName && { friendlyName }),
         ...(commonName && { commonName })
       },
@@ -1130,15 +1148,15 @@ export const projectServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
-    ForbiddenError.from(permission).throwUnlessCan(
-      ProjectPermissionActions.Read,
-      ProjectPermissionSub.CertificateTemplates
-    );
-
     const certificateTemplates = await certificateTemplateDAL.getCertTemplatesByProjectId(projectId);
 
     return {
-      certificateTemplates
+      certificateTemplates: certificateTemplates.filter((el) =>
+        permission.can(
+          ProjectPermissionPkiTemplateActions.Read,
+          subject(ProjectPermissionSub.CertificateTemplates, { name: el.name })
+        )
+      )
     };
   };
 

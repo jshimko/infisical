@@ -2,16 +2,22 @@ import { useMemo } from "react";
 import {
   faArrowDown,
   faArrowUp,
+  faEllipsisV,
   faMagnifyingGlass,
   faSearch,
-  faTrash,
-  faUsers
+  faUsers,
+  faUsersSlash
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { useNavigate } from "@tanstack/react-router";
 import { format } from "date-fns";
 
 import { ProjectPermissionCan } from "@app/components/permissions";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   EmptyState,
   IconButton,
   Input,
@@ -27,6 +33,11 @@ import {
   Tr
 } from "@app/components/v2";
 import { ProjectPermissionActions, ProjectPermissionSub, useWorkspace } from "@app/context";
+import {
+  getUserTablePreference,
+  PreferenceKey,
+  setUserTablePreference
+} from "@app/helpers/userTablePreferences";
 import { usePagination, useResetPageHelper } from "@app/hooks";
 import { useListWorkspaceGroups } from "@app/hooks/api";
 import { OrderByDirection } from "@app/hooks/api/generic/types";
@@ -50,6 +61,7 @@ enum GroupsOrderBy {
 
 export const GroupTable = ({ handlePopUpOpen }: Props) => {
   const { currentWorkspace } = useWorkspace();
+  const navigate = useNavigate();
 
   const {
     search,
@@ -62,7 +74,14 @@ export const GroupTable = ({ handlePopUpOpen }: Props) => {
     orderDirection,
     orderBy,
     toggleOrderDirection
-  } = usePagination(GroupsOrderBy.Name, { initPerPage: 20 });
+  } = usePagination(GroupsOrderBy.Name, {
+    initPerPage: getUserTablePreference("projectGroupsTable", PreferenceKey.PerPage, 20)
+  });
+
+  const handlePerPageChange = (newPerPage: number) => {
+    setPerPage(newPerPage);
+    setUserTablePreference("projectGroupsTable", PreferenceKey.PerPage, newPerPage);
+  };
 
   const { data: groupMemberships = [], isPending } = useListWorkspaceGroups(
     currentWorkspace?.id || ""
@@ -131,7 +150,32 @@ export const GroupTable = ({ handlePopUpOpen }: Props) => {
                 .slice(offset, perPage * page)
                 .map(({ group: { id, name }, roles, createdAt }) => {
                   return (
-                    <Tr className="group h-10" key={`st-v3-${id}`}>
+                    <Tr
+                      className="group h-10 w-full cursor-pointer transition-colors duration-100 hover:bg-mineshaft-700"
+                      key={`st-v3-${id}`}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(evt) => {
+                        if (evt.key === "Enter") {
+                          navigate({
+                            to: `/${currentWorkspace.type}/$projectId/groups/$groupId` as const,
+                            params: {
+                              projectId: currentWorkspace.id,
+                              groupId: id
+                            }
+                          });
+                        }
+                      }}
+                      onClick={() =>
+                        navigate({
+                          to: `/${currentWorkspace.type}/$projectId/groups/$groupId` as const,
+                          params: {
+                            projectId: currentWorkspace.id,
+                            groupId: id
+                          }
+                        })
+                      }
+                    >
                       <Td>{name}</Td>
                       <Td>
                         <ProjectPermissionCan
@@ -145,32 +189,42 @@ export const GroupTable = ({ handlePopUpOpen }: Props) => {
                       </Td>
                       <Td>{format(new Date(createdAt), "yyyy-MM-dd")}</Td>
                       <Td className="flex justify-end">
-                        <ProjectPermissionCan
-                          I={ProjectPermissionActions.Delete}
-                          a={ProjectPermissionSub.Groups}
-                        >
-                          {(isAllowed) => (
-                            <div className="opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                              <Tooltip content="Remove">
-                                <IconButton
-                                  onClick={() => {
-                                    handlePopUpOpen("deleteGroup", {
-                                      id,
-                                      name
-                                    });
-                                  }}
-                                  colorSchema="danger"
-                                  variant="plain"
-                                  ariaLabel="update"
-                                  className="ml-4"
-                                  isDisabled={!isAllowed}
-                                >
-                                  <FontAwesomeIcon icon={faTrash} />
-                                </IconButton>
-                              </Tooltip>
-                            </div>
-                          )}
-                        </ProjectPermissionCan>
+                        <Tooltip className="max-w-sm text-center" content="Options">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <IconButton
+                                ariaLabel="Options"
+                                colorSchema="secondary"
+                                className="w-6"
+                                variant="plain"
+                              >
+                                <FontAwesomeIcon icon={faEllipsisV} />
+                              </IconButton>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent sideOffset={2} align="end">
+                              <ProjectPermissionCan
+                                I={ProjectPermissionActions.Delete}
+                                a={ProjectPermissionSub.Groups}
+                              >
+                                {(isAllowed) => (
+                                  <DropdownMenuItem
+                                    icon={<FontAwesomeIcon icon={faUsersSlash} />}
+                                    isDisabled={!isAllowed}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePopUpOpen("deleteGroup", {
+                                        id,
+                                        name
+                                      });
+                                    }}
+                                  >
+                                    Remove Group From Project
+                                  </DropdownMenuItem>
+                                )}
+                              </ProjectPermissionCan>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </Tooltip>
                       </Td>
                     </Tr>
                   );
@@ -183,7 +237,7 @@ export const GroupTable = ({ handlePopUpOpen }: Props) => {
             page={page}
             perPage={perPage}
             onChangePage={setPage}
-            onChangePerPage={setPerPage}
+            onChangePerPage={handlePerPageChange}
           />
         )}
         {!isPending && !filteredGroupMemberships?.length && (

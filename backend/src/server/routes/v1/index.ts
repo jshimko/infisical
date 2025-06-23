@@ -10,10 +10,12 @@ import { registerAdminRouter } from "./admin-router";
 import { registerAuthRoutes } from "./auth-router";
 import { registerProjectBotRouter } from "./bot-router";
 import { registerCaRouter } from "./certificate-authority-router";
+import { CERTIFICATE_AUTHORITY_REGISTER_ROUTER_MAP } from "./certificate-authority-routers";
 import { registerCertRouter } from "./certificate-router";
 import { registerCertificateTemplateRouter } from "./certificate-template-router";
 import { registerExternalGroupOrgRoleMappingRouter } from "./external-group-org-role-mapping-router";
 import { registerIdentityAccessTokenRouter } from "./identity-access-token-router";
+import { registerIdentityAliCloudAuthRouter } from "./identity-alicloud-auth-router";
 import { registerIdentityAwsAuthRouter } from "./identity-aws-iam-auth-router";
 import { registerIdentityAzureAuthRouter } from "./identity-azure-auth-router";
 import { registerIdentityGcpAuthRouter } from "./identity-gcp-auth-router";
@@ -62,6 +64,7 @@ export const registerV1Routes = async (server: FastifyZodProvider) => {
       await authRouter.register(registerIdentityKubernetesRouter);
       await authRouter.register(registerIdentityGcpAuthRouter);
       await authRouter.register(registerIdentityAccessTokenRouter);
+      await authRouter.register(registerIdentityAliCloudAuthRouter);
       await authRouter.register(registerIdentityAwsAuthRouter);
       await authRouter.register(registerIdentityAzureAuthRouter);
       await authRouter.register(registerIdentityOciAuthRouter);
@@ -104,6 +107,16 @@ export const registerV1Routes = async (server: FastifyZodProvider) => {
   await server.register(
     async (pkiRouter) => {
       await pkiRouter.register(registerCaRouter, { prefix: "/ca" });
+      await pkiRouter.register(
+        async (caRouter) => {
+          for await (const [caType, router] of Object.entries(CERTIFICATE_AUTHORITY_REGISTER_ROUTER_MAP)) {
+            await caRouter.register(router, { prefix: `/${caType}` });
+          }
+        },
+        {
+          prefix: "/ca"
+        }
+      );
       await pkiRouter.register(registerCertRouter, { prefix: "/certificates" });
       await pkiRouter.register(registerCertificateTemplateRouter, { prefix: "/certificate-templates" });
       await pkiRouter.register(registerPkiAlertRouter, { prefix: "/alerts" });

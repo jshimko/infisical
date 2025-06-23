@@ -12,8 +12,10 @@ export type TDynamicSecret = {
   defaultTTL: string;
   status?: DynamicSecretStatus;
   statusDetails?: string;
-  maxTTL: string;
+  maxTTL?: string;
+  usernameTemplate?: string | null;
   metadata?: { key: string; value: string }[];
+  tags?: { key: string; value: string }[];
 };
 
 export enum DynamicSecretProviders {
@@ -31,7 +33,16 @@ export enum DynamicSecretProviders {
   SapHana = "sap-hana",
   Snowflake = "snowflake",
   Totp = "totp",
-  SapAse = "sap-ase"
+  SapAse = "sap-ase",
+  Kubernetes = "kubernetes",
+  Vertica = "vertica",
+  GcpIam = "gcp-iam",
+  Github = "github"
+}
+
+export enum KubernetesDynamicSecretCredentialType {
+  Static = "static",
+  Dynamic = "dynamic"
 }
 
 export enum SqlProviders {
@@ -39,6 +50,11 @@ export enum SqlProviders {
   MySql = "mysql2",
   Oracle = "oracledb",
   MsSQL = "mssql"
+}
+
+export enum DynamicSecretAwsIamAuth {
+  AssumeRole = "assume-role",
+  AccessKey = "access-key"
 }
 
 export type TDynamicSecretProvider =
@@ -75,15 +91,27 @@ export type TDynamicSecretProvider =
     }
   | {
       type: DynamicSecretProviders.AwsIam;
-      inputs: {
-        accessKey: string;
-        secretAccessKey: string;
-        region: string;
-        awsPath?: string;
-        policyDocument?: string;
-        userGroups?: string;
-        policyArns?: string;
-      };
+      tags?: { key: string; value: string }[];
+      inputs:
+        | {
+            method: DynamicSecretAwsIamAuth.AccessKey;
+            accessKey: string;
+            secretAccessKey: string;
+            region: string;
+            awsPath?: string;
+            policyDocument?: string;
+            userGroups?: string;
+            policyArns?: string;
+          }
+        | {
+            method: DynamicSecretAwsIamAuth.AssumeRole;
+            roleArn: string;
+            region: string;
+            awsPath?: string;
+            policyDocument?: string;
+            userGroups?: string;
+            policyArns?: string;
+          };
     }
   | {
       type: DynamicSecretProviders.Redis;
@@ -261,6 +289,61 @@ export type TDynamicSecretProvider =
             algorithm?: string;
             digits?: number;
           };
+    }
+  | {
+      type: DynamicSecretProviders.Kubernetes;
+      inputs:
+        | {
+            url?: string;
+            clusterToken?: string;
+            ca?: string;
+            serviceAccountName: string;
+            credentialType: KubernetesDynamicSecretCredentialType.Static;
+            namespace: string;
+            gatewayId?: string;
+            sslEnabled: boolean;
+            audiences: string[];
+            authMethod: string;
+          }
+        | {
+            url?: string;
+            clusterToken?: string;
+            ca?: string;
+            credentialType: KubernetesDynamicSecretCredentialType.Dynamic;
+            namespace: string;
+            gatewayId?: string;
+            sslEnabled: boolean;
+            audiences: string[];
+            roleType: string;
+            role: string;
+            authMethod: string;
+          };
+    }
+  | {
+      type: DynamicSecretProviders.Vertica;
+      inputs: {
+        host: string;
+        port: number;
+        database: string;
+        username: string;
+        password: string;
+        creationStatement: string;
+        revocationStatement: string;
+      };
+    }
+  | {
+      type: DynamicSecretProviders.GcpIam;
+      inputs: {
+        serviceAccountEmail: string;
+      };
+    }
+  | {
+      type: DynamicSecretProviders.Github;
+      inputs: {
+        appId: number;
+        installationId: number;
+        privateKey: string;
+      };
     };
 
 export type TCreateDynamicSecretDTO = {
@@ -272,6 +355,8 @@ export type TCreateDynamicSecretDTO = {
   environmentSlug: string;
   name: string;
   metadata?: { key: string; value: string }[];
+  usernameTemplate?: string;
+  tags?: { key: string; value: string }[];
 };
 
 export type TUpdateDynamicSecretDTO = {
@@ -285,6 +370,8 @@ export type TUpdateDynamicSecretDTO = {
     defaultTTL?: string;
     maxTTL?: string | null;
     inputs?: unknown;
+    usernameTemplate?: string | null;
+    tags?: { key: string; value: string }[];
   };
 };
 

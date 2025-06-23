@@ -1,19 +1,17 @@
 import type { RateLimitOptions, RateLimitPluginOptions } from "@fastify/rate-limit";
-import { Redis } from "ioredis";
 
 import { getConfig } from "@app/lib/config/env";
+import { buildRedisFromConfig } from "@app/lib/config/redis";
 import { RateLimitError } from "@app/lib/errors";
 
 export const globalRateLimiterCfg = (): RateLimitPluginOptions => {
   const appCfg = getConfig();
-  const redis = appCfg.isRedisConfigured
-    ? new Redis(appCfg.REDIS_URL, { connectTimeout: 500, maxRetriesPerRequest: 1 })
-    : null;
+  const redis = appCfg.isRedisConfigured ? buildRedisFromConfig(appCfg) : null;
 
   return {
     errorResponseBuilder: (_, context) => {
       throw new RateLimitError({
-        message: `Rate limit exceeded. Please try again in ${context.after}`
+        message: `Rate limit exceeded. Please try again in ${Math.ceil(context.ttl / 1000)} seconds`
       });
     },
     timeWindow: 60 * 1000,
@@ -115,3 +113,12 @@ export const requestAccessLimit: RateLimitOptions = {
   max: 10,
   keyGenerator: (req) => req.realIp
 };
+
+export const smtpRateLimit = ({
+  keyGenerator = (req) => req.realIp
+}: Pick<RateLimitOptions, "keyGenerator"> = {}): RateLimitOptions => ({
+  timeWindow: 40 * 1000,
+  hook: "preValidation",
+  max: 2,
+  keyGenerator
+});

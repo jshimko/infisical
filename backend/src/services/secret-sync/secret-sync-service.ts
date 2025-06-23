@@ -1,8 +1,9 @@
-import { ForbiddenError } from "@casl/ability";
+import { ForbiddenError, subject } from "@casl/ability";
 
 import { ActionProjectType } from "@app/db/schemas";
+import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
 import { throwIfMissingSecretReadValueOrDescribePermission } from "@app/ee/services/permission/permission-fns";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import {
   ProjectPermissionSecretActions,
   ProjectPermissionSecretSyncActions,
@@ -16,7 +17,7 @@ import { TAppConnectionServiceFactory } from "@app/services/app-connection/app-c
 import { TProjectBotServiceFactory } from "@app/services/project-bot/project-bot-service";
 import { TSecretFolderDALFactory } from "@app/services/secret-folder/secret-folder-dal";
 import { SecretSync } from "@app/services/secret-sync/secret-sync-enums";
-import { listSecretSyncOptions } from "@app/services/secret-sync/secret-sync-fns";
+import { enterpriseSyncCheck, listSecretSyncOptions } from "@app/services/secret-sync/secret-sync-fns";
 import {
   SecretSyncStatus,
   TCreateSecretSyncDTO,
@@ -49,6 +50,7 @@ type TSecretSyncServiceFactoryDep = {
     TSecretSyncQueueFactory,
     "queueSecretSyncSyncSecretsById" | "queueSecretSyncImportSecretsById" | "queueSecretSyncRemoveSecretsById"
   >;
+  licenseService: Pick<TLicenseServiceFactory, "getPlan">;
 };
 
 export type TSecretSyncServiceFactory = ReturnType<typeof secretSyncServiceFactory>;
@@ -61,7 +63,8 @@ export const secretSyncServiceFactory = ({
   appConnectionService,
   projectBotService,
   secretSyncQueue,
-  keyStore
+  keyStore,
+  licenseService
 }: TSecretSyncServiceFactoryDep) => {
   const listSecretSyncsByProjectId = async (
     { projectId, destination }: TListSecretSyncsByProjectId,
@@ -86,7 +89,17 @@ export const secretSyncServiceFactory = ({
       projectId
     });
 
-    return secretSyncs as TSecretSync[];
+    return secretSyncs.filter((secretSync) =>
+      permission.can(
+        ProjectPermissionSecretSyncActions.Read,
+        secretSync.environment && secretSync.folder
+          ? subject(ProjectPermissionSub.SecretSyncs, {
+              environment: secretSync.environment.slug,
+              secretPath: secretSync.folder.path
+            })
+          : ProjectPermissionSub.SecretSyncs
+      )
+    ) as TSecretSync[];
   };
 
   const listSecretSyncsBySecretPath = async (
@@ -102,7 +115,15 @@ export const secretSyncServiceFactory = ({
       projectId
     });
 
-    if (permission.cannot(ProjectPermissionSecretSyncActions.Read, ProjectPermissionSub.SecretSyncs)) {
+    if (
+      permission.cannot(
+        ProjectPermissionSecretSyncActions.Read,
+        subject(ProjectPermissionSub.SecretSyncs, {
+          environment,
+          secretPath
+        })
+      )
+    ) {
       return [];
     }
 
@@ -139,7 +160,12 @@ export const secretSyncServiceFactory = ({
 
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretSyncActions.Read,
-      ProjectPermissionSub.SecretSyncs
+      secretSync.environment && secretSync.folder
+        ? subject(ProjectPermissionSub.SecretSyncs, {
+            environment: secretSync.environment.slug,
+            secretPath: secretSync.folder.path
+          })
+        : ProjectPermissionSub.SecretSyncs
     );
 
     if (secretSync.connection.app !== SECRET_SYNC_CONNECTION_MAP[destination])
@@ -176,7 +202,12 @@ export const secretSyncServiceFactory = ({
 
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretSyncActions.Read,
-      ProjectPermissionSub.SecretSyncs
+      secretSync.environment && secretSync.folder
+        ? subject(ProjectPermissionSub.SecretSyncs, {
+            environment: secretSync.environment.slug,
+            secretPath: secretSync.folder.path
+          })
+        : ProjectPermissionSub.SecretSyncs
     );
 
     if (secretSync.connection.app !== SECRET_SYNC_CONNECTION_MAP[destination])
@@ -191,6 +222,13 @@ export const secretSyncServiceFactory = ({
     { projectId, secretPath, environment, ...params }: TCreateSecretSyncDTO,
     actor: OrgServiceActor
   ) => {
+    await enterpriseSyncCheck(
+      licenseService,
+      params.destination,
+      actor.orgId,
+      "Failed to create secret sync due to plan restriction. Upgrade plan to access enterprise secret syncs."
+    );
+
     const { permission: projectPermission } = await permissionService.getProjectPermission({
       actor: actor.type,
       actorId: actor.id,
@@ -207,13 +245,17 @@ export const secretSyncServiceFactory = ({
 
     ForbiddenError.from(projectPermission).throwUnlessCan(
       ProjectPermissionSecretSyncActions.Create,
-      ProjectPermissionSub.SecretSyncs
+      subject(ProjectPermissionSub.SecretSyncs, { environment, secretPath })
     );
 
-    throwIfMissingSecretReadValueOrDescribePermission(projectPermission, ProjectPermissionSecretActions.ReadValue, {
-      environment,
-      secretPath
-    });
+    throwIfMissingSecretReadValueOrDescribePermission(
+      projectPermission,
+      ProjectPermissionSecretActions.DescribeSecret,
+      {
+        environment,
+        secretPath
+      }
+    );
 
     const folder = await folderDAL.findBySecretPath(projectId, environment, secretPath);
 
@@ -260,6 +302,13 @@ export const secretSyncServiceFactory = ({
         message: `Could not find ${SECRET_SYNC_NAME_MAP[destination]} Sync with ID ${syncId}`
       });
 
+    await enterpriseSyncCheck(
+      licenseService,
+      secretSync.destination as SecretSync,
+      actor.orgId,
+      "Failed to update secret sync due to plan restriction. Upgrade plan to access enterprise secret syncs."
+    );
+
     const { permission } = await permissionService.getProjectPermission({
       actor: actor.type,
       actorId: actor.id,
@@ -269,10 +318,38 @@ export const secretSyncServiceFactory = ({
       projectId: secretSync.projectId
     });
 
-    ForbiddenError.from(permission).throwUnlessCan(
-      ProjectPermissionSecretSyncActions.Edit,
-      ProjectPermissionSub.SecretSyncs
-    );
+    // we always check the permission against the existing environment / secret path
+    // if no secret path / environment is present on the secret sync, we need to check without conditions
+    if (secretSync.environment?.slug && secretSync.folder?.path) {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.Edit,
+        subject(ProjectPermissionSub.SecretSyncs, {
+          environment: secretSync.environment.slug,
+          secretPath: secretSync.folder.path
+        })
+      );
+    } else {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.Edit,
+        ProjectPermissionSub.SecretSyncs
+      );
+    }
+
+    // if the user is updating the secret path or environment, we need to check the permission against the new values
+    if (secretPath || environment) {
+      const environmentToCheck = environment || secretSync.environment?.slug || "";
+      const secretPathToCheck = secretPath || secretSync.folder?.path || "";
+
+      if (environmentToCheck && secretPathToCheck) {
+        ForbiddenError.from(permission).throwUnlessCan(
+          ProjectPermissionSecretSyncActions.Edit,
+          subject(ProjectPermissionSub.SecretSyncs, {
+            environment: environmentToCheck,
+            secretPath: secretPathToCheck
+          })
+        );
+      }
+    }
 
     if (secretSync.connection.app !== SECRET_SYNC_CONNECTION_MAP[destination])
       throw new BadRequestError({
@@ -298,7 +375,7 @@ export const secretSyncServiceFactory = ({
       if (!updatedEnvironment || !updatedSecretPath)
         throw new BadRequestError({ message: "Must specify both source environment and secret path" });
 
-      throwIfMissingSecretReadValueOrDescribePermission(permission, ProjectPermissionSecretActions.ReadValue, {
+      throwIfMissingSecretReadValueOrDescribePermission(permission, ProjectPermissionSecretActions.DescribeSecret, {
         environment: updatedEnvironment,
         secretPath: updatedSecretPath
       });
@@ -357,10 +434,20 @@ export const secretSyncServiceFactory = ({
       projectId: secretSync.projectId
     });
 
-    ForbiddenError.from(permission).throwUnlessCan(
-      ProjectPermissionSecretSyncActions.Delete,
-      ProjectPermissionSub.SecretSyncs
-    );
+    if (secretSync.environment?.slug && secretSync.folder?.path) {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.Delete,
+        subject(ProjectPermissionSub.SecretSyncs, {
+          environment: secretSync.environment.slug,
+          secretPath: secretSync.folder.path
+        })
+      );
+    } else {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.Delete,
+        ProjectPermissionSub.SecretSyncs
+      );
+    }
 
     if (secretSync.connection.app !== SECRET_SYNC_CONNECTION_MAP[destination])
       throw new BadRequestError({
@@ -408,6 +495,13 @@ export const secretSyncServiceFactory = ({
         message: `Could not find ${SECRET_SYNC_NAME_MAP[destination]} Sync with ID "${syncId}"`
       });
 
+    await enterpriseSyncCheck(
+      licenseService,
+      secretSync.destination as SecretSync,
+      actor.orgId,
+      "Failed to trigger secret sync due to plan restriction. Upgrade plan to access enterprise secret syncs."
+    );
+
     const { permission } = await permissionService.getProjectPermission({
       actor: actor.type,
       actorId: actor.id,
@@ -417,10 +511,20 @@ export const secretSyncServiceFactory = ({
       projectId: secretSync.projectId
     });
 
-    ForbiddenError.from(permission).throwUnlessCan(
-      ProjectPermissionSecretSyncActions.SyncSecrets,
-      ProjectPermissionSub.SecretSyncs
-    );
+    if (secretSync.environment?.slug && secretSync.folder?.path) {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.SyncSecrets,
+        subject(ProjectPermissionSub.SecretSyncs, {
+          environment: secretSync.environment.slug,
+          secretPath: secretSync.folder.path
+        })
+      );
+    } else {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.SyncSecrets,
+        ProjectPermissionSub.SecretSyncs
+      );
+    }
 
     if (secretSync.connection.app !== SECRET_SYNC_CONNECTION_MAP[destination])
       throw new BadRequestError({
@@ -463,6 +567,13 @@ export const secretSyncServiceFactory = ({
         message: `Could not find ${SECRET_SYNC_NAME_MAP[destination]} Sync with ID "${syncId}"`
       });
 
+    await enterpriseSyncCheck(
+      licenseService,
+      secretSync.destination as SecretSync,
+      actor.orgId,
+      "Failed to trigger secret sync due to plan restriction. Upgrade plan to access enterprise secret syncs."
+    );
+
     const { permission } = await permissionService.getProjectPermission({
       actor: actor.type,
       actorId: actor.id,
@@ -472,10 +583,20 @@ export const secretSyncServiceFactory = ({
       projectId: secretSync.projectId
     });
 
-    ForbiddenError.from(permission).throwUnlessCan(
-      ProjectPermissionSecretSyncActions.ImportSecrets,
-      ProjectPermissionSub.SecretSyncs
-    );
+    if (secretSync.environment?.slug && secretSync.folder?.path) {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.ImportSecrets,
+        subject(ProjectPermissionSub.SecretSyncs, {
+          environment: secretSync.environment.slug,
+          secretPath: secretSync.folder.path
+        })
+      );
+    } else {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.ImportSecrets,
+        ProjectPermissionSub.SecretSyncs
+      );
+    }
 
     if (secretSync.connection.app !== SECRET_SYNC_CONNECTION_MAP[destination])
       throw new BadRequestError({
@@ -512,6 +633,13 @@ export const secretSyncServiceFactory = ({
         message: `Could not find ${SECRET_SYNC_NAME_MAP[destination]} Sync with ID "${syncId}"`
       });
 
+    await enterpriseSyncCheck(
+      licenseService,
+      secretSync.destination as SecretSync,
+      actor.orgId,
+      "Failed to trigger secret sync due to plan restriction. Upgrade plan to access enterprise secret syncs."
+    );
+
     const { permission } = await permissionService.getProjectPermission({
       actor: actor.type,
       actorId: actor.id,
@@ -521,10 +649,20 @@ export const secretSyncServiceFactory = ({
       projectId: secretSync.projectId
     });
 
-    ForbiddenError.from(permission).throwUnlessCan(
-      ProjectPermissionSecretSyncActions.RemoveSecrets,
-      ProjectPermissionSub.SecretSyncs
-    );
+    if (secretSync.environment?.slug && secretSync.folder?.path) {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.RemoveSecrets,
+        subject(ProjectPermissionSub.SecretSyncs, {
+          environment: secretSync.environment.slug,
+          secretPath: secretSync.folder.path
+        })
+      );
+    } else {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionSecretSyncActions.RemoveSecrets,
+        ProjectPermissionSub.SecretSyncs
+      );
+    }
 
     if (secretSync.connection.app !== SECRET_SYNC_CONNECTION_MAP[destination])
       throw new BadRequestError({

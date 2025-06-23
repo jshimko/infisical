@@ -1,4 +1,10 @@
+import RE2 from "re2";
 import { z } from "zod";
+
+import { CharacterType, characterValidator } from "@app/lib/validator/validate-string";
+import { ResourceMetadataSchema } from "@app/services/resource-metadata/resource-metadata-schema";
+
+import { TDynamicSecretLeaseConfig } from "../../dynamic-secret-lease/dynamic-secret-lease-types";
 
 export type PasswordRequirements = {
   length: number;
@@ -16,7 +22,13 @@ export enum SqlProviders {
   MySQL = "mysql2",
   Oracle = "oracledb",
   MsSQL = "mssql",
-  SapAse = "sap-ase"
+  SapAse = "sap-ase",
+  Vertica = "vertica"
+}
+
+export enum AwsIamAuthType {
+  AssumeRole = "assume-role",
+  AccessKey = "access-key"
 }
 
 export enum ElasticSearchAuthTypes {
@@ -27,6 +39,21 @@ export enum ElasticSearchAuthTypes {
 export enum LdapCredentialType {
   Dynamic = "dynamic",
   Static = "static"
+}
+
+export enum KubernetesCredentialType {
+  Static = "static",
+  Dynamic = "dynamic"
+}
+
+export enum KubernetesRoleType {
+  ClusterRole = "cluster-role",
+  Role = "role"
+}
+
+export enum KubernetesAuthMethod {
+  Gateway = "gateway",
+  Api = "api"
 }
 
 export enum TotpConfigType {
@@ -163,16 +190,40 @@ export const DynamicSecretSapAseSchema = z.object({
   revocationStatement: z.string().trim()
 });
 
-export const DynamicSecretAwsIamSchema = z.object({
-  accessKey: z.string().trim().min(1),
-  secretAccessKey: z.string().trim().min(1),
-  region: z.string().trim().min(1),
-  awsPath: z.string().trim().optional(),
-  permissionBoundaryPolicyArn: z.string().trim().optional(),
-  policyDocument: z.string().trim().optional(),
-  userGroups: z.string().trim().optional(),
-  policyArns: z.string().trim().optional()
-});
+export const DynamicSecretAwsIamSchema = z.preprocess(
+  (val) => {
+    if (typeof val === "object" && val !== null && !Object.hasOwn(val, "method")) {
+      // eslint-disable-next-line no-param-reassign
+      (val as { method: string }).method = AwsIamAuthType.AccessKey;
+    }
+    return val;
+  },
+  z.discriminatedUnion("method", [
+    z.object({
+      method: z.literal(AwsIamAuthType.AccessKey),
+      accessKey: z.string().trim().min(1),
+      secretAccessKey: z.string().trim().min(1),
+      region: z.string().trim().min(1),
+      awsPath: z.string().trim().optional(),
+      permissionBoundaryPolicyArn: z.string().trim().optional(),
+      policyDocument: z.string().trim().optional(),
+      userGroups: z.string().trim().optional(),
+      policyArns: z.string().trim().optional(),
+      tags: ResourceMetadataSchema.optional()
+    }),
+    z.object({
+      method: z.literal(AwsIamAuthType.AssumeRole),
+      roleArn: z.string().trim().min(1, "Role ARN required"),
+      region: z.string().trim().min(1),
+      awsPath: z.string().trim().optional(),
+      permissionBoundaryPolicyArn: z.string().trim().optional(),
+      policyDocument: z.string().trim().optional(),
+      userGroups: z.string().trim().optional(),
+      policyArns: z.string().trim().optional(),
+      tags: ResourceMetadataSchema.optional()
+    })
+  ])
+);
 
 export const DynamicSecretMongoAtlasSchema = z.object({
   adminPublicKey: z.string().trim().min(1).describe("Admin user public api key"),
@@ -277,6 +328,123 @@ export const LdapSchema = z.union([
   })
 ]);
 
+export const DynamicSecretKubernetesSchema = z
+  .discriminatedUnion("credentialType", [
+    z.object({
+      url: z
+        .string()
+        .optional()
+        .refine((val: string | undefined) => !val || new RE2(/^https?:\/\/.+/).test(val), {
+          message: "Invalid URL. Must start with http:// or https:// (e.g. https://example.com)"
+        }),
+      clusterToken: z.string().trim().optional(),
+      ca: z.string().optional(),
+      sslEnabled: z.boolean().default(false),
+      credentialType: z.literal(KubernetesCredentialType.Static),
+      serviceAccountName: z.string().trim().min(1),
+      namespace: z
+        .string()
+        .trim()
+        .min(1)
+        .refine((val) => !val.includes(","), "Namespace must be a single value, not a comma-separated list")
+        .refine(
+          (val) => characterValidator([CharacterType.AlphaNumeric, CharacterType.Hyphen])(val),
+          "Invalid namespace format"
+        ),
+      gatewayId: z.string().optional(),
+      audiences: z.array(z.string().trim().min(1)),
+      authMethod: z.nativeEnum(KubernetesAuthMethod).default(KubernetesAuthMethod.Api)
+    }),
+    z.object({
+      url: z
+        .string()
+        .url()
+        .optional()
+        .refine((val: string | undefined) => !val || new RE2(/^https?:\/\/.+/).test(val), {
+          message: "Invalid URL. Must start with http:// or https:// (e.g. https://example.com)"
+        }),
+      clusterToken: z.string().trim().optional(),
+      ca: z.string().optional(),
+      sslEnabled: z.boolean().default(false),
+      credentialType: z.literal(KubernetesCredentialType.Dynamic),
+      namespace: z
+        .string()
+        .trim()
+        .min(1)
+        .refine((val) => {
+          const namespaces = val.split(",").map((ns) => ns.trim());
+          return (
+            namespaces.length > 0 &&
+            namespaces.every((ns) => ns.length > 0) &&
+            namespaces.every((ns) => characterValidator([CharacterType.AlphaNumeric, CharacterType.Hyphen])(ns))
+          );
+        }, "Must be a valid comma-separated list of namespace values"),
+      gatewayId: z.string().optional(),
+      audiences: z.array(z.string().trim().min(1)),
+      roleType: z.nativeEnum(KubernetesRoleType),
+      role: z.string().trim().min(1),
+      authMethod: z.nativeEnum(KubernetesAuthMethod).default(KubernetesAuthMethod.Api)
+    })
+  ])
+  .superRefine((data, ctx) => {
+    if (data.authMethod === KubernetesAuthMethod.Gateway && !data.gatewayId) {
+      ctx.addIssue({
+        path: ["gatewayId"],
+        code: z.ZodIssueCode.custom,
+        message: "When auth method is set to Gateway, a gateway must be selected"
+      });
+    }
+    if (data.authMethod === KubernetesAuthMethod.Api || !data.authMethod) {
+      if (!data.clusterToken) {
+        ctx.addIssue({
+          path: ["clusterToken"],
+          code: z.ZodIssueCode.custom,
+          message: "When auth method is set to Token, a cluster token must be provided"
+        });
+      }
+      if (!data.url) {
+        ctx.addIssue({
+          path: ["url"],
+          code: z.ZodIssueCode.custom,
+          message: "When auth method is set to Token, a cluster URL must be provided"
+        });
+      }
+    }
+  });
+
+export const DynamicSecretVerticaSchema = z.object({
+  host: z.string().trim().toLowerCase(),
+  port: z.number(),
+  username: z.string().trim(),
+  password: z.string().trim(),
+  database: z.string().trim(),
+  gatewayId: z.string().nullable().optional(),
+  creationStatement: z.string().trim(),
+  revocationStatement: z.string().trim(),
+  passwordRequirements: z
+    .object({
+      length: z.number().min(1).max(250),
+      required: z
+        .object({
+          lowercase: z.number().min(0),
+          uppercase: z.number().min(0),
+          digits: z.number().min(0),
+          symbols: z.number().min(0)
+        })
+        .refine((data) => {
+          const total = Object.values(data).reduce((sum, count) => sum + count, 0);
+          return total <= 250;
+        }, "Sum of required characters cannot exceed 250"),
+      allowedSymbols: z.string().optional()
+    })
+    .refine((data) => {
+      const total = Object.values(data.required).reduce((sum, count) => sum + count, 0);
+      return total <= data.length;
+    }, "Sum of required characters cannot exceed the total length")
+    .optional()
+    .describe("Password generation requirements")
+});
+
 export const DynamicSecretTotpSchema = z.discriminatedUnion("configType", [
   z.object({
     configType: z.literal(TotpConfigType.URL),
@@ -305,6 +473,27 @@ export const DynamicSecretTotpSchema = z.discriminatedUnion("configType", [
   })
 ]);
 
+export const DynamicSecretGcpIamSchema = z.object({
+  serviceAccountEmail: z.string().email().trim().min(1, "Service account email required").max(128)
+});
+
+export const DynamicSecretGithubSchema = z.object({
+  appId: z.number().min(1).describe("The ID of your GitHub App."),
+  installationId: z.number().min(1).describe("The ID of the GitHub App installation."),
+  privateKey: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(
+      (val) =>
+        new RE2(
+          /^-----BEGIN(?:(?: RSA| PGP| ENCRYPTED)? PRIVATE KEY)-----\s*[\s\S]*?-----END(?:(?: RSA| PGP| ENCRYPTED)? PRIVATE KEY)-----$/
+        ).test(val),
+      "Invalid PEM format for private key"
+    )
+    .describe("The private key generated for your GitHub App.")
+});
+
 export enum DynamicSecretProviders {
   SqlDatabase = "sql-database",
   Cassandra = "cassandra",
@@ -320,7 +509,11 @@ export enum DynamicSecretProviders {
   SapHana = "sap-hana",
   Snowflake = "snowflake",
   Totp = "totp",
-  SapAse = "sap-ase"
+  SapAse = "sap-ase",
+  Kubernetes = "kubernetes",
+  Vertica = "vertica",
+  GcpIam = "gcp-iam",
+  Github = "github"
 }
 
 export const DynamicSecretProviderSchema = z.discriminatedUnion("type", [
@@ -338,13 +531,36 @@ export const DynamicSecretProviderSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal(DynamicSecretProviders.AzureEntraID), inputs: AzureEntraIDSchema }),
   z.object({ type: z.literal(DynamicSecretProviders.Ldap), inputs: LdapSchema }),
   z.object({ type: z.literal(DynamicSecretProviders.Snowflake), inputs: DynamicSecretSnowflakeSchema }),
-  z.object({ type: z.literal(DynamicSecretProviders.Totp), inputs: DynamicSecretTotpSchema })
+  z.object({ type: z.literal(DynamicSecretProviders.Totp), inputs: DynamicSecretTotpSchema }),
+  z.object({ type: z.literal(DynamicSecretProviders.Kubernetes), inputs: DynamicSecretKubernetesSchema }),
+  z.object({ type: z.literal(DynamicSecretProviders.Vertica), inputs: DynamicSecretVerticaSchema }),
+  z.object({ type: z.literal(DynamicSecretProviders.GcpIam), inputs: DynamicSecretGcpIamSchema }),
+  z.object({ type: z.literal(DynamicSecretProviders.Github), inputs: DynamicSecretGithubSchema })
 ]);
 
 export type TDynamicProviderFns = {
-  create: (inputs: unknown, expireAt: number) => Promise<{ entityId: string; data: unknown }>;
-  validateConnection: (inputs: unknown) => Promise<boolean>;
-  validateProviderInputs: (inputs: object) => Promise<unknown>;
-  revoke: (inputs: unknown, entityId: string) => Promise<{ entityId: string }>;
-  renew: (inputs: unknown, entityId: string, expireAt: number) => Promise<{ entityId: string }>;
+  create: (arg: {
+    inputs: unknown;
+    expireAt: number;
+    usernameTemplate?: string | null;
+    identity?: {
+      name: string;
+    };
+    metadata: { projectId: string };
+    config?: TDynamicSecretLeaseConfig;
+  }) => Promise<{ entityId: string; data: unknown }>;
+  validateConnection: (inputs: unknown, metadata: { projectId: string }) => Promise<boolean>;
+  validateProviderInputs: (inputs: object, metadata: { projectId: string }) => Promise<unknown>;
+  revoke: (
+    inputs: unknown,
+    entityId: string,
+    metadata: { projectId: string },
+    config?: TDynamicSecretLeaseConfig
+  ) => Promise<{ entityId: string }>;
+  renew: (
+    inputs: unknown,
+    entityId: string,
+    expireAt: number,
+    metadata: { projectId: string }
+  ) => Promise<{ entityId: string }>;
 };

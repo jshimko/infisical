@@ -16,6 +16,12 @@ export const ROUTE_PATHS = Object.freeze({
     PasswordResetPage: setRoute("/password-reset", "/_restrict-login-signup/password-reset"),
     PasswordSetupPage: setRoute("/password-setup", "/_authenticate/password-setup")
   },
+  Admin: {
+    IntegrationsPage: setRoute(
+      "/admin/integrations",
+      "/_authenticate/_inject-org-details/admin/_admin-layout/integrations"
+    )
+  },
   Organization: {
     Settings: {
       OauthCallbackPage: setRoute(
@@ -26,10 +32,6 @@ export const ROUTE_PATHS = Object.freeze({
     SsoPage: setRoute(
       "/organization/sso",
       "/_authenticate/_inject-org-details/_org-layout/organization/sso"
-    ),
-    SecretScanning: setRoute(
-      "/organization/secret-scanning",
-      "/_authenticate/_inject-org-details/_org-layout/organization/secret-scanning"
     ),
     SecretSharing: setRoute(
       "/organization/secret-sharing",
@@ -78,6 +80,18 @@ export const ROUTE_PATHS = Object.freeze({
     SecretDashboardPage: setRoute(
       "/secret-manager/$projectId/secrets/$envSlug",
       "/_authenticate/_inject-org-details/_org-layout/secret-manager/$projectId/_secret-manager-layout/secrets/$envSlug"
+    ),
+    RollbackPreviewPage: setRoute(
+      "/secret-manager/$projectId/commits/$environment/$folderId/$commitId/restore",
+      "/_authenticate/_inject-org-details/_org-layout/secret-manager/$projectId/_secret-manager-layout/commits/$environment/$folderId/$commitId/restore"
+    ),
+    CommitDetailsPage: setRoute(
+      "/secret-manager/$projectId/commits/$environment/$folderId/$commitId",
+      "/_authenticate/_inject-org-details/_org-layout/secret-manager/$projectId/_secret-manager-layout/commits/$environment/$folderId/$commitId"
+    ),
+    CommitsPage: setRoute(
+      "/secret-manager/$projectId/commits/$environment/$folderId",
+      "/_authenticate/_inject-org-details/_org-layout/secret-manager/$projectId/_secret-manager-layout/commits/$environment/$folderId"
     ),
     OverviewPage: setRoute(
       "/secret-manager/$projectId/overview",
@@ -284,8 +298,8 @@ export const ROUTE_PATHS = Object.freeze({
   },
   CertManager: {
     CertAuthDetailsByIDPage: setRoute(
-      "/cert-manager/$projectId/ca/$caId",
-      "/_authenticate/_inject-org-details/_org-layout/cert-manager/$projectId/_cert-manager-layout/ca/$caId"
+      "/cert-manager/$projectId/ca/$caName",
+      "/_authenticate/_inject-org-details/_org-layout/cert-manager/$projectId/_cert-manager-layout/ca/$caName"
     ),
     SubscribersPage: setRoute(
       "/cert-manager/$projectId/subscribers",
@@ -320,6 +334,16 @@ export const ROUTE_PATHS = Object.freeze({
     SshHostGroupDetailsByIDPage: setRoute(
       "/ssh/$projectId/ssh-host-groups/$sshHostGroupId",
       "/_authenticate/_inject-org-details/_org-layout/ssh/$projectId/_ssh-layout/ssh-host-groups/$sshHostGroupId"
+    )
+  },
+  SecretScanning: {
+    DataSourceByIdPage: setRoute(
+      "/secret-scanning/$projectId/data-sources/$type/$dataSourceId",
+      "/_authenticate/_inject-org-details/_org-layout/secret-scanning/$projectId/_secret-scanning-layout/data-sources/$type/$dataSourceId"
+    ),
+    FindingsPage: setRoute(
+      "/secret-scanning/$projectId/findings",
+      "/_authenticate/_inject-org-details/_org-layout/secret-scanning/$projectId/_secret-scanning-layout/findings"
     )
   },
   Public: {

@@ -6,6 +6,9 @@ import {
   TAccessApprovalPoliciesApprovers,
   TAccessApprovalPoliciesApproversInsert,
   TAccessApprovalPoliciesApproversUpdate,
+  TAccessApprovalPoliciesBypassers,
+  TAccessApprovalPoliciesBypassersInsert,
+  TAccessApprovalPoliciesBypassersUpdate,
   TAccessApprovalPoliciesInsert,
   TAccessApprovalPoliciesUpdate,
   TAccessApprovalRequests,
@@ -68,12 +71,33 @@ import {
   TDynamicSecrets,
   TDynamicSecretsInsert,
   TDynamicSecretsUpdate,
+  TExternalCertificateAuthorities,
+  TExternalCertificateAuthoritiesInsert,
+  TExternalCertificateAuthoritiesUpdate,
   TExternalGroupOrgRoleMappings,
   TExternalGroupOrgRoleMappingsInsert,
   TExternalGroupOrgRoleMappingsUpdate,
   TExternalKms,
   TExternalKmsInsert,
   TExternalKmsUpdate,
+  TFolderCheckpointResources,
+  TFolderCheckpointResourcesInsert,
+  TFolderCheckpointResourcesUpdate,
+  TFolderCheckpoints,
+  TFolderCheckpointsInsert,
+  TFolderCheckpointsUpdate,
+  TFolderCommitChanges,
+  TFolderCommitChangesInsert,
+  TFolderCommitChangesUpdate,
+  TFolderCommits,
+  TFolderCommitsInsert,
+  TFolderCommitsUpdate,
+  TFolderTreeCheckpointResources,
+  TFolderTreeCheckpointResourcesInsert,
+  TFolderTreeCheckpointResourcesUpdate,
+  TFolderTreeCheckpoints,
+  TFolderTreeCheckpointsInsert,
+  TFolderTreeCheckpointsUpdate,
   TGateways,
   TGatewaysInsert,
   TGatewaysUpdate,
@@ -101,6 +125,9 @@ import {
   TIdentityAccessTokens,
   TIdentityAccessTokensInsert,
   TIdentityAccessTokensUpdate,
+  TIdentityAlicloudAuths,
+  TIdentityAlicloudAuthsInsert,
+  TIdentityAlicloudAuthsUpdate,
   TIdentityAwsAuths,
   TIdentityAwsAuthsInsert,
   TIdentityAwsAuthsUpdate,
@@ -155,6 +182,9 @@ import {
   TIntegrations,
   TIntegrationsInsert,
   TIntegrationsUpdate,
+  TInternalCertificateAuthorities,
+  TInternalCertificateAuthoritiesInsert,
+  TInternalCertificateAuthoritiesUpdate,
   TInternalKms,
   TInternalKmsInsert,
   TInternalKmsUpdate,
@@ -270,6 +300,9 @@ import {
   TSecretApprovalPoliciesApprovers,
   TSecretApprovalPoliciesApproversInsert,
   TSecretApprovalPoliciesApproversUpdate,
+  TSecretApprovalPoliciesBypassers,
+  TSecretApprovalPoliciesBypassersInsert,
+  TSecretApprovalPoliciesBypassersUpdate,
   TSecretApprovalPoliciesInsert,
   TSecretApprovalPoliciesUpdate,
   TSecretApprovalRequests,
@@ -324,9 +357,24 @@ import {
   TSecretRotationV2SecretMappingsInsert,
   TSecretRotationV2SecretMappingsUpdate,
   TSecrets,
+  TSecretScanningConfigs,
+  TSecretScanningConfigsInsert,
+  TSecretScanningConfigsUpdate,
+  TSecretScanningDataSources,
+  TSecretScanningDataSourcesInsert,
+  TSecretScanningDataSourcesUpdate,
+  TSecretScanningFindings,
+  TSecretScanningFindingsInsert,
+  TSecretScanningFindingsUpdate,
   TSecretScanningGitRisks,
   TSecretScanningGitRisksInsert,
   TSecretScanningGitRisksUpdate,
+  TSecretScanningResources,
+  TSecretScanningResourcesInsert,
+  TSecretScanningResourcesUpdate,
+  TSecretScanningScans,
+  TSecretScanningScansInsert,
+  TSecretScanningScansUpdate,
   TSecretSharing,
   TSecretSharingInsert,
   TSecretSharingUpdate,
@@ -538,6 +586,16 @@ declare module "knex/types/tables" {
       TCertificateAuthorityCrlInsert,
       TCertificateAuthorityCrlUpdate
     >;
+    [TableName.InternalCertificateAuthority]: KnexOriginal.CompositeTableType<
+      TInternalCertificateAuthorities,
+      TInternalCertificateAuthoritiesInsert,
+      TInternalCertificateAuthoritiesUpdate
+    >;
+    [TableName.ExternalCertificateAuthority]: KnexOriginal.CompositeTableType<
+      TExternalCertificateAuthorities,
+      TExternalCertificateAuthoritiesInsert,
+      TExternalCertificateAuthoritiesUpdate
+    >;
     [TableName.Certificate]: KnexOriginal.CompositeTableType<TCertificates, TCertificatesInsert, TCertificatesUpdate>;
     [TableName.CertificateTemplate]: KnexOriginal.CompositeTableType<
       TCertificateTemplates,
@@ -731,6 +789,11 @@ declare module "knex/types/tables" {
       TIdentityGcpAuthsInsert,
       TIdentityGcpAuthsUpdate
     >;
+    [TableName.IdentityAliCloudAuth]: KnexOriginal.CompositeTableType<
+      TIdentityAlicloudAuths,
+      TIdentityAlicloudAuthsInsert,
+      TIdentityAlicloudAuthsUpdate
+    >;
     [TableName.IdentityAwsAuth]: KnexOriginal.CompositeTableType<
       TIdentityAwsAuths,
       TIdentityAwsAuthsInsert,
@@ -804,6 +867,12 @@ declare module "knex/types/tables" {
       TAccessApprovalPoliciesApproversUpdate
     >;
 
+    [TableName.AccessApprovalPolicyBypasser]: KnexOriginal.CompositeTableType<
+      TAccessApprovalPoliciesBypassers,
+      TAccessApprovalPoliciesBypassersInsert,
+      TAccessApprovalPoliciesBypassersUpdate
+    >;
+
     [TableName.AccessApprovalRequest]: KnexOriginal.CompositeTableType<
       TAccessApprovalRequests,
       TAccessApprovalRequestsInsert,
@@ -826,6 +895,11 @@ declare module "knex/types/tables" {
       TSecretApprovalPoliciesApprovers,
       TSecretApprovalPoliciesApproversInsert,
       TSecretApprovalPoliciesApproversUpdate
+    >;
+    [TableName.SecretApprovalPolicyBypasser]: KnexOriginal.CompositeTableType<
+      TSecretApprovalPoliciesBypassers,
+      TSecretApprovalPoliciesBypassersInsert,
+      TSecretApprovalPoliciesBypassersUpdate
     >;
     [TableName.SecretApprovalRequest]: KnexOriginal.CompositeTableType<
       TSecretApprovalRequests,
@@ -1073,6 +1147,61 @@ declare module "knex/types/tables" {
       TGithubOrgSyncConfigs,
       TGithubOrgSyncConfigsInsert,
       TGithubOrgSyncConfigsUpdate
+    >;
+    [TableName.FolderCommit]: KnexOriginal.CompositeTableType<
+      TFolderCommits,
+      TFolderCommitsInsert,
+      TFolderCommitsUpdate
+    >;
+    [TableName.FolderCommitChanges]: KnexOriginal.CompositeTableType<
+      TFolderCommitChanges,
+      TFolderCommitChangesInsert,
+      TFolderCommitChangesUpdate
+    >;
+    [TableName.FolderCheckpoint]: KnexOriginal.CompositeTableType<
+      TFolderCheckpoints,
+      TFolderCheckpointsInsert,
+      TFolderCheckpointsUpdate
+    >;
+    [TableName.FolderCheckpointResources]: KnexOriginal.CompositeTableType<
+      TFolderCheckpointResources,
+      TFolderCheckpointResourcesInsert,
+      TFolderCheckpointResourcesUpdate
+    >;
+    [TableName.FolderTreeCheckpoint]: KnexOriginal.CompositeTableType<
+      TFolderTreeCheckpoints,
+      TFolderTreeCheckpointsInsert,
+      TFolderTreeCheckpointsUpdate
+    >;
+    [TableName.FolderTreeCheckpointResources]: KnexOriginal.CompositeTableType<
+      TFolderTreeCheckpointResources,
+      TFolderTreeCheckpointResourcesInsert,
+      TFolderTreeCheckpointResourcesUpdate
+    >;
+    [TableName.SecretScanningDataSource]: KnexOriginal.CompositeTableType<
+      TSecretScanningDataSources,
+      TSecretScanningDataSourcesInsert,
+      TSecretScanningDataSourcesUpdate
+    >;
+    [TableName.SecretScanningResource]: KnexOriginal.CompositeTableType<
+      TSecretScanningResources,
+      TSecretScanningResourcesInsert,
+      TSecretScanningResourcesUpdate
+    >;
+    [TableName.SecretScanningScan]: KnexOriginal.CompositeTableType<
+      TSecretScanningScans,
+      TSecretScanningScansInsert,
+      TSecretScanningScansUpdate
+    >;
+    [TableName.SecretScanningFinding]: KnexOriginal.CompositeTableType<
+      TSecretScanningFindings,
+      TSecretScanningFindingsInsert,
+      TSecretScanningFindingsUpdate
+    >;
+    [TableName.SecretScanningConfig]: KnexOriginal.CompositeTableType<
+      TSecretScanningConfigs,
+      TSecretScanningConfigsInsert,
+      TSecretScanningConfigsUpdate
     >;
   }
 }

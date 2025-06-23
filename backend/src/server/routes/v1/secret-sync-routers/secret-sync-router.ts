@@ -1,10 +1,12 @@
 import { z } from "zod";
 
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
+import { OCIVaultSyncListItemSchema, OCIVaultSyncSchema } from "@app/ee/services/secret-sync/oci-vault";
 import { ApiDocsTags, SecretSyncs } from "@app/lib/api-docs";
 import { readLimit } from "@app/server/config/rateLimiter";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { AuthMode } from "@app/services/auth/auth-type";
+import { OnePassSyncListItemSchema, OnePassSyncSchema } from "@app/services/secret-sync/1password";
 import {
   AwsParameterStoreSyncListItemSchema,
   AwsParameterStoreSyncSchema
@@ -17,14 +19,17 @@ import {
   AzureAppConfigurationSyncListItemSchema,
   AzureAppConfigurationSyncSchema
 } from "@app/services/secret-sync/azure-app-configuration";
+import { AzureDevOpsSyncListItemSchema, AzureDevOpsSyncSchema } from "@app/services/secret-sync/azure-devops";
 import { AzureKeyVaultSyncListItemSchema, AzureKeyVaultSyncSchema } from "@app/services/secret-sync/azure-key-vault";
 import { CamundaSyncListItemSchema, CamundaSyncSchema } from "@app/services/secret-sync/camunda";
 import { DatabricksSyncListItemSchema, DatabricksSyncSchema } from "@app/services/secret-sync/databricks";
+import { FlyioSyncListItemSchema, FlyioSyncSchema } from "@app/services/secret-sync/flyio";
 import { GcpSyncListItemSchema, GcpSyncSchema } from "@app/services/secret-sync/gcp";
 import { GitHubSyncListItemSchema, GitHubSyncSchema } from "@app/services/secret-sync/github";
 import { HCVaultSyncListItemSchema, HCVaultSyncSchema } from "@app/services/secret-sync/hc-vault";
+import { HerokuSyncListItemSchema, HerokuSyncSchema } from "@app/services/secret-sync/heroku";
 import { HumanitecSyncListItemSchema, HumanitecSyncSchema } from "@app/services/secret-sync/humanitec";
-import { OCIVaultSyncListItemSchema, OCIVaultSyncSchema } from "@app/services/secret-sync/oci-vault";
+import { RenderSyncListItemSchema, RenderSyncSchema } from "@app/services/secret-sync/render/render-sync-schemas";
 import { TeamCitySyncListItemSchema, TeamCitySyncSchema } from "@app/services/secret-sync/teamcity";
 import { TerraformCloudSyncListItemSchema, TerraformCloudSyncSchema } from "@app/services/secret-sync/terraform-cloud";
 import { VercelSyncListItemSchema, VercelSyncSchema } from "@app/services/secret-sync/vercel";
@@ -37,6 +42,7 @@ const SecretSyncSchema = z.discriminatedUnion("destination", [
   GcpSyncSchema,
   AzureKeyVaultSyncSchema,
   AzureAppConfigurationSyncSchema,
+  AzureDevOpsSyncSchema,
   DatabricksSyncSchema,
   HumanitecSyncSchema,
   TerraformCloudSyncSchema,
@@ -45,7 +51,11 @@ const SecretSyncSchema = z.discriminatedUnion("destination", [
   WindmillSyncSchema,
   HCVaultSyncSchema,
   TeamCitySyncSchema,
-  OCIVaultSyncSchema
+  OCIVaultSyncSchema,
+  OnePassSyncSchema,
+  HerokuSyncSchema,
+  RenderSyncSchema,
+  FlyioSyncSchema
 ]);
 
 const SecretSyncOptionsSchema = z.discriminatedUnion("destination", [
@@ -55,6 +65,7 @@ const SecretSyncOptionsSchema = z.discriminatedUnion("destination", [
   GcpSyncListItemSchema,
   AzureKeyVaultSyncListItemSchema,
   AzureAppConfigurationSyncListItemSchema,
+  AzureDevOpsSyncListItemSchema,
   DatabricksSyncListItemSchema,
   HumanitecSyncListItemSchema,
   TerraformCloudSyncListItemSchema,
@@ -63,7 +74,11 @@ const SecretSyncOptionsSchema = z.discriminatedUnion("destination", [
   WindmillSyncListItemSchema,
   HCVaultSyncListItemSchema,
   TeamCitySyncListItemSchema,
-  OCIVaultSyncListItemSchema
+  OCIVaultSyncListItemSchema,
+  OnePassSyncListItemSchema,
+  HerokuSyncListItemSchema,
+  RenderSyncListItemSchema,
+  FlyioSyncListItemSchema
 ]);
 
 export const registerSecretSyncRouter = async (server: FastifyZodProvider) => {

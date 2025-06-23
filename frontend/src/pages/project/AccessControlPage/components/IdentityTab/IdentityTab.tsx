@@ -3,12 +3,13 @@ import {
   faArrowDown,
   faArrowUp,
   faArrowUpRightFromSquare,
+  faBookOpen,
+  faCircleXmark,
   faClock,
   faEllipsisV,
   faMagnifyingGlass,
   faPlus,
-  faServer,
-  faXmark
+  faServer
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useNavigate } from "@tanstack/react-router";
@@ -21,6 +22,10 @@ import { ProjectPermissionCan } from "@app/components/permissions";
 import {
   Button,
   DeleteActionModal,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   EmptyState,
   HoverCard,
   HoverCardContent,
@@ -42,6 +47,11 @@ import {
 } from "@app/components/v2";
 import { ProjectPermissionActions, ProjectPermissionSub, useWorkspace } from "@app/context";
 import { formatProjectRoleName } from "@app/helpers/roles";
+import {
+  getUserTablePreference,
+  PreferenceKey,
+  setUserTablePreference
+} from "@app/helpers/userTablePreferences";
 import { withProjectPermission } from "@app/hoc";
 import { usePagination, useResetPageHelper } from "@app/hooks";
 import { useDeleteIdentityFromWorkspace, useGetWorkspaceIdentityMemberships } from "@app/hooks/api";
@@ -72,7 +82,14 @@ export const IdentityTab = withProjectPermission(
       perPage,
       page,
       setPerPage
-    } = usePagination(ProjectIdentityOrderBy.Name);
+    } = usePagination(ProjectIdentityOrderBy.Name, {
+      initPerPage: getUserTablePreference("projectIdentityTable", PreferenceKey.PerPage, 20)
+    });
+
+    const handlePerPageChange = (newPerPage: number) => {
+      setPerPage(newPerPage);
+      setUserTablePreference("projectIdentityTable", PreferenceKey.PerPage, newPerPage);
+    };
 
     const workspaceId = currentWorkspace?.id ?? "";
 
@@ -151,20 +168,21 @@ export const IdentityTab = withProjectPermission(
       >
         <div className="mb-6 rounded-lg border border-mineshaft-600 bg-mineshaft-900 p-4">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-xl font-semibold text-mineshaft-100">Identities</p>
-            <div className="flex w-full justify-end pr-4">
+            <div className="flex items-center gap-1">
+              <p className="text-xl font-semibold text-mineshaft-100">Identities</p>
               <a
+                href="https://infisical.com/docs/documentation/platform/identities/overview"
                 target="_blank"
                 rel="noopener noreferrer"
-                href="https://infisical.com/docs/documentation/platform/identities/overview"
               >
-                <span className="flex w-max cursor-pointer items-center rounded-md border border-mineshaft-500 bg-mineshaft-600 px-4 py-2 text-mineshaft-200 duration-200 hover:border-primary/40 hover:bg-primary/10 hover:text-white">
-                  Documentation{" "}
+                <div className="ml-1 mt-[0.16rem] inline-block rounded-md bg-yellow/20 px-1.5 text-sm text-yellow opacity-80 hover:opacity-100">
+                  <FontAwesomeIcon icon={faBookOpen} className="mr-1.5" />
+                  <span>Docs</span>
                   <FontAwesomeIcon
                     icon={faArrowUpRightFromSquare}
-                    className="mb-[0.06rem] ml-1 text-xs"
+                    className="mb-[0.07rem] ml-1.5 text-[10px]"
                   />
-                </span>
+                </div>
               </a>
             </div>
             <ProjectPermissionCan
@@ -173,7 +191,7 @@ export const IdentityTab = withProjectPermission(
             >
               {(isAllowed) => (
                 <Button
-                  colorSchema="primary"
+                  colorSchema="secondary"
                   type="submit"
                   leftIcon={<FontAwesomeIcon icon={faPlus} />}
                   onClick={() => handlePopUpOpen("identity")}
@@ -219,7 +237,7 @@ export const IdentityTab = withProjectPermission(
                   </Th>
                   <Th className="w-1/3">Role</Th>
                   <Th>Added on</Th>
-                  <Th className="w-16">{isFetching ? <Spinner size="xs" /> : null}</Th>
+                  <Th className="w-5">{isFetching ? <Spinner size="xs" /> : null}</Th>
                 </Tr>
               </THead>
               <TBody>
@@ -360,37 +378,46 @@ export const IdentityTab = withProjectPermission(
                           </div>
                         </Td>
                         <Td>{format(new Date(createdAt), "yyyy-MM-dd")}</Td>
-                        <Td className="flex justify-end space-x-2 opacity-0 duration-300 group-hover:opacity-100">
-                          <ProjectPermissionCan
-                            I={ProjectPermissionActions.Delete}
-                            a={subject(ProjectPermissionSub.Identity, {
-                              identityId: id
-                            })}
-                          >
-                            {(isAllowed) => (
-                              <IconButton
-                                onClick={(evt) => {
-                                  evt.stopPropagation();
-                                  evt.preventDefault();
-                                  handlePopUpOpen("deleteIdentity", {
-                                    identityId: id,
-                                    name
-                                  });
-                                }}
-                                size="lg"
-                                colorSchema="danger"
-                                variant="plain"
-                                ariaLabel="update"
-                                className="ml-4"
-                                isDisabled={!isAllowed}
-                              >
-                                <FontAwesomeIcon icon={faXmark} />
-                              </IconButton>
-                            )}
-                          </ProjectPermissionCan>
-                          <IconButton ariaLabel="more-icon" variant="plain">
-                            <FontAwesomeIcon icon={faEllipsisV} />
-                          </IconButton>
+                        <Td className="flex justify-end space-x-2">
+                          <Tooltip className="max-w-sm text-center" content="Options">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <IconButton
+                                  ariaLabel="Options"
+                                  colorSchema="secondary"
+                                  className="w-6"
+                                  variant="plain"
+                                >
+                                  <FontAwesomeIcon icon={faEllipsisV} />
+                                </IconButton>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent sideOffset={2} align="end">
+                                <ProjectPermissionCan
+                                  I={ProjectPermissionActions.Delete}
+                                  a={subject(ProjectPermissionSub.Identity, {
+                                    identityId: id
+                                  })}
+                                >
+                                  {(isAllowed) => (
+                                    <DropdownMenuItem
+                                      icon={<FontAwesomeIcon icon={faCircleXmark} />}
+                                      isDisabled={!isAllowed}
+                                      onClick={(evt) => {
+                                        evt.stopPropagation();
+                                        evt.preventDefault();
+                                        handlePopUpOpen("deleteIdentity", {
+                                          identityId: id,
+                                          name
+                                        });
+                                      }}
+                                    >
+                                      Remove Identity From Project
+                                    </DropdownMenuItem>
+                                  )}
+                                </ProjectPermissionCan>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </Tooltip>
                         </Td>
                       </Tr>
                     );
@@ -403,7 +430,7 @@ export const IdentityTab = withProjectPermission(
                 page={page}
                 perPage={perPage}
                 onChangePage={(newPage) => setPage(newPage)}
-                onChangePerPage={(newPerPage) => setPerPage(newPerPage)}
+                onChangePerPage={handlePerPageChange}
               />
             )}
             {!isPending && data && data?.identityMemberships.length === 0 && (
@@ -420,7 +447,7 @@ export const IdentityTab = withProjectPermission(
           <IdentityModal popUp={popUp} handlePopUpToggle={handlePopUpToggle} />
           <DeleteActionModal
             isOpen={popUp.deleteIdentity.isOpen}
-            title={`Are you sure want to remove ${
+            title={`Are you sure you want to remove ${
               (popUp?.deleteIdentity?.data as { name: string })?.name || ""
             } from the project?`}
             onChange={(isOpen) => handlePopUpToggle("deleteIdentity", isOpen)}

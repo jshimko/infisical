@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { faEllipsis } from "@fortawesome/free-solid-svg-icons";
+import { faEdit, faEllipsisV, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { twMerge } from "tailwind-merge";
 
@@ -9,15 +9,17 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  GenericFieldLabel,
+  IconButton,
   Td,
-  Tooltip,
   Tr
 } from "@app/components/v2";
 import { Badge } from "@app/components/v2/Badge";
 import { ProjectPermissionSub } from "@app/context";
-import { ProjectPermissionApprovalActions } from "@app/context/ProjectPermissionContext/types";
+import { ProjectPermissionActions } from "@app/context/ProjectPermissionContext/types";
 import { getMemberLabel } from "@app/helpers/members";
 import { policyDetails } from "@app/helpers/policies";
+import { useToggle } from "@app/hooks";
 import { Approver } from "@app/hooks/api/accessApproval/types";
 import { TGroupMembership } from "@app/hooks/api/groups/types";
 import { EnforcementLevel, PolicyType } from "@app/hooks/api/policies/enums";
@@ -53,113 +55,157 @@ export const ApprovalPolicyRow = ({
   onEdit,
   onDelete
 }: Props) => {
+  const [isExpanded, setIsExpanded] = useToggle();
+
   const labels = useMemo(() => {
-    const usersInPolicy = policy.approvers
-      ?.filter((approver) => approver.type === ApproverType.User)
-      .map((approver) => approver.id);
+    const sortedSteps = policy.approvers?.sort((a, b) => (a?.sequence || 0) - (b?.sequence || 0));
+    const entityInSameSequence = sortedSteps?.reduce(
+      (acc, curr) => {
+        if (acc.length && acc[acc.length - 1].sequence === (curr.sequence || 1)) {
+          acc[acc.length - 1][curr.type]?.push(curr);
+          return acc;
+        }
+        const approvals = curr.approvalsRequired || policy.approvals;
+        acc.push(
+          curr.type === ApproverType.User
+            ? { user: [curr], group: [], sequence: 1, approvals }
+            : { group: [curr], user: [], sequence: 1, approvals }
+        );
+        return acc;
+      },
+      [] as { user: Approver[]; group: Approver[]; sequence?: number; approvals: number }[]
+    );
 
-    const groupsInPolicy = policy.approvers
-      ?.filter((approver) => approver.type === ApproverType.Group)
-      .map((approver) => approver.id);
-
-    const memberLabels = usersInPolicy?.length
-      ? members
-          .filter((member) => usersInPolicy?.includes(member.user.id))
+    return entityInSameSequence?.map((el) => {
+      return {
+        sequence: el.sequence || policy.approvals,
+        userLabels: members
+          ?.filter((member) => el.user.find((i) => i.id === member.user.id))
           .map((member) => getMemberLabel(member))
-          .join(", ")
-      : null;
-
-    const groupLabels = groupsInPolicy?.length
-      ? groups
-          .filter(({ group }) => groupsInPolicy?.includes(group.id))
+          .join(", "),
+        groupLabels: groups
+          ?.filter(({ group }) => el.group.find((i) => i.id === group.id))
           .map(({ group }) => group.name)
-          .join(", ")
-      : null;
-
-    return {
-      members: memberLabels,
-      groups: groupLabels
-    };
+          .join(", "),
+        approvals: el.approvals
+      };
+    });
   }, [policy, members, groups]);
 
   return (
-    <Tr>
-      <Td>{policy.name}</Td>
-      <Td>{policy.environment.slug}</Td>
-      <Td>{policy.secretPath || "*"}</Td>
-      <Td className="max-w-0">
-        <Tooltip
-          side="left"
-          content={labels.members ?? "No users are assigned as approvers for this policy"}
-        >
-          <p className="truncate">{labels.members ?? "-"}</p>
-        </Tooltip>
-      </Td>
-      <Td className="max-w-0">
-        <Tooltip
-          side="left"
-          content={labels.groups ?? "No groups are assigned as approvers for this policy"}
-        >
-          <p className="truncate">{labels.groups ?? "-"}</p>
-        </Tooltip>
-      </Td>
-      <Td>{policy.approvals}</Td>
-      <Td>
-        <Badge className={policyDetails[policy.policyType].className}>
-          {policyDetails[policy.policyType].name}
-        </Badge>
-      </Td>
-      <Td>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild className="cursor-pointer rounded-lg">
-            <div className="flex items-center justify-center transition-transform duration-300 ease-in-out hover:scale-125 hover:text-primary-400 data-[state=open]:scale-125 data-[state=open]:text-primary-400">
-              <FontAwesomeIcon size="sm" icon={faEllipsis} />
+    <>
+      <Tr
+        isHoverable
+        isSelectable
+        role="button"
+        tabIndex={0}
+        onKeyDown={(evt) => {
+          if (evt.key === "Enter") setIsExpanded.toggle();
+        }}
+        onClick={() => setIsExpanded.toggle()}
+      >
+        <Td>{policy.name || <span className="text-mineshaft-400">Unnamed Policy</span>}</Td>
+        <Td>{policy.environment.name}</Td>
+        <Td>{policy.secretPath || "*"}</Td>
+        <Td>
+          <Badge
+            className={twMerge(
+              policyDetails[policy.policyType].className,
+              "flex w-min items-center gap-1.5 whitespace-nowrap"
+            )}
+          >
+            <FontAwesomeIcon icon={policyDetails[policy.policyType].icon} />
+            <span>{policyDetails[policy.policyType].name}</span>
+          </Badge>
+        </Td>
+        <Td>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild className="cursor-pointer rounded-lg">
+              <DropdownMenuTrigger asChild>
+                <IconButton
+                  ariaLabel="Options"
+                  colorSchema="secondary"
+                  className="w-6"
+                  variant="plain"
+                >
+                  <FontAwesomeIcon icon={faEllipsisV} />
+                </IconButton>
+              </DropdownMenuTrigger>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent sideOffset={2} align="end" className="min-w-[12rem] p-1">
+              <ProjectPermissionCan
+                I={ProjectPermissionActions.Edit}
+                a={ProjectPermissionSub.SecretApproval}
+              >
+                {(isAllowed) => (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit();
+                    }}
+                    isDisabled={!isAllowed}
+                    icon={<FontAwesomeIcon icon={faEdit} />}
+                  >
+                    Edit Policy
+                  </DropdownMenuItem>
+                )}
+              </ProjectPermissionCan>
+              <ProjectPermissionCan
+                I={ProjectPermissionActions.Delete}
+                a={ProjectPermissionSub.SecretApproval}
+              >
+                {(isAllowed) => (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                    isDisabled={!isAllowed}
+                    icon={<FontAwesomeIcon icon={faTrash} />}
+                  >
+                    Delete Policy
+                  </DropdownMenuItem>
+                )}
+              </ProjectPermissionCan>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </Td>
+      </Tr>
+      <Tr>
+        <Td colSpan={6} className="!border-none p-0">
+          <div
+            className={`w-full overflow-hidden bg-mineshaft-900/75 transition-all duration-500 ease-in-out ${
+              isExpanded ? "thin-scrollbar max-h-[26rem] !overflow-y-auto opacity-100" : "max-h-0"
+            }`}
+          >
+            <div className="p-4">
+              <div className="mb-4 border-b-2 border-mineshaft-500 pb-2">Approvers</div>
+              {labels?.map((el, index) => (
+                <div
+                  key={`approval-list-${index + 1}`}
+                  className="relative mb-2 flex rounded border border-mineshaft-500 bg-mineshaft-800 p-4"
+                >
+                  <div className="my-auto mr-8 flex h-8 w-8 items-center justify-center rounded border border-mineshaft-400 bg-bunker-500/50 text-white">
+                    <div>{index + 1}</div>
+                  </div>
+                  {index !== labels.length - 1 && (
+                    <div className="absolute bottom-0 left-8 h-[1.25rem] border-r border-mineshaft-400" />
+                  )}
+                  {index !== 0 && (
+                    <div className="absolute left-8 top-0 h-[1.25rem] border-r border-mineshaft-400" />
+                  )}
+
+                  <div className="grid flex-grow grid-cols-3">
+                    <GenericFieldLabel label="Users">{el.userLabels}</GenericFieldLabel>
+                    <GenericFieldLabel label="Groups">{el.groupLabels}</GenericFieldLabel>
+                    <GenericFieldLabel label="Approvals Required">{el.approvals}</GenericFieldLabel>
+                  </div>
+                </div>
+              ))}
             </div>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="center" className="min-w-[100%] p-1">
-            <ProjectPermissionCan
-              I={ProjectPermissionApprovalActions.Edit}
-              a={ProjectPermissionSub.SecretApproval}
-            >
-              {(isAllowed) => (
-                <DropdownMenuItem
-                  className={twMerge(
-                    !isAllowed && "pointer-events-none cursor-not-allowed opacity-50"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit();
-                  }}
-                  disabled={!isAllowed}
-                >
-                  Edit Policy
-                </DropdownMenuItem>
-              )}
-            </ProjectPermissionCan>
-            <ProjectPermissionCan
-              I={ProjectPermissionApprovalActions.Delete}
-              a={ProjectPermissionSub.SecretApproval}
-            >
-              {(isAllowed) => (
-                <DropdownMenuItem
-                  className={twMerge(
-                    isAllowed
-                      ? "hover:!bg-red-500 hover:!text-white"
-                      : "pointer-events-none cursor-not-allowed opacity-50"
-                  )}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                  disabled={!isAllowed}
-                >
-                  Delete Policy
-                </DropdownMenuItem>
-              )}
-            </ProjectPermissionCan>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </Td>
-    </Tr>
+          </div>
+        </Td>
+      </Tr>
+    </>
   );
 };

@@ -171,6 +171,20 @@ export const getDbSetQuery = (db: TDbProviderClients, variables: { username: str
     };
   }
 
+  if (db === TDbProviderClients.MySql) {
+    return {
+      query: `ALTER USER ??@'%' IDENTIFIED BY '${variables.password}'`,
+      variables: [variables.username]
+    };
+  }
+
+  if (db === TDbProviderClients.OracleDB) {
+    return {
+      query: `ALTER USER ?? IDENTIFIED BY "${variables.password}"`,
+      variables: [variables.username]
+    };
+  }
+
   // add more based on client
   return {
     query: `ALTER USER ?? IDENTIFIED BY '${variables.password}'`,

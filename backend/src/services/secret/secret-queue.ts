@@ -11,8 +11,7 @@ import {
   TSecretSnapshotSecretsV2,
   TSecretVersionsV2
 } from "@app/db/schemas";
-import { TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-service";
-import { Actor, EventType } from "@app/ee/services/audit-log/audit-log-types";
+import { Actor, EventType, TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-types";
 import { TSecretApprovalRequestDALFactory } from "@app/ee/services/secret-approval-request/secret-approval-request-dal";
 import { TSecretRotationDALFactory } from "@app/ee/services/secret-rotation/secret-rotation-dal";
 import { TSnapshotDALFactory } from "@app/ee/services/secret-snapshot/snapshot-dal";
@@ -35,6 +34,7 @@ import { TSecretSyncQueueFactory } from "@app/services/secret-sync/secret-sync-q
 import { TSecretTagDALFactory } from "@app/services/secret-tag/secret-tag-dal";
 
 import { ActorType } from "../auth/auth-type";
+import { TFolderCommitServiceFactory } from "../folder-commit/folder-commit-service";
 import { TIntegrationDALFactory } from "../integration/integration-dal";
 import { TIntegrationAuthDALFactory } from "../integration-auth/integration-auth-dal";
 import { TIntegrationAuthServiceFactory } from "../integration-auth/integration-auth-service";
@@ -112,6 +112,7 @@ type TSecretQueueFactoryDep = {
   orgService: Pick<TOrgServiceFactory, "addGhostUser">;
   projectUserMembershipRoleDAL: Pick<TProjectUserMembershipRoleDALFactory, "create">;
   resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "insertMany" | "delete">;
+  folderCommitService: Pick<TFolderCommitServiceFactory, "createCommit">;
   secretReminderRecipientsDAL: Pick<
     TSecretReminderRecipientsDALFactory,
     "delete" | "findUsersBySecretId" | "insertMany" | "transaction"
@@ -178,7 +179,8 @@ export const secretQueueFactory = ({
   projectKeyDAL,
   resourceMetadataDAL,
   secretReminderRecipientsDAL,
-  secretSyncQueue
+  secretSyncQueue,
+  folderCommitService
 }: TSecretQueueFactoryDep) => {
   const integrationMeter = opentelemetry.metrics.getMeter("Integrations");
   const errorHistogram = integrationMeter.createHistogram("integration_secret_sync_errors", {
@@ -366,7 +368,8 @@ export const secretQueueFactory = ({
     secretVersionV2BridgeDAL,
     secretV2BridgeDAL,
     secretVersionTagV2BridgeDAL,
-    resourceMetadataDAL
+    resourceMetadataDAL,
+    folderCommitService
   });
 
   const updateManySecretsRawFn = updateManySecretsRawFnFactory({
@@ -382,7 +385,8 @@ export const secretQueueFactory = ({
     secretVersionV2BridgeDAL,
     secretV2BridgeDAL,
     secretVersionTagV2BridgeDAL,
-    resourceMetadataDAL
+    resourceMetadataDAL,
+    folderCommitService
   });
 
   /**
@@ -1581,6 +1585,7 @@ export const secretQueueFactory = ({
       projectDAL,
       webhookDAL,
       event: job.data,
+      auditLogService,
       secretManagerDecryptor: (value) => secretManagerDecryptor({ cipherTextBlob: value }).toString()
     });
   });

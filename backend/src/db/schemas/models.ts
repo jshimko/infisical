@@ -13,6 +13,8 @@ export enum TableName {
   SshCertificate = "ssh_certificates",
   SshCertificateBody = "ssh_certificate_bodies",
   CertificateAuthority = "certificate_authorities",
+  ExternalCertificateAuthority = "external_certificate_authorities",
+  InternalCertificateAuthority = "internal_certificate_authorities",
   CertificateTemplateEstConfig = "certificate_template_est_configs",
   CertificateAuthorityCert = "certificate_authority_certs",
   CertificateAuthoritySecret = "certificate_authority_secret",
@@ -78,6 +80,7 @@ export enum TableName {
   IdentityGcpAuth = "identity_gcp_auths",
   IdentityAzureAuth = "identity_azure_auths",
   IdentityUaClientSecret = "identity_ua_client_secrets",
+  IdentityAliCloudAuth = "identity_alicloud_auths",
   IdentityAwsAuth = "identity_aws_auths",
   IdentityOciAuth = "identity_oci_auths",
   IdentityOidcAuth = "identity_oidc_auths",
@@ -93,10 +96,12 @@ export enum TableName {
   ScimToken = "scim_tokens",
   AccessApprovalPolicy = "access_approval_policies",
   AccessApprovalPolicyApprover = "access_approval_policies_approvers",
+  AccessApprovalPolicyBypasser = "access_approval_policies_bypassers",
   AccessApprovalRequest = "access_approval_requests",
   AccessApprovalRequestReviewer = "access_approval_requests_reviewers",
   SecretApprovalPolicy = "secret_approval_policies",
   SecretApprovalPolicyApprover = "secret_approval_policies_approvers",
+  SecretApprovalPolicyBypasser = "secret_approval_policies_bypassers",
   SecretApprovalRequest = "secret_approval_requests",
   SecretApprovalRequestReviewer = "secret_approval_requests_reviewers",
   SecretApprovalRequestSecret = "secret_approval_requests_secrets",
@@ -155,10 +160,21 @@ export enum TableName {
   MicrosoftTeamsIntegrations = "microsoft_teams_integrations",
   ProjectMicrosoftTeamsConfigs = "project_microsoft_teams_configs",
   SecretReminderRecipients = "secret_reminder_recipients",
-  GithubOrgSyncConfig = "github_org_sync_configs"
+  GithubOrgSyncConfig = "github_org_sync_configs",
+  FolderCommit = "folder_commits",
+  FolderCommitChanges = "folder_commit_changes",
+  FolderCheckpoint = "folder_checkpoints",
+  FolderCheckpointResources = "folder_checkpoint_resources",
+  FolderTreeCheckpoint = "folder_tree_checkpoints",
+  FolderTreeCheckpointResources = "folder_tree_checkpoint_resources",
+  SecretScanningDataSource = "secret_scanning_data_sources",
+  SecretScanningResource = "secret_scanning_resources",
+  SecretScanningScan = "secret_scanning_scans",
+  SecretScanningFinding = "secret_scanning_findings",
+  SecretScanningConfig = "secret_scanning_configs"
 }
 
-export type TImmutableDBKeys = "id" | "createdAt" | "updatedAt";
+export type TImmutableDBKeys = "id" | "createdAt" | "updatedAt" | "commitId";
 
 export const UserDeviceSchema = z
   .object({
@@ -232,6 +248,7 @@ export enum IdentityAuthMethod {
   UNIVERSAL_AUTH = "universal-auth",
   KUBERNETES_AUTH = "kubernetes-auth",
   GCP_AUTH = "gcp-auth",
+  ALICLOUD_AUTH = "alicloud-auth",
   AWS_AUTH = "aws-auth",
   AZURE_AUTH = "azure-auth",
   OCI_AUTH = "oci-auth",
@@ -244,7 +261,8 @@ export enum ProjectType {
   SecretManager = "secret-manager",
   CertificateManager = "cert-manager",
   KMS = "kms",
-  SSH = "ssh"
+  SSH = "ssh",
+  SecretScanning = "secret-scanning"
 }
 
 export enum ActionProjectType {
@@ -252,6 +270,7 @@ export enum ActionProjectType {
   CertificateManager = ProjectType.CertificateManager,
   KMS = ProjectType.KMS,
   SSH = ProjectType.SSH,
+  SecretScanning = ProjectType.SecretScanning,
   // project operations that happen on all types
   Any = "any"
 }

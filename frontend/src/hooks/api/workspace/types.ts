@@ -12,7 +12,8 @@ export enum ProjectType {
   SecretManager = "secret-manager",
   CertificateManager = "cert-manager",
   KMS = "kms",
-  SSH = "ssh"
+  SSH = "ssh",
+  SecretScanning = "secret-scanning"
 }
 
 export enum ProjectUserMembershipTemporaryMode {
@@ -38,6 +39,7 @@ export type Workspace = {
   roles?: TProjectRole[];
   hasDeleteProtection: boolean;
   secretSharing: boolean;
+  showSnapshotsLegacy: boolean;
 };
 
 export type WorkspaceEnv = {
@@ -78,6 +80,7 @@ export type UpdateProjectDTO = {
   newProjectDescription?: string;
   newSlug?: string;
   secretSharing?: boolean;
+  showSnapshotsLegacy?: boolean;
 };
 
 export type UpdatePitVersionLimitDTO = { projectSlug: string; pitVersionLimit: number };

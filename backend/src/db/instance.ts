@@ -1,6 +1,6 @@
 import knex, { Knex } from "knex";
 
-export type TDbClient = ReturnType<typeof initDbConnection>;
+export type TDbClient = Knex;
 export const initDbConnection = ({
   dbConnectionUri,
   dbRootCert,
@@ -50,6 +50,8 @@ export const initDbConnection = ({
           }
         : false
     },
+    // https://knexjs.org/guide/#pool
+    pool: { min: 0, max: 10 },
     migrations: {
       tableName: "infisical_migrations"
     }
@@ -70,7 +72,8 @@ export const initDbConnection = ({
       },
       migrations: {
         tableName: "infisical_migrations"
-      }
+      },
+      pool: { min: 0, max: 10 }
     });
   });
 

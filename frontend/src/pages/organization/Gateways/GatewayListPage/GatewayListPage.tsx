@@ -3,6 +3,7 @@ import { Helmet } from "react-helmet";
 import {
   faArrowUpRightFromSquare,
   faBookOpen,
+  faCopy,
   faEdit,
   faEllipsisV,
   faInfoCircle,
@@ -169,6 +170,12 @@ export const GatewayListPage = withPermission(
                                   </IconButton>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    icon={<FontAwesomeIcon icon={faCopy} />}
+                                    onClick={() => navigator.clipboard.writeText(el.id)}
+                                  >
+                                    Copy ID
+                                  </DropdownMenuItem>
                                   <OrgPermissionCan
                                     I={OrgGatewayPermissionActions.EditGateways}
                                     a={OrgPermissionSubjects.Gateway}
@@ -229,7 +236,7 @@ export const GatewayListPage = withPermission(
                   )}
                   <DeleteActionModal
                     isOpen={popUp.deleteGateway.isOpen}
-                    title={`Are you sure want to delete gateway ${
+                    title={`Are you sure you want to delete gateway ${
                       (popUp?.deleteGateway?.data as { name: string })?.name || ""
                     }?`}
                     onChange={(isOpen) => handlePopUpToggle("deleteGateway", isOpen)}

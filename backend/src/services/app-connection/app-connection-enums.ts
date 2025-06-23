@@ -1,23 +1,31 @@
 export enum AppConnection {
   GitHub = "github",
+  GitHubRadar = "github-radar",
   AWS = "aws",
   Databricks = "databricks",
   GCP = "gcp",
   AzureKeyVault = "azure-key-vault",
   AzureAppConfiguration = "azure-app-configuration",
   AzureClientSecrets = "azure-client-secrets",
+  AzureDevOps = "azure-devops",
   Humanitec = "humanitec",
   TerraformCloud = "terraform-cloud",
   Vercel = "vercel",
   Postgres = "postgres",
   MsSql = "mssql",
+  MySql = "mysql",
   Camunda = "camunda",
   Windmill = "windmill",
   Auth0 = "auth0",
   HCVault = "hashicorp-vault",
   LDAP = "ldap",
   TeamCity = "teamcity",
-  OCI = "oci"
+  OCI = "oci",
+  OracleDB = "oracledb",
+  OnePass = "1password",
+  Heroku = "heroku",
+  Render = "render",
+  Flyio = "flyio"
 }
 
 export enum AWSRegion {
@@ -65,4 +73,9 @@ export enum AWSRegion {
 
   // South America
   SA_EAST_1 = "sa-east-1" // Sao Paulo
+}
+
+export enum AppConnectionPlanType {
+  Enterprise = "enterprise",
+  Regular = "regular"
 }

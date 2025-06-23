@@ -2,7 +2,7 @@ import { ForbiddenError } from "@casl/ability";
 
 import { ProjectMembershipRole, ProjectVersion, SecretKeyEncoding } from "@app/db/schemas";
 import { OrgPermissionAdminConsoleAction, OrgPermissionSubjects } from "@app/ee/services/permission/org-permission";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { infisicalSymmetricDecrypt } from "@app/lib/crypto/encryption";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 
@@ -196,17 +196,20 @@ export const orgAdminServiceFactory = ({
       .filter(
         (member) => member.roles.some((role) => role.role === ProjectMembershipRole.Admin) && member.userId !== actorId
       )
-      .map((el) => el.user.email!);
+      .map((el) => el.user.email!)
+      .filter(Boolean);
 
-    await smtpService.sendMail({
-      template: SmtpTemplates.OrgAdminProjectDirectAccess,
-      recipients: filteredProjectMembers,
-      subjectLine: "Organization Admin Project Direct Access Issued",
-      substitutions: {
-        projectName: project.name,
-        email: projectMembers.find((el) => el.userId === actorId)?.user?.username
-      }
-    });
+    if (filteredProjectMembers.length) {
+      await smtpService.sendMail({
+        template: SmtpTemplates.OrgAdminProjectDirectAccess,
+        recipients: filteredProjectMembers,
+        subjectLine: "Organization Admin Project Direct Access Issued",
+        substitutions: {
+          projectName: project.name,
+          email: projectMembers.find((el) => el.userId === actorId)?.user?.username
+        }
+      });
+    }
     return { isExistingMember: false, membership: updatedMembership };
   };
 

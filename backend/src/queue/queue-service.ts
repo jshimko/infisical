@@ -1,5 +1,4 @@
 import { Job, JobsOptions, Queue, QueueOptions, RepeatOptions, Worker, WorkerListener } from "bullmq";
-import Redis from "ioredis";
 import PgBoss, { WorkOptions } from "pg-boss";
 
 import { SecretEncryptionAlgo, SecretKeyEncoding } from "@app/db/schemas";
@@ -12,8 +11,16 @@ import {
   TScanFullRepoEventPayload,
   TScanPushEventPayload
 } from "@app/ee/services/secret-scanning/secret-scanning-queue/secret-scanning-queue-types";
+import {
+  TQueueSecretScanningDataSourceFullScan,
+  TQueueSecretScanningResourceDiffScan,
+  TQueueSecretScanningSendNotification
+} from "@app/ee/services/secret-scanning-v2/secret-scanning-v2-types";
 import { getConfig } from "@app/lib/config/env";
+import { buildRedisFromConfig, TRedisConfigKeys } from "@app/lib/config/redis";
 import { logger } from "@app/lib/logger";
+import { QueueWorkerProfile } from "@app/lib/types";
+import { CaType } from "@app/services/certificate-authority/certificate-authority-enums";
 import {
   TFailedIntegrationSyncEmailsPayload,
   TIntegrationSyncPayload,
@@ -36,6 +43,7 @@ export enum QueueName {
   AuditLogPrune = "audit-log-prune",
   DailyResourceCleanUp = "daily-resource-cleanup",
   DailyExpiringPkiItemAlert = "daily-expiring-pki-item-alert",
+  PkiSubscriber = "pki-subscriber",
   TelemetryInstanceStats = "telemtry-self-hosted-stats",
   IntegrationSync = "sync-integrations",
   SecretWebhook = "secret-webhook",
@@ -44,6 +52,7 @@ export enum QueueName {
   UpgradeProjectToGhost = "upgrade-project-to-ghost",
   DynamicSecretRevocation = "dynamic-secret-revocation",
   CaCrlRotation = "ca-crl-rotation",
+  CaLifecycle = "ca-lifecycle", // parent queue to ca-order-certificate-for-subscriber
   SecretReplication = "secret-replication",
   SecretSync = "secret-sync", // parent queue to push integration sync, webhook, and secret replication
   ProjectV3Migration = "project-v3-migration",
@@ -51,7 +60,9 @@ export enum QueueName {
   ImportSecretsFromExternalSource = "import-secrets-from-external-source",
   AppConnectionSecretSync = "app-connection-secret-sync",
   SecretRotationV2 = "secret-rotation-v2",
-  InvalidateCache = "invalidate-cache"
+  FolderTreeCheckpoint = "folder-tree-checkpoint",
+  InvalidateCache = "invalidate-cache",
+  SecretScanningV2 = "secret-scanning-v2"
 }
 
 export enum QueueJobs {
@@ -84,7 +95,13 @@ export enum QueueJobs {
   SecretRotationV2QueueRotations = "secret-rotation-v2-queue-rotations",
   SecretRotationV2RotateSecrets = "secret-rotation-v2-rotate-secrets",
   SecretRotationV2SendNotification = "secret-rotation-v2-send-notification",
-  InvalidateCache = "invalidate-cache"
+  CreateFolderTreeCheckpoint = "create-folder-tree-checkpoint",
+  InvalidateCache = "invalidate-cache",
+  SecretScanningV2FullScan = "secret-scanning-v2-full-scan",
+  SecretScanningV2DiffScan = "secret-scanning-v2-diff-scan",
+  SecretScanningV2SendNotification = "secret-scanning-v2-notification",
+  CaOrderCertificateForSubscriber = "ca-order-certificate-for-subscriber",
+  PkiSubscriberDailyAutoRenewal = "pki-subscriber-daily-auto-renewal"
 }
 
 export type TQueueJobTypes = {
@@ -194,6 +211,12 @@ export type TQueueJobTypes = {
     name: QueueJobs.ProjectV3Migration;
     payload: { projectId: string };
   };
+  [QueueName.FolderTreeCheckpoint]: {
+    name: QueueJobs.CreateFolderTreeCheckpoint;
+    payload: {
+      envId: string;
+    };
+  };
   [QueueName.ImportSecretsFromExternalSource]: {
     name: QueueJobs.ImportSecretsFromExternalSource;
     payload: {
@@ -245,14 +268,128 @@ export type TQueueJobTypes = {
       };
     };
   };
+  [QueueName.SecretScanningV2]:
+    | {
+        name: QueueJobs.SecretScanningV2FullScan;
+        payload: TQueueSecretScanningDataSourceFullScan;
+      }
+    | {
+        name: QueueJobs.SecretScanningV2DiffScan;
+        payload: TQueueSecretScanningResourceDiffScan;
+      }
+    | {
+        name: QueueJobs.SecretScanningV2SendNotification;
+        payload: TQueueSecretScanningSendNotification;
+      };
+  [QueueName.CaLifecycle]: {
+    name: QueueJobs.CaOrderCertificateForSubscriber;
+    payload: {
+      subscriberId: string;
+      caType: CaType;
+    };
+  };
+  [QueueName.PkiSubscriber]: {
+    name: QueueJobs.PkiSubscriberDailyAutoRenewal;
+    payload: undefined;
+  };
 };
 
-export type TQueueServiceFactory = ReturnType<typeof queueServiceFactory>;
+const SECRET_SCANNING_JOBS = [
+  QueueJobs.SecretScanningV2FullScan,
+  QueueJobs.SecretScanningV2DiffScan,
+  QueueJobs.SecretScanningV2SendNotification,
+  QueueJobs.SecretScan
+];
+
+const NON_STANDARD_JOBS = [...SECRET_SCANNING_JOBS];
+
+const SECRET_SCANNING_QUEUES = [
+  QueueName.SecretScanningV2,
+  QueueName.SecretFullRepoScan,
+  QueueName.SecretPushEventScan
+];
+
+const NON_STANDARD_QUEUES = [...SECRET_SCANNING_QUEUES];
+
+const isQueueEnabled = (name: QueueName) => {
+  const appCfg = getConfig();
+  switch (appCfg.QUEUE_WORKER_PROFILE) {
+    case QueueWorkerProfile.Standard:
+      return !NON_STANDARD_QUEUES.includes(name);
+    case QueueWorkerProfile.SecretScanning:
+      return SECRET_SCANNING_QUEUES.includes(name);
+    case QueueWorkerProfile.All:
+    default:
+      // allow all
+      return true;
+  }
+};
+
+export type TQueueServiceFactory = {
+  initialize: () => Promise<void>;
+  start: <T extends QueueName>(
+    name: T,
+    jobFn: (job: Job<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>, token?: string) => Promise<void>,
+    queueSettings?: Omit<QueueOptions, "connection">
+  ) => void;
+  startPg: <T extends QueueName>(
+    jobName: QueueJobs,
+    jobsFn: (jobs: PgBoss.JobWithMetadata<TQueueJobTypes[T]["payload"]>[]) => Promise<void>,
+    options: WorkOptions & {
+      workerCount: number;
+    }
+  ) => Promise<void>;
+  listen: <
+    T extends QueueName,
+    U extends keyof WorkerListener<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>
+  >(
+    name: T,
+    event: U,
+    listener: WorkerListener<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>[U]
+  ) => void;
+  queue: <T extends QueueName>(
+    name: T,
+    job: TQueueJobTypes[T]["name"],
+    data: TQueueJobTypes[T]["payload"],
+    opts?: JobsOptions & {
+      jobId?: string;
+    }
+  ) => Promise<void>;
+  queuePg: <T extends QueueName>(
+    job: TQueueJobTypes[T]["name"],
+    data: TQueueJobTypes[T]["payload"],
+    opts?: PgBoss.SendOptions & { jobId?: string }
+  ) => Promise<void>;
+  schedulePg: <T extends QueueName>(
+    job: TQueueJobTypes[T]["name"],
+    cron: string,
+    data: TQueueJobTypes[T]["payload"],
+    opts?: PgBoss.ScheduleOptions & { jobId?: string }
+  ) => Promise<void>;
+  shutdown: () => Promise<void>;
+  stopRepeatableJob: <T extends QueueName>(
+    name: T,
+    job: TQueueJobTypes[T]["name"],
+    repeatOpt: RepeatOptions,
+    jobId?: string
+  ) => Promise<boolean | undefined>;
+  stopRepeatableJobByJobId: <T extends QueueName>(name: T, jobId: string) => Promise<boolean>;
+  stopRepeatableJobByKey: <T extends QueueName>(name: T, repeatJobKey: string) => Promise<boolean>;
+  clearQueue: (name: QueueName) => Promise<void>;
+  stopJobById: <T extends QueueName>(name: T, jobId: string) => Promise<void | undefined>;
+  stopJobByIdPg: <T extends QueueName>(name: T, jobId: string) => Promise<void | undefined>;
+  getRepeatableJobs: (
+    name: QueueName,
+    startOffset?: number,
+    endOffset?: number
+  ) => Promise<{ key: string; name: string; id: string | null }[]>;
+};
+
 export const queueServiceFactory = (
-  redisUrl: string,
+  redisCfg: TRedisConfigKeys,
   { dbConnectionUrl, dbRootCert }: { dbConnectionUrl: string; dbRootCert?: string }
-) => {
-  const connection = new Redis(redisUrl, { maxRetriesPerRequest: null });
+): TQueueServiceFactory => {
+  const connection = buildRedisFromConfig(redisCfg);
   const queueContainer = {} as Record<
     QueueName,
     Queue<TQueueJobTypes[QueueName]["payload"], void, TQueueJobTypes[QueueName]["name"]>
@@ -288,38 +425,52 @@ export const queueServiceFactory = (
     });
   };
 
-  const start = <T extends QueueName>(
-    name: T,
-    jobFn: (job: Job<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>, token?: string) => Promise<void>,
-    queueSettings: Omit<QueueOptions, "connection"> = {}
-  ) => {
+  const start: TQueueServiceFactory["start"] = (name, jobFn, queueSettings) => {
     if (queueContainer[name]) {
       throw new Error(`${name} queue is already initialized`);
     }
 
-    queueContainer[name] = new Queue<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>(name as string, {
+    queueContainer[name] = new Queue(name as string, {
       ...queueSettings,
       connection
     });
 
     const appCfg = getConfig();
-    if (appCfg.QUEUE_WORKERS_ENABLED) {
-      workerContainer[name] = new Worker<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>(name, jobFn, {
+    if (appCfg.QUEUE_WORKERS_ENABLED && isQueueEnabled(name)) {
+      workerContainer[name] = new Worker(name, jobFn, {
         ...queueSettings,
         connection
       });
     }
   };
 
-  const startPg = async <T extends QueueName>(
-    jobName: QueueJobs,
-    jobsFn: (jobs: PgBoss.JobWithMetadata<TQueueJobTypes[T]["payload"]>[]) => Promise<void>,
-    options: WorkOptions & {
-      workerCount: number;
-    }
-  ) => {
+  const startPg: TQueueServiceFactory["startPg"] = async (jobName, jobsFn, options) => {
     if (queueContainerPg[jobName]) {
       throw new Error(`${jobName} queue is already initialized`);
+    }
+
+    const appCfg = getConfig();
+
+    if (!appCfg.QUEUE_WORKERS_ENABLED) return;
+
+    switch (appCfg.QUEUE_WORKER_PROFILE) {
+      case QueueWorkerProfile.Standard:
+        if (NON_STANDARD_JOBS.includes(jobName)) {
+          // only process standard jobs
+          return;
+        }
+
+        break;
+      case QueueWorkerProfile.SecretScanning:
+        if (!SECRET_SCANNING_JOBS.includes(jobName)) {
+          // only process secret scanning jobs
+          return;
+        }
+
+        break;
+      case QueueWorkerProfile.All:
+      default:
+      // allow all
     }
 
     await pgBoss.createQueue(jobName);
@@ -327,21 +478,14 @@ export const queueServiceFactory = (
 
     await Promise.all(
       Array.from({ length: options.workerCount }).map(() =>
-        pgBoss.work<TQueueJobTypes[T]["payload"]>(jobName, { ...options, includeMetadata: true }, jobsFn)
+        pgBoss.work(jobName, { ...options, includeMetadata: true }, jobsFn)
       )
     );
   };
 
-  const listen = <
-    T extends QueueName,
-    U extends keyof WorkerListener<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>
-  >(
-    name: T,
-    event: U,
-    listener: WorkerListener<TQueueJobTypes[T]["payload"], void, TQueueJobTypes[T]["name"]>[U]
-  ) => {
+  const listen: TQueueServiceFactory["listen"] = (name, event, listener) => {
     const appCfg = getConfig();
-    if (!appCfg.QUEUE_WORKERS_ENABLED) {
+    if (!appCfg.QUEUE_WORKERS_ENABLED || !isQueueEnabled(name)) {
       return;
     }
 
@@ -349,12 +493,7 @@ export const queueServiceFactory = (
     worker.on(event, listener);
   };
 
-  const queue = async <T extends QueueName>(
-    name: T,
-    job: TQueueJobTypes[T]["name"],
-    data: TQueueJobTypes[T]["payload"],
-    opts?: JobsOptions & { jobId?: string }
-  ) => {
+  const queue: TQueueServiceFactory["queue"] = async (name, job, data, opts) => {
     const q = queueContainer[name];
 
     await q.add(job, data, opts);
@@ -372,35 +511,25 @@ export const queueServiceFactory = (
     });
   };
 
-  const schedulePg = async <T extends QueueName>(
-    job: TQueueJobTypes[T]["name"],
-    cron: string,
-    data: TQueueJobTypes[T]["payload"],
-    opts?: PgBoss.ScheduleOptions & { jobId?: string }
-  ) => {
+  const schedulePg: TQueueServiceFactory["schedulePg"] = async (job, cron, data, opts) => {
     await pgBoss.schedule(job, cron, data, opts);
   };
 
-  const stopRepeatableJob = async <T extends QueueName>(
-    name: T,
-    job: TQueueJobTypes[T]["name"],
-    repeatOpt: RepeatOptions,
-    jobId?: string
-  ) => {
+  const stopRepeatableJob: TQueueServiceFactory["stopRepeatableJob"] = async (name, job, repeatOpt, jobId) => {
     const q = queueContainer[name];
     if (q) {
       return q.removeRepeatable(job, repeatOpt, jobId);
     }
   };
 
-  const getRepeatableJobs = (name: QueueName, startOffset?: number, endOffset?: number) => {
+  const getRepeatableJobs: TQueueServiceFactory["getRepeatableJobs"] = (name, startOffset, endOffset) => {
     const q = queueContainer[name];
     if (!q) throw new Error(`Queue '${name}' not initialized`);
 
     return q.getRepeatableJobs(startOffset, endOffset);
   };
 
-  const stopRepeatableJobByJobId = async <T extends QueueName>(name: T, jobId: string) => {
+  const stopRepeatableJobByJobId: TQueueServiceFactory["stopRepeatableJobByJobId"] = async (name, jobId) => {
     const q = queueContainer[name];
     const job = await q.getJob(jobId);
     if (!job) return true;
@@ -409,23 +538,27 @@ export const queueServiceFactory = (
     return q.removeRepeatableByKey(job.repeatJobKey);
   };
 
-  const stopRepeatableJobByKey = async <T extends QueueName>(name: T, repeatJobKey: string) => {
+  const stopRepeatableJobByKey: TQueueServiceFactory["stopRepeatableJobByKey"] = async (name, repeatJobKey) => {
     const q = queueContainer[name];
     return q.removeRepeatableByKey(repeatJobKey);
   };
 
-  const stopJobById = async <T extends QueueName>(name: T, jobId: string) => {
+  const stopJobByIdPg: TQueueServiceFactory["stopJobByIdPg"] = async (name, jobId) => {
+    await pgBoss.deleteJob(name, jobId);
+  };
+
+  const stopJobById: TQueueServiceFactory["stopJobById"] = async (name, jobId) => {
     const q = queueContainer[name];
     const job = await q.getJob(jobId);
     return job?.remove().catch(() => undefined);
   };
 
-  const clearQueue = async (name: QueueName) => {
+  const clearQueue: TQueueServiceFactory["clearQueue"] = async (name) => {
     const q = queueContainer[name];
     await q.drain();
   };
 
-  const shutdown = async () => {
+  const shutdown: TQueueServiceFactory["shutdown"] = async () => {
     await Promise.all(Object.values(workerContainer).map((worker) => worker.close()));
   };
 
@@ -440,6 +573,7 @@ export const queueServiceFactory = (
     stopRepeatableJobByKey,
     clearQueue,
     stopJobById,
+    stopJobByIdPg,
     getRepeatableJobs,
     startPg,
     queuePg,

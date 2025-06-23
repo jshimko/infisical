@@ -9,21 +9,29 @@ import { AppConnection } from "@app/hooks/api/appConnections/enums";
 import { DiscriminativePick } from "@app/types";
 
 import { AppConnectionHeader } from "../AppConnectionHeader";
+import { OnePassConnectionForm } from "./1PasswordConnectionForm";
 import { Auth0ConnectionForm } from "./Auth0ConnectionForm";
 import { AwsConnectionForm } from "./AwsConnectionForm";
 import { AzureAppConfigurationConnectionForm } from "./AzureAppConfigurationConnectionForm";
 import { AzureClientSecretsConnectionForm } from "./AzureClientSecretsConnectionForm";
+import { AzureDevOpsConnectionForm } from "./AzureDevOpsConnectionForm";
 import { AzureKeyVaultConnectionForm } from "./AzureKeyVaultConnectionForm";
 import { CamundaConnectionForm } from "./CamundaConnectionForm";
 import { DatabricksConnectionForm } from "./DatabricksConnectionForm";
+import { FlyioConnectionForm } from "./FlyioConnectionForm";
 import { GcpConnectionForm } from "./GcpConnectionForm";
 import { GitHubConnectionForm } from "./GitHubConnectionForm";
+import { GitHubRadarConnectionForm } from "./GitHubRadarConnectionForm";
 import { HCVaultConnectionForm } from "./HCVaultConnectionForm";
+import { HerokuConnectionForm } from "./HerokuAppConnectionForm";
 import { HumanitecConnectionForm } from "./HumanitecConnectionForm";
 import { LdapConnectionForm } from "./LdapConnectionForm";
 import { MsSqlConnectionForm } from "./MsSqlConnectionForm";
+import { MySqlConnectionForm } from "./MySqlConnectionForm";
 import { OCIConnectionForm } from "./OCIConnectionForm";
+import { OracleDBConnectionForm } from "./OracleDBConnectionForm";
 import { PostgresConnectionForm } from "./PostgresConnectionForm";
+import { RenderConnectionForm } from "./RenderConnectionForm";
 import { TeamCityConnectionForm } from "./TeamCityConnectionForm";
 import { TerraformCloudConnectionForm } from "./TerraformCloudConnectionForm";
 import { VercelConnectionForm } from "./VercelConnectionForm";
@@ -70,6 +78,8 @@ const CreateForm = ({ app, onComplete }: CreateFormProps) => {
       return <AwsConnectionForm onSubmit={onSubmit} />;
     case AppConnection.GitHub:
       return <GitHubConnectionForm />;
+    case AppConnection.GitHubRadar:
+      return <GitHubRadarConnectionForm />;
     case AppConnection.GCP:
       return <GcpConnectionForm onSubmit={onSubmit} />;
     case AppConnection.AzureKeyVault:
@@ -88,10 +98,16 @@ const CreateForm = ({ app, onComplete }: CreateFormProps) => {
       return <PostgresConnectionForm onSubmit={onSubmit} />;
     case AppConnection.MsSql:
       return <MsSqlConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.MySql:
+      return <MySqlConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.OracleDB:
+      return <OracleDBConnectionForm onSubmit={onSubmit} />;
     case AppConnection.Camunda:
       return <CamundaConnectionForm onSubmit={onSubmit} />;
     case AppConnection.AzureClientSecrets:
       return <AzureClientSecretsConnectionForm />;
+    case AppConnection.AzureDevOps:
+      return <AzureDevOpsConnectionForm onSubmit={onSubmit} />;
     case AppConnection.Windmill:
       return <WindmillConnectionForm onSubmit={onSubmit} />;
     case AppConnection.Auth0:
@@ -104,6 +120,14 @@ const CreateForm = ({ app, onComplete }: CreateFormProps) => {
       return <TeamCityConnectionForm onSubmit={onSubmit} />;
     case AppConnection.OCI:
       return <OCIConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.OnePass:
+      return <OnePassConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.Heroku:
+      return <HerokuConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.Render:
+      return <RenderConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.Flyio:
+      return <FlyioConnectionForm onSubmit={onSubmit} />;
     default:
       throw new Error(`Unhandled App ${app}`);
   }
@@ -144,6 +168,8 @@ const UpdateForm = ({ appConnection, onComplete }: UpdateFormProps) => {
       return <AwsConnectionForm appConnection={appConnection} onSubmit={onSubmit} />;
     case AppConnection.GitHub:
       return <GitHubConnectionForm appConnection={appConnection} />;
+    case AppConnection.GitHubRadar:
+      return <GitHubRadarConnectionForm appConnection={appConnection} />;
     case AppConnection.GCP:
       return <GcpConnectionForm appConnection={appConnection} onSubmit={onSubmit} />;
     case AppConnection.AzureKeyVault:
@@ -162,10 +188,16 @@ const UpdateForm = ({ appConnection, onComplete }: UpdateFormProps) => {
       return <PostgresConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.MsSql:
       return <MsSqlConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
+    case AppConnection.MySql:
+      return <MySqlConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
+    case AppConnection.OracleDB:
+      return <OracleDBConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.Camunda:
       return <CamundaConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.AzureClientSecrets:
       return <AzureClientSecretsConnectionForm appConnection={appConnection} />;
+    case AppConnection.AzureDevOps:
+      return <AzureDevOpsConnectionForm appConnection={appConnection} onSubmit={onSubmit} />;
     case AppConnection.Windmill:
       return <WindmillConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.Auth0:
@@ -178,7 +210,14 @@ const UpdateForm = ({ appConnection, onComplete }: UpdateFormProps) => {
       return <TeamCityConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.OCI:
       return <OCIConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
-
+    case AppConnection.OnePass:
+      return <OnePassConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
+    case AppConnection.Heroku:
+      return <HerokuConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
+    case AppConnection.Render:
+      return <RenderConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
+    case AppConnection.Flyio:
+      return <FlyioConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     default:
       throw new Error(`Unhandled App ${(appConnection as TAppConnection).app}`);
   }

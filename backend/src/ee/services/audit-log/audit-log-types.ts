@@ -1,3 +1,4 @@
+import { ProjectType } from "@app/db/schemas";
 import {
   TCreateProjectTemplateDTO,
   TUpdateProjectTemplateDTO
@@ -9,6 +10,18 @@ import {
   TSecretRotationV2Raw,
   TUpdateSecretRotationV2DTO
 } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-types";
+import {
+  SecretScanningDataSource,
+  SecretScanningScanStatus,
+  SecretScanningScanType
+} from "@app/ee/services/secret-scanning-v2/secret-scanning-v2-enums";
+import {
+  TCreateSecretScanningDataSourceDTO,
+  TDeleteSecretScanningDataSourceDTO,
+  TTriggerSecretScanningDataSourceDTO,
+  TUpdateSecretScanningDataSourceDTO,
+  TUpdateSecretScanningFindingDTO
+} from "@app/ee/services/secret-scanning-v2/secret-scanning-v2-types";
 import { SshCaStatus, SshCertType } from "@app/ee/services/ssh/ssh-certificate-authority-types";
 import { SshCertKeyAlgorithm } from "@app/ee/services/ssh-certificate/ssh-certificate-types";
 import { SshCertTemplateStatus } from "@app/ee/services/ssh-certificate-template/ssh-certificate-template-types";
@@ -20,7 +33,7 @@ import { AppConnection } from "@app/services/app-connection/app-connection-enums
 import { TCreateAppConnectionDTO, TUpdateAppConnectionDTO } from "@app/services/app-connection/app-connection-types";
 import { ActorType } from "@app/services/auth/auth-type";
 import { CertExtendedKeyUsage, CertKeyAlgorithm, CertKeyUsage } from "@app/services/certificate/certificate-types";
-import { CaStatus } from "@app/services/certificate-authority/certificate-authority-types";
+import { CaStatus } from "@app/services/certificate-authority/certificate-authority-enums";
 import { TIdentityTrustedIp } from "@app/services/identity/identity-types";
 import { TAllowedFields } from "@app/services/identity-ldap-auth/identity-ldap-auth-types";
 import { PkiItemType } from "@app/services/pki-collection/pki-collection-types";
@@ -31,6 +44,7 @@ import {
   TSecretSyncRaw,
   TUpdateSecretSyncDTO
 } from "@app/services/secret-sync/secret-sync-types";
+import { TWebhookPayloads } from "@app/services/webhook/webhook-types";
 import { WorkflowIntegration } from "@app/services/workflow-integration/workflow-integration-types";
 
 import { KmipPermission } from "../kmip/kmip-enum";
@@ -67,6 +81,32 @@ export type TCreateAuditLogDTO = {
   orgId?: string;
   projectId?: string;
 } & BaseAuthData;
+
+export type TAuditLogServiceFactory = {
+  createAuditLog: (data: TCreateAuditLogDTO) => Promise<void>;
+  listAuditLogs: (arg: TListProjectAuditLogDTO) => Promise<
+    {
+      event: {
+        type: string;
+        metadata: unknown;
+      };
+      actor: {
+        type: string;
+        metadata: unknown;
+      };
+      id: string;
+      createdAt: Date;
+      updatedAt: Date;
+      orgId?: string | null | undefined;
+      userAgent?: string | null | undefined;
+      expiresAt?: Date | null | undefined;
+      ipAddress?: string | null | undefined;
+      userAgentType?: string | null | undefined;
+      projectId?: string | null | undefined;
+      projectName?: string | null | undefined;
+    }[]
+  >;
+};
 
 export type AuditLogInfo = Pick<TCreateAuditLogDTO, "userAgent" | "userAgentType" | "ipAddress" | "actor">;
 
@@ -156,6 +196,12 @@ export enum EventType {
   REVOKE_IDENTITY_GCP_AUTH = "revoke-identity-gcp-auth",
   GET_IDENTITY_GCP_AUTH = "get-identity-gcp-auth",
 
+  LOGIN_IDENTITY_ALICLOUD_AUTH = "login-identity-alicloud-auth",
+  ADD_IDENTITY_ALICLOUD_AUTH = "add-identity-alicloud-auth",
+  UPDATE_IDENTITY_ALICLOUD_AUTH = "update-identity-alicloud-auth",
+  REVOKE_IDENTITY_ALICLOUD_AUTH = "revoke-identity-alicloud-auth",
+  GET_IDENTITY_ALICLOUD_AUTH = "get-identity-alicloud-auth",
+
   LOGIN_IDENTITY_AWS_AUTH = "login-identity-aws-auth",
   ADD_IDENTITY_AWS_AUTH = "add-identity-aws-auth",
   UPDATE_IDENTITY_AWS_AUTH = "update-identity-aws-auth",
@@ -193,6 +239,7 @@ export enum EventType {
   CREATE_WEBHOOK = "create-webhook",
   UPDATE_WEBHOOK_STATUS = "update-webhook-status",
   DELETE_WEBHOOK = "delete-webhook",
+  WEBHOOK_TRIGGERED = "webhook-triggered",
   GET_SECRET_IMPORTS = "get-secret-imports",
   GET_SECRET_IMPORT = "get-secret-import",
   CREATE_SECRET_IMPORT = "create-secret-import",
@@ -231,6 +278,7 @@ export enum EventType {
   REMOVE_HOST_FROM_SSH_HOST_GROUP = "remove-host-from-ssh-host-group",
   CREATE_CA = "create-certificate-authority",
   GET_CA = "get-certificate-authority",
+  GET_CAS = "get-certificate-authorities",
   UPDATE_CA = "update-certificate-authority",
   DELETE_CA = "delete-certificate-authority",
   RENEW_CA = "renew-certificate-authority",
@@ -241,6 +289,7 @@ export enum EventType {
   IMPORT_CA_CERT = "import-certificate-authority-cert",
   GET_CA_CRLS = "get-certificate-authority-crls",
   ISSUE_CERT = "issue-cert",
+  IMPORT_CERT = "import-cert",
   SIGN_CERT = "sign-cert",
   GET_CA_CERTIFICATE_TEMPLATES = "get-ca-certificate-templates",
   GET_CERT = "get-cert",
@@ -266,7 +315,9 @@ export enum EventType {
   GET_PKI_SUBSCRIBER = "get-pki-subscriber",
   ISSUE_PKI_SUBSCRIBER_CERT = "issue-pki-subscriber-cert",
   SIGN_PKI_SUBSCRIBER_CERT = "sign-pki-subscriber-cert",
+  AUTOMATED_RENEW_SUBSCRIBER_CERT = "automated-renew-subscriber-cert",
   LIST_PKI_SUBSCRIBER_CERTS = "list-pki-subscriber-certs",
+  GET_SUBSCRIBER_ACTIVE_CERT_BUNDLE = "get-subscriber-active-cert-bundle",
   CREATE_KMS = "create-kms",
   UPDATE_KMS = "update-kms",
   DELETE_KMS = "delete-kms",
@@ -315,7 +366,6 @@ export enum EventType {
   CREATE_PROJECT_TEMPLATE = "create-project-template",
   UPDATE_PROJECT_TEMPLATE = "update-project-template",
   DELETE_PROJECT_TEMPLATE = "delete-project-template",
-  APPLY_PROJECT_TEMPLATE = "apply-project-template",
   GET_APP_CONNECTIONS = "get-app-connections",
   GET_AVAILABLE_APP_CONNECTIONS_DETAILS = "get-available-app-connections-details",
   GET_APP_CONNECTION = "get-app-connection",
@@ -375,7 +425,34 @@ export enum EventType {
   MICROSOFT_TEAMS_WORKFLOW_INTEGRATION_LIST = "microsoft-teams-workflow-integration-list",
 
   PROJECT_ASSUME_PRIVILEGE_SESSION_START = "project-assume-privileges-session-start",
-  PROJECT_ASSUME_PRIVILEGE_SESSION_END = "project-assume-privileges-session-end"
+  PROJECT_ASSUME_PRIVILEGE_SESSION_END = "project-assume-privileges-session-end",
+
+  GET_PROJECT_PIT_COMMITS = "get-project-pit-commits",
+  GET_PROJECT_PIT_COMMIT_CHANGES = "get-project-pit-commit-changes",
+  GET_PROJECT_PIT_COMMIT_COUNT = "get-project-pit-commit-count",
+  PIT_ROLLBACK_COMMIT = "pit-rollback-commit",
+  PIT_REVERT_COMMIT = "pit-revert-commit",
+  PIT_GET_FOLDER_STATE = "pit-get-folder-state",
+  PIT_COMPARE_FOLDER_STATES = "pit-compare-folder-states",
+  SECRET_SCANNING_DATA_SOURCE_LIST = "secret-scanning-data-source-list",
+  SECRET_SCANNING_DATA_SOURCE_CREATE = "secret-scanning-data-source-create",
+  SECRET_SCANNING_DATA_SOURCE_UPDATE = "secret-scanning-data-source-update",
+  SECRET_SCANNING_DATA_SOURCE_DELETE = "secret-scanning-data-source-delete",
+  SECRET_SCANNING_DATA_SOURCE_GET = "secret-scanning-data-source-get",
+  SECRET_SCANNING_DATA_SOURCE_TRIGGER_SCAN = "secret-scanning-data-source-trigger-scan",
+  SECRET_SCANNING_DATA_SOURCE_SCAN = "secret-scanning-data-source-scan",
+  SECRET_SCANNING_RESOURCE_LIST = "secret-scanning-resource-list",
+  SECRET_SCANNING_SCAN_LIST = "secret-scanning-scan-list",
+  SECRET_SCANNING_FINDING_LIST = "secret-scanning-finding-list",
+  SECRET_SCANNING_FINDING_UPDATE = "secret-scanning-finding-update",
+  SECRET_SCANNING_CONFIG_GET = "secret-scanning-config-get",
+  SECRET_SCANNING_CONFIG_UPDATE = "secret-scanning-config-update",
+
+  UPDATE_ORG = "update-org",
+
+  CREATE_PROJECT = "create-project",
+  UPDATE_PROJECT = "update-project",
+  DELETE_PROJECT = "delete-project"
 }
 
 export const filterableSecretEvents: EventType[] = [
@@ -703,6 +780,7 @@ interface CreateIdentityEvent {
   metadata: {
     identityId: string;
     name: string;
+    hasDeleteProtection: boolean;
   };
 }
 
@@ -711,6 +789,7 @@ interface UpdateIdentityEvent {
   metadata: {
     identityId: string;
     name?: string;
+    hasDeleteProtection?: boolean;
   };
 }
 
@@ -1010,6 +1089,53 @@ interface UpdateIdentityAwsAuthEvent {
 
 interface GetIdentityAwsAuthEvent {
   type: EventType.GET_IDENTITY_AWS_AUTH;
+  metadata: {
+    identityId: string;
+  };
+}
+
+interface LoginIdentityAliCloudAuthEvent {
+  type: EventType.LOGIN_IDENTITY_ALICLOUD_AUTH;
+  metadata: {
+    identityId: string;
+    identityAliCloudAuthId: string;
+    identityAccessTokenId: string;
+  };
+}
+
+interface AddIdentityAliCloudAuthEvent {
+  type: EventType.ADD_IDENTITY_ALICLOUD_AUTH;
+  metadata: {
+    identityId: string;
+    allowedArns: string;
+    accessTokenTTL: number;
+    accessTokenMaxTTL: number;
+    accessTokenNumUsesLimit: number;
+    accessTokenTrustedIps: Array<TIdentityTrustedIp>;
+  };
+}
+
+interface DeleteIdentityAliCloudAuthEvent {
+  type: EventType.REVOKE_IDENTITY_ALICLOUD_AUTH;
+  metadata: {
+    identityId: string;
+  };
+}
+
+interface UpdateIdentityAliCloudAuthEvent {
+  type: EventType.UPDATE_IDENTITY_ALICLOUD_AUTH;
+  metadata: {
+    identityId: string;
+    allowedArns: string;
+    accessTokenTTL?: number;
+    accessTokenMaxTTL?: number;
+    accessTokenNumUsesLimit?: number;
+    accessTokenTrustedIps?: Array<TIdentityTrustedIp>;
+  };
+}
+
+interface GetIdentityAliCloudAuthEvent {
+  type: EventType.GET_IDENTITY_ALICLOUD_AUTH;
   metadata: {
     identityId: string;
   };
@@ -1404,6 +1530,14 @@ interface DeleteWebhookEvent {
   };
 }
 
+export interface WebhookTriggeredEvent {
+  type: EventType.WEBHOOK_TRIGGERED;
+  metadata: {
+    webhookId: string;
+    status: string;
+  } & TWebhookPayloads;
+}
+
 interface GetSecretImportsEvent {
   type: EventType.GET_SECRET_IMPORTS;
   metadata: {
@@ -1772,7 +1906,8 @@ interface CreateCa {
   type: EventType.CREATE_CA;
   metadata: {
     caId: string;
-    dn: string;
+    name: string;
+    dn?: string;
   };
 }
 
@@ -1780,7 +1915,15 @@ interface GetCa {
   type: EventType.GET_CA;
   metadata: {
     caId: string;
-    dn: string;
+    name: string;
+    dn?: string;
+  };
+}
+
+interface GetCAs {
+  type: EventType.GET_CAS;
+  metadata: {
+    caIds: string[];
   };
 }
 
@@ -1788,7 +1931,8 @@ interface UpdateCa {
   type: EventType.UPDATE_CA;
   metadata: {
     caId: string;
-    dn: string;
+    name: string;
+    dn?: string;
     status: CaStatus;
   };
 }
@@ -1797,7 +1941,8 @@ interface DeleteCa {
   type: EventType.DELETE_CA;
   metadata: {
     caId: string;
-    dn: string;
+    name: string;
+    dn?: string;
   };
 }
 
@@ -1863,6 +2008,15 @@ interface IssueCert {
   metadata: {
     caId: string;
     dn: string;
+    serialNumber: string;
+  };
+}
+
+interface ImportCert {
+  type: EventType.IMPORT_CERT;
+  metadata: {
+    certId: string;
+    cn: string;
     serialNumber: string;
   };
 }
@@ -2034,7 +2188,7 @@ interface CreatePkiSubscriber {
     caId?: string;
     name: string;
     commonName: string;
-    ttl: string;
+    ttl?: string;
     subjectAlternativeNames: string[];
     keyUsages: CertKeyUsage[];
     extendedKeyUsages: CertExtendedKeyUsage[];
@@ -2076,7 +2230,15 @@ interface IssuePkiSubscriberCert {
   metadata: {
     subscriberId: string;
     name: string;
-    serialNumber: string;
+    serialNumber?: string;
+  };
+}
+
+interface AutomatedRenewPkiSubscriberCert {
+  type: EventType.AUTOMATED_RENEW_SUBSCRIBER_CERT;
+  metadata: {
+    subscriberId: string;
+    name: string;
   };
 }
 
@@ -2095,6 +2257,16 @@ interface ListPkiSubscriberCerts {
     subscriberId: string;
     name: string;
     projectId: string;
+  };
+}
+
+interface GetSubscriberActiveCertBundle {
+  type: EventType.GET_SUBSCRIBER_ACTIVE_CERT_BUNDLE;
+  metadata: {
+    subscriberId: string;
+    name: string;
+    certId: string;
+    serialNumber: string;
   };
 }
 
@@ -2448,14 +2620,6 @@ interface DeleteProjectTemplateEvent {
   type: EventType.DELETE_PROJECT_TEMPLATE;
   metadata: {
     templateId: string;
-  };
-}
-
-interface ApplyProjectTemplateEvent {
-  type: EventType.APPLY_PROJECT_TEMPLATE;
-  metadata: {
-    template: string;
-    projectId: string;
   };
 }
 
@@ -2913,6 +3077,226 @@ interface MicrosoftTeamsWorkflowIntegrationUpdateEvent {
   };
 }
 
+interface GetProjectPitCommitsEvent {
+  type: EventType.GET_PROJECT_PIT_COMMITS;
+  metadata: {
+    commitCount: string;
+    environment: string;
+    path: string;
+    offset: string;
+    limit: string;
+    search?: string;
+    sort: string;
+  };
+}
+
+interface GetProjectPitCommitChangesEvent {
+  type: EventType.GET_PROJECT_PIT_COMMIT_CHANGES;
+  metadata: {
+    changesCount: string;
+    commitId: string;
+  };
+}
+
+interface GetProjectPitCommitCountEvent {
+  type: EventType.GET_PROJECT_PIT_COMMIT_COUNT;
+  metadata: {
+    environment: string;
+    path: string;
+    commitCount: string;
+  };
+}
+
+interface PitRollbackCommitEvent {
+  type: EventType.PIT_ROLLBACK_COMMIT;
+  metadata: {
+    targetCommitId: string;
+    folderId: string;
+    deepRollback: boolean;
+    message: string;
+    totalChanges: string;
+    environment: string;
+  };
+}
+
+interface PitRevertCommitEvent {
+  type: EventType.PIT_REVERT_COMMIT;
+  metadata: {
+    commitId: string;
+    revertCommitId?: string;
+    changesReverted?: string;
+  };
+}
+
+interface PitGetFolderStateEvent {
+  type: EventType.PIT_GET_FOLDER_STATE;
+  metadata: {
+    commitId: string;
+    folderId: string;
+    resourceCount: string;
+  };
+}
+
+interface PitCompareFolderStatesEvent {
+  type: EventType.PIT_COMPARE_FOLDER_STATES;
+  metadata: {
+    targetCommitId: string;
+    folderId: string;
+    deepRollback: boolean;
+    diffsCount: string;
+    environment: string;
+    folderPath: string;
+  };
+}
+
+interface SecretScanningDataSourceListEvent {
+  type: EventType.SECRET_SCANNING_DATA_SOURCE_LIST;
+  metadata: {
+    type?: SecretScanningDataSource;
+    count: number;
+    dataSourceIds: string[];
+  };
+}
+
+interface SecretScanningDataSourceGetEvent {
+  type: EventType.SECRET_SCANNING_DATA_SOURCE_GET;
+  metadata: {
+    type: SecretScanningDataSource;
+    dataSourceId: string;
+  };
+}
+
+interface SecretScanningDataSourceCreateEvent {
+  type: EventType.SECRET_SCANNING_DATA_SOURCE_CREATE;
+  metadata: Omit<TCreateSecretScanningDataSourceDTO, "projectId"> & { dataSourceId: string };
+}
+
+interface SecretScanningDataSourceUpdateEvent {
+  type: EventType.SECRET_SCANNING_DATA_SOURCE_UPDATE;
+  metadata: TUpdateSecretScanningDataSourceDTO;
+}
+
+interface SecretScanningDataSourceDeleteEvent {
+  type: EventType.SECRET_SCANNING_DATA_SOURCE_DELETE;
+  metadata: TDeleteSecretScanningDataSourceDTO;
+}
+
+interface SecretScanningDataSourceTriggerScanEvent {
+  type: EventType.SECRET_SCANNING_DATA_SOURCE_TRIGGER_SCAN;
+  metadata: TTriggerSecretScanningDataSourceDTO;
+}
+
+interface SecretScanningDataSourceScanEvent {
+  type: EventType.SECRET_SCANNING_DATA_SOURCE_SCAN;
+  metadata: {
+    scanId: string;
+    resourceId: string;
+    resourceType: string;
+    dataSourceId: string;
+    dataSourceType: string;
+    scanStatus: SecretScanningScanStatus;
+    scanType: SecretScanningScanType;
+    numberOfSecretsDetected?: number;
+  };
+}
+
+interface SecretScanningResourceListEvent {
+  type: EventType.SECRET_SCANNING_RESOURCE_LIST;
+  metadata: {
+    type: SecretScanningDataSource;
+    dataSourceId: string;
+    resourceIds: string[];
+    count: number;
+  };
+}
+
+interface SecretScanningScanListEvent {
+  type: EventType.SECRET_SCANNING_SCAN_LIST;
+  metadata: {
+    type: SecretScanningDataSource;
+    dataSourceId: string;
+    count: number;
+  };
+}
+
+interface SecretScanningFindingListEvent {
+  type: EventType.SECRET_SCANNING_FINDING_LIST;
+  metadata: {
+    findingIds: string[];
+    count: number;
+  };
+}
+
+interface SecretScanningFindingUpdateEvent {
+  type: EventType.SECRET_SCANNING_FINDING_UPDATE;
+  metadata: TUpdateSecretScanningFindingDTO;
+}
+
+interface SecretScanningConfigUpdateEvent {
+  type: EventType.SECRET_SCANNING_CONFIG_UPDATE;
+  metadata: {
+    content: string | null;
+  };
+}
+
+interface SecretScanningConfigReadEvent {
+  type: EventType.SECRET_SCANNING_CONFIG_GET;
+  metadata?: Record<string, never>; // not needed, based off projectId
+}
+
+interface OrgUpdateEvent {
+  type: EventType.UPDATE_ORG;
+  metadata: {
+    name?: string;
+    slug?: string;
+    authEnforced?: boolean;
+    scimEnabled?: boolean;
+    defaultMembershipRoleSlug?: string;
+    enforceMfa?: boolean;
+    selectedMfaMethod?: string;
+    allowSecretSharingOutsideOrganization?: boolean;
+    bypassOrgAuthEnabled?: boolean;
+    userTokenExpiration?: string;
+    secretsProductEnabled?: boolean;
+    pkiProductEnabled?: boolean;
+    kmsProductEnabled?: boolean;
+    sshProductEnabled?: boolean;
+    scannerProductEnabled?: boolean;
+    shareSecretsProductEnabled?: boolean;
+  };
+}
+
+interface ProjectCreateEvent {
+  type: EventType.CREATE_PROJECT;
+  metadata: {
+    name: string;
+    slug?: string;
+    type: ProjectType;
+  };
+}
+
+interface ProjectUpdateEvent {
+  type: EventType.UPDATE_PROJECT;
+  metadata: {
+    name?: string;
+    description?: string;
+    autoCapitalization?: boolean;
+    hasDeleteProtection?: boolean;
+    slug?: string;
+    secretSharing?: boolean;
+    pitVersionLimit?: number;
+    auditLogsRetentionDays?: number;
+  };
+}
+
+interface ProjectDeleteEvent {
+  type: EventType.DELETE_PROJECT;
+  metadata: {
+    id: string;
+    name: string;
+  };
+}
+
 export type Event =
   | GetSecretsEvent
   | GetSecretEvent
@@ -2969,6 +3353,11 @@ export type Event =
   | UpdateIdentityAwsAuthEvent
   | GetIdentityAwsAuthEvent
   | DeleteIdentityAwsAuthEvent
+  | LoginIdentityAliCloudAuthEvent
+  | AddIdentityAliCloudAuthEvent
+  | UpdateIdentityAliCloudAuthEvent
+  | GetIdentityAliCloudAuthEvent
+  | DeleteIdentityAliCloudAuthEvent
   | LoginIdentityOciAuthEvent
   | AddIdentityOciAuthEvent
   | UpdateIdentityOciAuthEvent
@@ -3007,6 +3396,7 @@ export type Event =
   | CreateWebhookEvent
   | UpdateWebhookStatusEvent
   | DeleteWebhookEvent
+  | WebhookTriggeredEvent
   | GetSecretImportsEvent
   | GetSecretImportEvent
   | CreateSecretImportEvent
@@ -3037,6 +3427,7 @@ export type Event =
   | IssueSshHostHostCert
   | CreateCa
   | GetCa
+  | GetCAs
   | UpdateCa
   | DeleteCa
   | RenewCa
@@ -3047,6 +3438,7 @@ export type Event =
   | ImportCaCert
   | GetCaCrls
   | IssueCert
+  | ImportCert
   | SignCert
   | GetCaCertificateTemplates
   | GetCert
@@ -3072,7 +3464,9 @@ export type Event =
   | GetPkiSubscriber
   | IssuePkiSubscriberCert
   | SignPkiSubscriberCert
+  | AutomatedRenewPkiSubscriberCert
   | ListPkiSubscriberCerts
+  | GetSubscriberActiveCertBundle
   | CreateKmsEvent
   | UpdateKmsEvent
   | DeleteKmsEvent
@@ -3117,7 +3511,6 @@ export type Event =
   | CreateProjectTemplateEvent
   | UpdateProjectTemplateEvent
   | DeleteProjectTemplateEvent
-  | ApplyProjectTemplateEvent
   | GetAppConnectionsEvent
   | GetAvailableAppConnectionsDetailsEvent
   | GetAppConnectionEvent
@@ -3179,4 +3572,28 @@ export type Event =
   | MicrosoftTeamsWorkflowIntegrationGetTeamsEvent
   | MicrosoftTeamsWorkflowIntegrationGetEvent
   | MicrosoftTeamsWorkflowIntegrationListEvent
-  | MicrosoftTeamsWorkflowIntegrationUpdateEvent;
+  | MicrosoftTeamsWorkflowIntegrationUpdateEvent
+  | GetProjectPitCommitsEvent
+  | GetProjectPitCommitChangesEvent
+  | PitRollbackCommitEvent
+  | GetProjectPitCommitCountEvent
+  | PitRevertCommitEvent
+  | PitCompareFolderStatesEvent
+  | PitGetFolderStateEvent
+  | SecretScanningDataSourceListEvent
+  | SecretScanningDataSourceGetEvent
+  | SecretScanningDataSourceCreateEvent
+  | SecretScanningDataSourceUpdateEvent
+  | SecretScanningDataSourceDeleteEvent
+  | SecretScanningDataSourceTriggerScanEvent
+  | SecretScanningDataSourceScanEvent
+  | SecretScanningResourceListEvent
+  | SecretScanningScanListEvent
+  | SecretScanningFindingListEvent
+  | SecretScanningFindingUpdateEvent
+  | SecretScanningConfigUpdateEvent
+  | SecretScanningConfigReadEvent
+  | OrgUpdateEvent
+  | ProjectCreateEvent
+  | ProjectUpdateEvent
+  | ProjectDeleteEvent;

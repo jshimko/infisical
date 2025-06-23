@@ -12,7 +12,7 @@ import {
   TProjectsUpdate
 } from "@app/db/schemas";
 import { BadRequestError, DatabaseError, NotFoundError, UnauthorizedError } from "@app/lib/errors";
-import { ormify, selectAllTableCols, sqlNestRelationships } from "@app/lib/knex";
+import { buildFindFilter, ormify, selectAllTableCols, sqlNestRelationships } from "@app/lib/knex";
 
 import { ActorType } from "../auth/auth-type";
 import { Filter, ProjectFilterType, SearchProjectSortBy } from "./project-types";
@@ -21,6 +21,56 @@ export type TProjectDALFactory = ReturnType<typeof projectDALFactory>;
 
 export const projectDALFactory = (db: TDbClient) => {
   const projectOrm = ormify(db, TableName.Project);
+
+  const findIdentityProjects = async (identityId: string, orgId: string, projectType: ProjectType | "all") => {
+    try {
+      const workspaces = await db(TableName.IdentityProjectMembership)
+        .where({ identityId })
+        .join(TableName.Project, `${TableName.IdentityProjectMembership}.projectId`, `${TableName.Project}.id`)
+        .where(`${TableName.Project}.orgId`, orgId)
+        .andWhere((qb) => {
+          if (projectType !== "all") {
+            void qb.where(`${TableName.Project}.type`, projectType);
+          }
+        })
+        .leftJoin(TableName.Environment, `${TableName.Environment}.projectId`, `${TableName.Project}.id`)
+        .select(
+          selectAllTableCols(TableName.Project),
+          db.ref("id").withSchema(TableName.Project).as("_id"),
+          db.ref("id").withSchema(TableName.Environment).as("envId"),
+          db.ref("slug").withSchema(TableName.Environment).as("envSlug"),
+          db.ref("name").withSchema(TableName.Environment).as("envName")
+        )
+        .orderBy([
+          { column: `${TableName.Project}.name`, order: "asc" },
+          { column: `${TableName.Environment}.position`, order: "asc" }
+        ]);
+
+      const nestedWorkspaces = sqlNestRelationships({
+        data: workspaces,
+        key: "id",
+        parentMapper: ({ _id, ...el }) => ({ _id, ...ProjectsSchema.parse(el) }),
+        childrenMapper: [
+          {
+            key: "envId",
+            label: "environments" as const,
+            mapper: ({ envId: id, envSlug: slug, envName: name }) => ({
+              id,
+              slug,
+              name
+            })
+          }
+        ]
+      });
+
+      return nestedWorkspaces.map((workspace) => ({
+        ...workspace,
+        organization: workspace.orgId
+      }));
+    } catch (error) {
+      throw new DatabaseError({ error, name: "Find identity projects" });
+    }
+  };
 
   const findUserProjects = async (userId: string, orgId: string, projectType: ProjectType | "all") => {
     try {
@@ -425,9 +475,35 @@ export const projectDALFactory = (db: TDbClient) => {
     return { docs, totalCount: Number(docs?.[0]?.count ?? 0) };
   };
 
+  const findProjectByEnvId = async (envId: string, tx?: Knex) => {
+    const project = await (tx || db.replicaNode())(TableName.Project)
+      .leftJoin(TableName.Environment, `${TableName.Environment}.projectId`, `${TableName.Project}.id`)
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
+      .where(buildFindFilter({ id: envId }, TableName.Environment))
+      .select(selectAllTableCols(TableName.Project))
+      .first();
+    return project;
+  };
+
+  const countOfOrgProjects = async (orgId: string | null, tx?: Knex) => {
+    try {
+      const doc = await (tx || db.replicaNode())(TableName.Project)
+        .andWhere((bd) => {
+          if (orgId) {
+            void bd.where({ orgId });
+          }
+        })
+        .count();
+      return Number(doc?.[0]?.count ?? 0);
+    } catch (error) {
+      throw new DatabaseError({ error, name: "Count of Org Projects" });
+    }
+  };
+
   return {
     ...projectOrm,
     findUserProjects,
+    findIdentityProjects,
     setProjectUpgradeStatus,
     findAllProjectsByIdentity,
     findProjectGhostUser,
@@ -437,6 +513,8 @@ export const projectDALFactory = (db: TDbClient) => {
     findProjectWithOrg,
     checkProjectUpgradeStatus,
     getProjectFromSplitId,
-    searchProjects
+    searchProjects,
+    findProjectByEnvId,
+    countOfOrgProjects
   };
 };

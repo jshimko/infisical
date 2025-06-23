@@ -4,6 +4,8 @@ import {
   SecretSyncImportBehavior,
   SecretSyncInitialSyncBehavior
 } from "@app/hooks/api/secretSyncs";
+import { RenderSyncScope } from "@app/hooks/api/secretSyncs/render-sync";
+import { GcpSyncScope } from "@app/hooks/api/secretSyncs/types/gcp-sync";
 import { HumanitecSyncScope } from "@app/hooks/api/secretSyncs/types/humanitec-sync";
 
 export const SECRET_SYNC_MAP: Record<SecretSync, { name: string; image: string }> = {
@@ -14,6 +16,10 @@ export const SECRET_SYNC_MAP: Record<SecretSync, { name: string; image: string }
   [SecretSync.AzureKeyVault]: { name: "Azure Key Vault", image: "Microsoft Azure.png" },
   [SecretSync.AzureAppConfiguration]: {
     name: "Azure App Configuration",
+    image: "Microsoft Azure.png"
+  },
+  [SecretSync.AzureDevOps]: {
+    name: "Azure DevOps",
     image: "Microsoft Azure.png"
   },
   [SecretSync.Databricks]: {
@@ -51,6 +57,22 @@ export const SECRET_SYNC_MAP: Record<SecretSync, { name: string; image: string }
   [SecretSync.OCIVault]: {
     name: "OCI Vault",
     image: "Oracle.png"
+  },
+  [SecretSync.OnePass]: {
+    name: "1Password",
+    image: "1Password.png"
+  },
+  [SecretSync.Heroku]: {
+    name: "Heroku",
+    image: "Heroku.png"
+  },
+  [SecretSync.Render]: {
+    name: "Render",
+    image: "Render.png"
+  },
+  [SecretSync.Flyio]: {
+    name: "Fly.io",
+    image: "Flyio.svg"
   }
 };
 
@@ -61,6 +83,7 @@ export const SECRET_SYNC_CONNECTION_MAP: Record<SecretSync, AppConnection> = {
   [SecretSync.GCPSecretManager]: AppConnection.GCP,
   [SecretSync.AzureKeyVault]: AppConnection.AzureKeyVault,
   [SecretSync.AzureAppConfiguration]: AppConnection.AzureAppConfiguration,
+  [SecretSync.AzureDevOps]: AppConnection.AzureDevOps,
   [SecretSync.Databricks]: AppConnection.Databricks,
   [SecretSync.Humanitec]: AppConnection.Humanitec,
   [SecretSync.TerraformCloud]: AppConnection.TerraformCloud,
@@ -69,7 +92,11 @@ export const SECRET_SYNC_CONNECTION_MAP: Record<SecretSync, AppConnection> = {
   [SecretSync.Windmill]: AppConnection.Windmill,
   [SecretSync.HCVault]: AppConnection.HCVault,
   [SecretSync.TeamCity]: AppConnection.TeamCity,
-  [SecretSync.OCIVault]: AppConnection.OCI
+  [SecretSync.OCIVault]: AppConnection.OCI,
+  [SecretSync.OnePass]: AppConnection.OnePass,
+  [SecretSync.Heroku]: AppConnection.Heroku,
+  [SecretSync.Render]: AppConnection.Render,
+  [SecretSync.Flyio]: AppConnection.Flyio
 };
 
 export const SECRET_SYNC_INITIAL_SYNC_BEHAVIOR_MAP: Record<
@@ -117,5 +144,23 @@ export const HUMANITEC_SYNC_SCOPES: Record<
     name: "Environment",
     description:
       "Infisical will sync secrets as environment level shared values to the specified Humanitec application environment."
+  }
+};
+
+export const GCP_SYNC_SCOPES: Record<GcpSyncScope, { name: string; description: string }> = {
+  [GcpSyncScope.Global]: {
+    name: "Global",
+    description: "Secrets will be synced globally; being available in all project regions."
+  },
+  [GcpSyncScope.Region]: {
+    name: "Region",
+    description: "Secrets will be synced to the specified region."
+  }
+};
+
+export const RENDER_SYNC_SCOPES: Record<RenderSyncScope, { name: string; description: string }> = {
+  [RenderSyncScope.Service]: {
+    name: "Service",
+    description: "Infisical will sync secrets to the specified Render service."
   }
 };

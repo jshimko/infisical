@@ -1,7 +1,24 @@
+import {
+  TOCIConnection,
+  TOCIConnectionConfig,
+  TOCIConnectionInput,
+  TValidateOCIConnectionCredentialsSchema
+} from "@app/ee/services/app-connections/oci";
+import {
+  TOracleDBConnection,
+  TOracleDBConnectionInput,
+  TValidateOracleDBConnectionCredentialsSchema
+} from "@app/ee/services/app-connections/oracledb";
 import { TAppConnectionDALFactory } from "@app/services/app-connection/app-connection-dal";
 import { TSqlConnectionConfig } from "@app/services/app-connection/shared/sql/sql-connection-types";
 import { SecretSync } from "@app/services/secret-sync/secret-sync-enums";
 
+import {
+  TOnePassConnection,
+  TOnePassConnectionConfig,
+  TOnePassConnectionInput,
+  TValidateOnePassConnectionCredentialsSchema
+} from "./1password";
 import { AWSRegion } from "./app-connection-enums";
 import {
   TAuth0Connection,
@@ -28,6 +45,12 @@ import {
   TValidateAzureClientSecretsConnectionCredentialsSchema
 } from "./azure-client-secrets";
 import {
+  TAzureDevOpsConnection,
+  TAzureDevOpsConnectionConfig,
+  TAzureDevOpsConnectionInput,
+  TValidateAzureDevOpsConnectionCredentialsSchema
+} from "./azure-devops/azure-devops-types";
+import {
   TAzureKeyVaultConnection,
   TAzureKeyVaultConnectionConfig,
   TAzureKeyVaultConnectionInput,
@@ -46,6 +69,12 @@ import {
   TValidateDatabricksConnectionCredentialsSchema
 } from "./databricks";
 import {
+  TFlyioConnection,
+  TFlyioConnectionConfig,
+  TFlyioConnectionInput,
+  TValidateFlyioConnectionCredentialsSchema
+} from "./flyio";
+import {
   TGcpConnection,
   TGcpConnectionConfig,
   TGcpConnectionInput,
@@ -58,11 +87,23 @@ import {
   TValidateGitHubConnectionCredentialsSchema
 } from "./github";
 import {
+  TGitHubRadarConnection,
+  TGitHubRadarConnectionConfig,
+  TGitHubRadarConnectionInput,
+  TValidateGitHubRadarConnectionCredentialsSchema
+} from "./github-radar";
+import {
   THCVaultConnection,
   THCVaultConnectionConfig,
   THCVaultConnectionInput,
   TValidateHCVaultConnectionCredentialsSchema
 } from "./hc-vault";
+import {
+  THerokuConnection,
+  THerokuConnectionConfig,
+  THerokuConnectionInput,
+  TValidateHerokuConnectionCredentialsSchema
+} from "./heroku";
 import {
   THumanitecConnection,
   THumanitecConnectionConfig,
@@ -76,17 +117,18 @@ import {
   TValidateLdapConnectionCredentialsSchema
 } from "./ldap";
 import { TMsSqlConnection, TMsSqlConnectionInput, TValidateMsSqlConnectionCredentialsSchema } from "./mssql";
-import {
-  TOCIConnection,
-  TOCIConnectionConfig,
-  TOCIConnectionInput,
-  TValidateOCIConnectionCredentialsSchema
-} from "./oci";
+import { TMySqlConnection, TMySqlConnectionInput, TValidateMySqlConnectionCredentialsSchema } from "./mysql";
 import {
   TPostgresConnection,
   TPostgresConnectionInput,
   TValidatePostgresConnectionCredentialsSchema
 } from "./postgres";
+import {
+  TRenderConnection,
+  TRenderConnectionConfig,
+  TRenderConnectionInput,
+  TValidateRenderConnectionCredentialsSchema
+} from "./render/render-connection-types";
 import {
   TTeamCityConnection,
   TTeamCityConnectionConfig,
@@ -115,15 +157,18 @@ import {
 export type TAppConnection = { id: string } & (
   | TAwsConnection
   | TGitHubConnection
+  | TGitHubRadarConnection
   | TGcpConnection
   | TAzureKeyVaultConnection
   | TAzureAppConfigurationConnection
+  | TAzureDevOpsConnection
   | TDatabricksConnection
   | THumanitecConnection
   | TTerraformCloudConnection
   | TVercelConnection
   | TPostgresConnection
   | TMsSqlConnection
+  | TMySqlConnection
   | TCamundaConnection
   | TAzureClientSecretsConnection
   | TWindmillConnection
@@ -132,24 +177,32 @@ export type TAppConnection = { id: string } & (
   | TLdapConnection
   | TTeamCityConnection
   | TOCIConnection
+  | TOracleDBConnection
+  | TOnePassConnection
+  | THerokuConnection
+  | TRenderConnection
+  | TFlyioConnection
 );
 
 export type TAppConnectionRaw = NonNullable<Awaited<ReturnType<TAppConnectionDALFactory["findById"]>>>;
 
-export type TSqlConnection = TPostgresConnection | TMsSqlConnection;
+export type TSqlConnection = TPostgresConnection | TMsSqlConnection | TMySqlConnection | TOracleDBConnection;
 
 export type TAppConnectionInput = { id: string } & (
   | TAwsConnectionInput
   | TGitHubConnectionInput
+  | TGitHubRadarConnectionInput
   | TGcpConnectionInput
   | TAzureKeyVaultConnectionInput
   | TAzureAppConfigurationConnectionInput
+  | TAzureDevOpsConnectionInput
   | TDatabricksConnectionInput
   | THumanitecConnectionInput
   | TTerraformCloudConnectionInput
   | TVercelConnectionInput
   | TPostgresConnectionInput
   | TMsSqlConnectionInput
+  | TMySqlConnectionInput
   | TCamundaConnectionInput
   | TAzureClientSecretsConnectionInput
   | TWindmillConnectionInput
@@ -158,9 +211,18 @@ export type TAppConnectionInput = { id: string } & (
   | TLdapConnectionInput
   | TTeamCityConnectionInput
   | TOCIConnectionInput
+  | TOracleDBConnectionInput
+  | TOnePassConnectionInput
+  | THerokuConnectionInput
+  | TRenderConnectionInput
+  | TFlyioConnectionInput
 );
 
-export type TSqlConnectionInput = TPostgresConnectionInput | TMsSqlConnectionInput;
+export type TSqlConnectionInput =
+  | TPostgresConnectionInput
+  | TMsSqlConnectionInput
+  | TMySqlConnectionInput
+  | TOracleDBConnectionInput;
 
 export type TCreateAppConnectionDTO = Pick<
   TAppConnectionInput,
@@ -174,9 +236,11 @@ export type TUpdateAppConnectionDTO = Partial<Omit<TCreateAppConnectionDTO, "met
 export type TAppConnectionConfig =
   | TAwsConnectionConfig
   | TGitHubConnectionConfig
+  | TGitHubRadarConnectionConfig
   | TGcpConnectionConfig
   | TAzureKeyVaultConnectionConfig
   | TAzureAppConfigurationConnectionConfig
+  | TAzureDevOpsConnectionConfig
   | TAzureClientSecretsConnectionConfig
   | TDatabricksConnectionConfig
   | THumanitecConnectionConfig
@@ -189,19 +253,26 @@ export type TAppConnectionConfig =
   | THCVaultConnectionConfig
   | TLdapConnectionConfig
   | TTeamCityConnectionConfig
-  | TOCIConnectionConfig;
+  | TOCIConnectionConfig
+  | TOnePassConnectionConfig
+  | THerokuConnectionConfig
+  | TRenderConnectionConfig
+  | TFlyioConnectionConfig;
 
 export type TValidateAppConnectionCredentialsSchema =
   | TValidateAwsConnectionCredentialsSchema
   | TValidateGitHubConnectionCredentialsSchema
+  | TValidateGitHubRadarConnectionCredentialsSchema
   | TValidateGcpConnectionCredentialsSchema
   | TValidateAzureKeyVaultConnectionCredentialsSchema
   | TValidateAzureAppConfigurationConnectionCredentialsSchema
   | TValidateAzureClientSecretsConnectionCredentialsSchema
+  | TValidateAzureDevOpsConnectionCredentialsSchema
   | TValidateDatabricksConnectionCredentialsSchema
   | TValidateHumanitecConnectionCredentialsSchema
   | TValidatePostgresConnectionCredentialsSchema
   | TValidateMsSqlConnectionCredentialsSchema
+  | TValidateMySqlConnectionCredentialsSchema
   | TValidateCamundaConnectionCredentialsSchema
   | TValidateVercelConnectionCredentialsSchema
   | TValidateTerraformCloudConnectionCredentialsSchema
@@ -210,7 +281,12 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateHCVaultConnectionCredentialsSchema
   | TValidateLdapConnectionCredentialsSchema
   | TValidateTeamCityConnectionCredentialsSchema
-  | TValidateOCIConnectionCredentialsSchema;
+  | TValidateOCIConnectionCredentialsSchema
+  | TValidateOracleDBConnectionCredentialsSchema
+  | TValidateOnePassConnectionCredentialsSchema
+  | TValidateHerokuConnectionCredentialsSchema
+  | TValidateRenderConnectionCredentialsSchema
+  | TValidateFlyioConnectionCredentialsSchema;
 
 export type TListAwsConnectionKmsKeys = {
   connectionId: string;

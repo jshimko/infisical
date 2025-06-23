@@ -3,8 +3,7 @@ import jwt from "jsonwebtoken";
 import { Knex } from "knex";
 
 import { OrgMembershipRole, OrgMembershipStatus, TableName, TUsers, UserDeviceSchema } from "@app/db/schemas";
-import { TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-service";
-import { EventType } from "@app/ee/services/audit-log/audit-log-types";
+import { EventType, TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-types";
 import { isAuthMethodSaml } from "@app/ee/services/permission/permission-fns";
 import { getConfig } from "@app/lib/config/env";
 import { request } from "@app/lib/config/request";
@@ -397,7 +396,7 @@ export const authLoginServiceFactory = ({
 
     // Check if the user actually has access to the specified organization.
     const userOrgs = await orgDAL.findAllOrgsByUserId(user.id);
-    const hasOrganizationMembership = userOrgs.some((org) => org.id === organizationId);
+    const hasOrganizationMembership = userOrgs.some((org) => org.id === organizationId && org.userStatus !== "invited");
     const selectedOrg = await orgDAL.findById(organizationId);
 
     if (!hasOrganizationMembership) {

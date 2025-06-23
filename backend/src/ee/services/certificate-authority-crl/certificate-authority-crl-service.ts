@@ -3,25 +3,24 @@ import * as x509 from "@peculiar/x509";
 
 import { ActionProjectType } from "@app/db/schemas";
 import { TCertificateAuthorityCrlDALFactory } from "@app/ee/services/certificate-authority-crl/certificate-authority-crl-dal";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { ProjectPermissionActions, ProjectPermissionSub } from "@app/ee/services/permission/project-permission";
 import { NotFoundError } from "@app/lib/errors";
 import { TCertificateAuthorityDALFactory } from "@app/services/certificate-authority/certificate-authority-dal";
+import { expandInternalCa } from "@app/services/certificate-authority/certificate-authority-fns";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
 import { getProjectKmsCertificateKeyId } from "@app/services/project/project-fns";
 
-import { TGetCaCrlsDTO, TGetCrlById } from "./certificate-authority-crl-types";
+import { TCertificateAuthorityCrlServiceFactory } from "./certificate-authority-crl-types";
 
 type TCertificateAuthorityCrlServiceFactoryDep = {
-  certificateAuthorityDAL: Pick<TCertificateAuthorityDALFactory, "findById">;
+  certificateAuthorityDAL: Pick<TCertificateAuthorityDALFactory, "findByIdWithAssociatedCa">;
   certificateAuthorityCrlDAL: Pick<TCertificateAuthorityCrlDALFactory, "find" | "findById">;
   projectDAL: Pick<TProjectDALFactory, "findOne" | "updateById" | "transaction">;
   kmsService: Pick<TKmsServiceFactory, "decryptWithKmsKey" | "generateKmsKey">;
   permissionService: Pick<TPermissionServiceFactory, "getProjectPermission">;
 };
-
-export type TCertificateAuthorityCrlServiceFactory = ReturnType<typeof certificateAuthorityCrlServiceFactory>;
 
 export const certificateAuthorityCrlServiceFactory = ({
   certificateAuthorityDAL,
@@ -29,15 +28,16 @@ export const certificateAuthorityCrlServiceFactory = ({
   projectDAL,
   kmsService,
   permissionService // licenseService
-}: TCertificateAuthorityCrlServiceFactoryDep) => {
+}: TCertificateAuthorityCrlServiceFactoryDep): TCertificateAuthorityCrlServiceFactory => {
   /**
    * Return CRL with id [crlId]
    */
-  const getCrlById = async (crlId: TGetCrlById) => {
+  const getCrlById: TCertificateAuthorityCrlServiceFactory["getCrlById"] = async (crlId) => {
     const caCrl = await certificateAuthorityCrlDAL.findById(crlId);
     if (!caCrl) throw new NotFoundError({ message: `CRL with ID '${crlId}' not found` });
 
-    const ca = await certificateAuthorityDAL.findById(caCrl.caId);
+    const ca = await certificateAuthorityDAL.findByIdWithAssociatedCa(caCrl.caId);
+    if (!ca?.internalCa?.id) throw new NotFoundError({ message: `Internal CA with ID '${caCrl.caId}' not found` });
 
     const keyId = await getProjectKmsCertificateKeyId({
       projectId: ca.projectId,
@@ -54,7 +54,7 @@ export const certificateAuthorityCrlServiceFactory = ({
     const crl = new x509.X509Crl(decryptedCrl);
 
     return {
-      ca,
+      ca: expandInternalCa(ca),
       caCrl,
       crl: crl.rawData
     };
@@ -63,9 +63,15 @@ export const certificateAuthorityCrlServiceFactory = ({
   /**
    * Returns a list of CRL ids for CA with id [caId]
    */
-  const getCaCrls = async ({ caId, actorId, actorAuthMethod, actor, actorOrgId }: TGetCaCrlsDTO) => {
-    const ca = await certificateAuthorityDAL.findById(caId);
-    if (!ca) throw new NotFoundError({ message: `CA with ID '${caId}' not found` });
+  const getCaCrls: TCertificateAuthorityCrlServiceFactory["getCaCrls"] = async ({
+    caId,
+    actorId,
+    actorAuthMethod,
+    actor,
+    actorOrgId
+  }) => {
+    const ca = await certificateAuthorityDAL.findByIdWithAssociatedCa(caId);
+    if (!ca?.internalCa?.id) throw new NotFoundError({ message: `Internal CA with ID '${caId}' not found` });
 
     const { permission } = await permissionService.getProjectPermission({
       actor,
@@ -108,7 +114,7 @@ export const certificateAuthorityCrlServiceFactory = ({
     );
 
     return {
-      ca,
+      ca: expandInternalCa(ca),
       crls: decryptedCrls
     };
   };

@@ -5,6 +5,7 @@ export enum SecretSync {
   GCPSecretManager = "gcp-secret-manager",
   AzureKeyVault = "azure-key-vault",
   AzureAppConfiguration = "azure-app-configuration",
+  AzureDevOps = "azure-devops",
   Databricks = "databricks",
   Humanitec = "humanitec",
   TerraformCloud = "terraform-cloud",
@@ -13,7 +14,11 @@ export enum SecretSync {
   Windmill = "windmill",
   HCVault = "hashicorp-vault",
   TeamCity = "teamcity",
-  OCIVault = "oci-vault"
+  OCIVault = "oci-vault",
+  OnePass = "1password",
+  Heroku = "heroku",
+  Render = "render",
+  Flyio = "flyio"
 }
 
 export enum SecretSyncInitialSyncBehavior {
@@ -25,4 +30,9 @@ export enum SecretSyncInitialSyncBehavior {
 export enum SecretSyncImportBehavior {
   PrioritizeSource = "prioritize-source",
   PrioritizeDestination = "prioritize-destination"
+}
+
+export enum SecretSyncPlanType {
+  Enterprise = "enterprise",
+  Regular = "regular"
 }

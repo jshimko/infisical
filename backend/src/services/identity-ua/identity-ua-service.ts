@@ -11,7 +11,7 @@ import {
   constructPermissionErrorMessage,
   validatePrivilegeChangeOperation
 } from "@app/ee/services/permission/permission-fns";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { getConfig } from "@app/lib/config/env";
 import { BadRequestError, NotFoundError, PermissionBoundaryError, UnauthorizedError } from "@app/lib/errors";
 import { checkIPAgainstBlocklist, extractIPDetails, isValidIpOrCidr, TIp } from "@app/lib/ip";
@@ -114,21 +114,36 @@ export const identityUaServiceFactory = ({
       });
     }
 
+    const accessTokenTTLParams =
+      Number(identityUa.accessTokenPeriod) === 0
+        ? {
+            accessTokenTTL: identityUa.accessTokenTTL,
+            accessTokenMaxTTL: identityUa.accessTokenMaxTTL
+          }
+        : {
+            accessTokenTTL: identityUa.accessTokenPeriod,
+            // We set a very large Max TTL for periodic tokens to ensure that clients (even outdated ones) can always renew their token
+            // without them having to update their SDKs, CLIs, etc. This workaround sets it to 30 years to emulate "forever"
+            accessTokenMaxTTL: 1000000000
+          };
+
     const identityAccessToken = await identityUaDAL.transaction(async (tx) => {
       const uaClientSecretDoc = await identityUaClientSecretDAL.incrementUsage(validClientSecretInfo!.id, tx);
+
       const newToken = await identityAccessTokenDAL.create(
         {
           identityId: identityUa.identityId,
           isAccessTokenRevoked: false,
           identityUAClientSecretId: uaClientSecretDoc.id,
-          accessTokenTTL: identityUa.accessTokenTTL,
-          accessTokenMaxTTL: identityUa.accessTokenMaxTTL,
           accessTokenNumUses: 0,
           accessTokenNumUsesLimit: identityUa.accessTokenNumUsesLimit,
-          authMethod: IdentityAuthMethod.UNIVERSAL_AUTH
+          accessTokenPeriod: identityUa.accessTokenPeriod,
+          authMethod: IdentityAuthMethod.UNIVERSAL_AUTH,
+          ...accessTokenTTLParams
         },
         tx
       );
+
       return newToken;
     });
 
@@ -149,7 +164,14 @@ export const identityUaServiceFactory = ({
           }
     );
 
-    return { accessToken, identityUa, validClientSecretInfo, identityAccessToken, identityMembershipOrg };
+    return {
+      accessToken,
+      identityUa,
+      validClientSecretInfo,
+      identityAccessToken,
+      identityMembershipOrg,
+      ...accessTokenTTLParams
+    };
   };
 
   const attachUniversalAuth = async ({
@@ -163,7 +185,8 @@ export const identityUaServiceFactory = ({
     actorAuthMethod,
     actor,
     actorOrgId,
-    isActorSuperAdmin
+    isActorSuperAdmin,
+    accessTokenPeriod
   }: TAttachUaDTO) => {
     await validateIdentityUpdateForSuperAdminPrivileges(identityId, isActorSuperAdmin);
 
@@ -232,7 +255,8 @@ export const identityUaServiceFactory = ({
           accessTokenMaxTTL,
           accessTokenTTL,
           accessTokenNumUsesLimit,
-          accessTokenTrustedIps: JSON.stringify(reformattedAccessTokenTrustedIps)
+          accessTokenTrustedIps: JSON.stringify(reformattedAccessTokenTrustedIps),
+          accessTokenPeriod
         },
         tx
       );
@@ -248,6 +272,7 @@ export const identityUaServiceFactory = ({
     accessTokenTTL,
     accessTokenTrustedIps,
     clientSecretTrustedIps,
+    accessTokenPeriod,
     actorId,
     actorAuthMethod,
     actor,
@@ -324,6 +349,7 @@ export const identityUaServiceFactory = ({
       accessTokenMaxTTL,
       accessTokenTTL,
       accessTokenNumUsesLimit,
+      accessTokenPeriod,
       accessTokenTrustedIps: reformattedAccessTokenTrustedIps
         ? JSON.stringify(reformattedAccessTokenTrustedIps)
         : undefined

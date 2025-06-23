@@ -14,8 +14,16 @@ export type TSqlCredentialsRotationProperties = {
 
 export type TSqlCredentialsRotationOption = {
   name: string;
-  type: SecretRotation.PostgresCredentials | SecretRotation.MsSqlCredentials;
-  connection: AppConnection.Postgres | AppConnection.MsSql;
+  type:
+    | SecretRotation.PostgresCredentials
+    | SecretRotation.MsSqlCredentials
+    | SecretRotation.MySqlCredentials
+    | SecretRotation.OracleDBCredentials;
+  connection:
+    | AppConnection.Postgres
+    | AppConnection.MsSql
+    | AppConnection.MySql
+    | AppConnection.OracleDB;
   template: {
     secretsMapping: TSqlCredentialsRotationProperties["secretsMapping"];
     createUserStatement: string;

@@ -9,6 +9,7 @@ import { usePopUp } from "@app/hooks";
 import { useCreateSecretV3, useDeleteSecretV3, useUpdateSecretV3 } from "@app/hooks/api";
 import { dashboardKeys } from "@app/hooks/api/dashboard/queries";
 import { UsedBySecretSyncs } from "@app/hooks/api/dashboard/types";
+import { commitKeys } from "@app/hooks/api/folderCommits/queries";
 import { secretApprovalRequestKeys } from "@app/hooks/api/secretApprovalRequest/queries";
 import { secretKeys } from "@app/hooks/api/secrets/queries";
 import { SecretType, SecretV3RawSanitized } from "@app/hooks/api/secrets/types";
@@ -19,7 +20,7 @@ import { AddShareSecretModal } from "@app/pages/organization/SecretSharingPage/c
 import { useSelectedSecretActions, useSelectedSecrets } from "../../SecretMainPage.store";
 import { CollapsibleSecretImports } from "./CollapsibleSecretImports";
 import { SecretDetailSidebar } from "./SecretDetailSidebar";
-import { SecretItem } from "./SecretItem";
+import { HIDDEN_SECRET_VALUE, HIDDEN_SECRET_VALUE_API_MASK, SecretItem } from "./SecretItem";
 import { FontAwesomeSpriteSymbols } from "./SecretListView.utils";
 
 type Props = {
@@ -84,6 +85,7 @@ export const SecretListView = ({
     type: SecretType,
     key: string,
     {
+      secretValueHidden,
       value,
       comment,
       reminderRepeatDays,
@@ -96,6 +98,7 @@ export const SecretListView = ({
       secretMetadata,
       isRotatedSecret
     }: Partial<{
+      secretValueHidden: boolean;
       value: string;
       comment: string;
       reminderRepeatDays: number | null;
@@ -122,6 +125,15 @@ export const SecretListView = ({
     }
 
     if (operation === "update") {
+      let secretValue = value;
+
+      if (
+        secretValueHidden &&
+        (value === HIDDEN_SECRET_VALUE_API_MASK || value === HIDDEN_SECRET_VALUE)
+      ) {
+        secretValue = undefined;
+      }
+
       await updateSecretV3({
         environment,
         workspaceId,
@@ -129,7 +141,7 @@ export const SecretListView = ({
         secretKey: key,
         ...(!isRotatedSecret && {
           newSecretName: newKey,
-          secretValue: value || ""
+          secretValue: secretValueHidden ? secretValue : secretValue || ""
         }),
         type,
         tagIds: tags,
@@ -167,7 +179,7 @@ export const SecretListView = ({
       },
       cb?: () => void
     ) => {
-      const { key: oldKey } = orgSecret;
+      const { key: oldKey, secretValueHidden } = orgSecret;
       const {
         key,
         value,
@@ -245,7 +257,8 @@ export const SecretListView = ({
             newKey: hasKeyChanged ? key : undefined,
             skipMultilineEncoding: modSecret.skipMultilineEncoding,
             secretMetadata,
-            isRotatedSecret: orgSecret.isRotatedSecret
+            isRotatedSecret: orgSecret.isRotatedSecret,
+            secretValueHidden
           });
           if (cb) cb();
         }
@@ -263,6 +276,12 @@ export const SecretListView = ({
         });
         queryClient.invalidateQueries({
           queryKey: secretSnapshotKeys.count({ workspaceId, environment, directory: secretPath })
+        });
+        queryClient.invalidateQueries({
+          queryKey: commitKeys.count({ workspaceId, environment, directory: secretPath })
+        });
+        queryClient.invalidateQueries({
+          queryKey: commitKeys.history({ workspaceId, environment, directory: secretPath })
         });
         queryClient.invalidateQueries({
           queryKey: secretApprovalRequestKeys.count({ workspaceId })
@@ -314,6 +333,12 @@ export const SecretListView = ({
       });
       queryClient.invalidateQueries({
         queryKey: secretSnapshotKeys.count({ workspaceId, environment, directory: secretPath })
+      });
+      queryClient.invalidateQueries({
+        queryKey: commitKeys.count({ workspaceId, environment, directory: secretPath })
+      });
+      queryClient.invalidateQueries({
+        queryKey: commitKeys.history({ workspaceId, environment, directory: secretPath })
       });
       queryClient.invalidateQueries({
         queryKey: secretApprovalRequestKeys.count({ workspaceId })

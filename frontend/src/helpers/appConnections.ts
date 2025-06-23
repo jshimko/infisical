@@ -1,5 +1,6 @@
-import { faGithub } from "@fortawesome/free-brands-svg-icons";
+import { faGithub, IconDefinition } from "@fortawesome/free-brands-svg-icons";
 import {
+  faBullseye,
   faKey,
   faLink,
   faLock,
@@ -14,15 +15,21 @@ import {
   AwsConnectionMethod,
   AzureAppConfigurationConnectionMethod,
   AzureClientSecretsConnectionMethod,
+  AzureDevOpsConnectionMethod,
   AzureKeyVaultConnectionMethod,
   CamundaConnectionMethod,
   DatabricksConnectionMethod,
+  FlyioConnectionMethod,
   GcpConnectionMethod,
   GitHubConnectionMethod,
+  GitHubRadarConnectionMethod,
   HCVaultConnectionMethod,
   HumanitecConnectionMethod,
   LdapConnectionMethod,
   MsSqlConnectionMethod,
+  MySqlConnectionMethod,
+  OnePassConnectionMethod,
+  OracleDBConnectionMethod,
   PostgresConnectionMethod,
   TAppConnection,
   TeamCityConnectionMethod,
@@ -30,14 +37,21 @@ import {
   VercelConnectionMethod,
   WindmillConnectionMethod
 } from "@app/hooks/api/appConnections/types";
+import { HerokuConnectionMethod } from "@app/hooks/api/appConnections/types/heroku-connection";
 import { OCIConnectionMethod } from "@app/hooks/api/appConnections/types/oci-connection";
+import { RenderConnectionMethod } from "@app/hooks/api/appConnections/types/render-connection";
 
 export const APP_CONNECTION_MAP: Record<
   AppConnection,
-  { name: string; image: string; size?: number }
+  { name: string; image: string; size?: number; icon?: IconDefinition; enterprise?: boolean }
 > = {
   [AppConnection.AWS]: { name: "AWS", image: "Amazon Web Services.png" },
   [AppConnection.GitHub]: { name: "GitHub", image: "GitHub.png" },
+  [AppConnection.GitHubRadar]: {
+    name: "GitHub Radar",
+    image: "GitHub.png",
+    icon: faBullseye
+  },
   [AppConnection.GCP]: {
     name: "GCP",
     image: "Google Cloud Platform.png"
@@ -51,29 +65,39 @@ export const APP_CONNECTION_MAP: Record<
     name: "Azure Client Secrets",
     image: "Microsoft Azure.png"
   },
+  [AppConnection.AzureDevOps]: { name: "Azure DevOps", image: "Microsoft Azure.png" },
   [AppConnection.Databricks]: { name: "Databricks", image: "Databricks.png" },
   [AppConnection.Humanitec]: { name: "Humanitec", image: "Humanitec.png" },
   [AppConnection.TerraformCloud]: { name: "Terraform Cloud", image: "Terraform Cloud.png" },
   [AppConnection.Vercel]: { name: "Vercel", image: "Vercel.png" },
   [AppConnection.Postgres]: { name: "PostgreSQL", image: "Postgres.png" },
   [AppConnection.MsSql]: { name: "Microsoft SQL Server", image: "MsSql.png" },
+  [AppConnection.MySql]: { name: "MySQL", image: "MySql.png" },
+  [AppConnection.OracleDB]: { name: "OracleDB", image: "Oracle.png", enterprise: true },
   [AppConnection.Camunda]: { name: "Camunda", image: "Camunda.png" },
   [AppConnection.Windmill]: { name: "Windmill", image: "Windmill.png" },
   [AppConnection.Auth0]: { name: "Auth0", image: "Auth0.png", size: 40 },
   [AppConnection.HCVault]: { name: "Hashicorp Vault", image: "Vault.png", size: 65 },
   [AppConnection.LDAP]: { name: "LDAP", image: "LDAP.png", size: 65 },
   [AppConnection.TeamCity]: { name: "TeamCity", image: "TeamCity.png" },
-  [AppConnection.OCI]: { name: "OCI", image: "Oracle.png" }
+  [AppConnection.OCI]: { name: "OCI", image: "Oracle.png", enterprise: true },
+  [AppConnection.OnePass]: { name: "1Password", image: "1Password.png" },
+  [AppConnection.Heroku]: { name: "Heroku", image: "Heroku.png" },
+  [AppConnection.Render]: { name: "Render", image: "Render.png" },
+  [AppConnection.Flyio]: { name: "Fly.io", image: "Flyio.svg" }
 };
 
 export const getAppConnectionMethodDetails = (method: TAppConnection["method"]) => {
   switch (method) {
     case GitHubConnectionMethod.App:
+    case GitHubRadarConnectionMethod.App:
       return { name: "GitHub App", icon: faGithub };
     case AzureKeyVaultConnectionMethod.OAuth:
     case AzureAppConfigurationConnectionMethod.OAuth:
     case AzureClientSecretsConnectionMethod.OAuth:
+    case AzureDevOpsConnectionMethod.OAuth:
     case GitHubConnectionMethod.OAuth:
+    case HerokuConnectionMethod.OAuth:
       return { name: "OAuth", icon: faPassport };
     case AwsConnectionMethod.AccessKey:
     case OCIConnectionMethod.AccessKey:
@@ -89,13 +113,18 @@ export const getAppConnectionMethodDetails = (method: TAppConnection["method"]) 
     case HumanitecConnectionMethod.ApiToken:
     case TerraformCloudConnectionMethod.ApiToken:
     case VercelConnectionMethod.ApiToken:
+    case OnePassConnectionMethod.ApiToken:
       return { name: "API Token", icon: faKey };
     case PostgresConnectionMethod.UsernameAndPassword:
     case MsSqlConnectionMethod.UsernameAndPassword:
+    case MySqlConnectionMethod.UsernameAndPassword:
+    case OracleDBConnectionMethod.UsernameAndPassword:
       return { name: "Username & Password", icon: faLock };
     case HCVaultConnectionMethod.AccessToken:
     case TeamCityConnectionMethod.AccessToken:
+    case AzureDevOpsConnectionMethod.AccessToken:
     case WindmillConnectionMethod.AccessToken:
+    case FlyioConnectionMethod.AccessToken:
       return { name: "Access Token", icon: faKey };
     case Auth0ConnectionMethod.ClientCredentials:
       return { name: "Client Credentials", icon: faServer };
@@ -103,6 +132,10 @@ export const getAppConnectionMethodDetails = (method: TAppConnection["method"]) 
       return { name: "App Role", icon: faUser };
     case LdapConnectionMethod.SimpleBind:
       return { name: "Simple Bind", icon: faLink };
+    case HerokuConnectionMethod.AuthToken:
+      return { name: "Auth Token", icon: faKey };
+    case RenderConnectionMethod.ApiKey:
+      return { name: "API Key", icon: faKey };
     default:
       throw new Error(`Unhandled App Connection Method: ${method}`);
   }

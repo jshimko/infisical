@@ -3,6 +3,13 @@ title: "OCI Vault Sync"
 description: "Learn how to configure an Oracle Cloud Infrastructure Vault Sync for Infisical."
 ---
 
+<Info>
+    OCI Vault Sync is a paid feature.
+
+    If you're using Infisical Cloud, then it is available under the **Enterprise Tier**. If you're self-hosting Infisical,
+    then you should contact team@infisical.com to purchase an enterprise license to use it.
+</Info>
+
 **Prerequisites:**
 - Create an [OCI Connection](/integrations/app-connections/oci) with the required **Secret Sync** permissions
 - [Create](https://docs.oracle.com/en-us/iaas/Content/Identity/compartments/To_create_a_compartment.htm) or use an existing OCI Compartment (which the OCI Connection is authorized to access)
@@ -50,7 +57,7 @@ description: "Learn how to configure an Oracle Cloud Infrastructure Vault Sync f
                     - **Overwrite Destination Secrets**: Removes any secrets at the destination endpoint not present in Infisical.
                     - **Import Secrets (Prioritize Infisical)**: Imports secrets from the destination endpoint before syncing, prioritizing values from Infisical over OCI Vault when keys conflict.
                     - **Import Secrets (Prioritize OCI Vault)**: Imports secrets from the destination endpoint before syncing, prioritizing values from OCI Vault over Infisical when keys conflict.
-                - **Key Schema**: Template that determines how secret names are transformed when syncing, using `{{secretKey}}` as a placeholder for the original secret name.
+                - **Key Schema**: Template that determines how secret names are transformed when syncing, using `{{secretKey}}` as a placeholder for the original secret name and `{{environment}}` for the environment.
                 <Note>
                     We highly recommend using a Key Schema to ensure that Infisical only manages the specific keys you intend, keeping everything else untouched.
                 </Note>

@@ -23,7 +23,9 @@ import { GeneralPermissionPolicies } from "./GeneralPermissionPolicies";
 import { IdentityManagementPermissionConditions } from "./IdentityManagementPermissionConditions";
 import { PermissionEmptyState } from "./PermissionEmptyState";
 import { PkiSubscriberPermissionConditions } from "./PkiSubscriberPermissionConditions";
+import { PkiTemplatePermissionConditions } from "./PkiTemplatePermissionConditions";
 import {
+  EXCLUDED_PERMISSION_SUBS,
   formRolePermission2API,
   isConditionalSubjects,
   PROJECT_PERMISSION_OBJECT,
@@ -33,6 +35,7 @@ import {
   TFormSchema
 } from "./ProjectRoleModifySection.utils";
 import { SecretPermissionConditions } from "./SecretPermissionConditions";
+import { SecretSyncPermissionConditions } from "./SecretSyncPermissionConditions";
 import { SshHostPermissionConditions } from "./SshHostPermissionConditions";
 
 type Props = {
@@ -61,6 +64,14 @@ export const renderConditionalComponents = (
 
     if (subject === ProjectPermissionSub.PkiSubscribers) {
       return <PkiSubscriberPermissionConditions isDisabled={isDisabled} />;
+    }
+
+    if (subject === ProjectPermissionSub.CertificateTemplates) {
+      return <PkiTemplatePermissionConditions isDisabled={isDisabled} />;
+    }
+
+    if (subject === ProjectPermissionSub.SecretSyncs) {
+      return <SecretSyncPermissionConditions isDisabled={isDisabled} />;
     }
 
     return <GeneralPermissionConditions isDisabled={isDisabled} type={subject} />;
@@ -153,8 +164,8 @@ export const RolePermissionsSection = ({ roleSlug, isDisabled }: Props) => {
                       variant="outline_bg"
                       type="submit"
                       className={twMerge(
-                        "mr-4 h-10 border border-primary",
-                        isDirty && "bg-primary text-black"
+                        "mr-4 h-10 border",
+                        isDirty && "bg-primary text-black hover:bg-primary hover:opacity-80"
                       )}
                       isDisabled={isSubmitting || !isDirty}
                       isLoading={isSubmitting}
@@ -171,6 +182,7 @@ export const RolePermissionsSection = ({ roleSlug, isDisabled }: Props) => {
           <div className="py-4">
             {!isPending && <PermissionEmptyState />}
             {(Object.keys(PROJECT_PERMISSION_OBJECT) as ProjectPermissionSub[])
+              .filter((subject) => !EXCLUDED_PERMISSION_SUBS.includes(subject))
               .filter((subject) => ProjectTypePermissionSubjects[currentWorkspace.type][subject])
               .map((subject) => (
                 <GeneralPermissionPolicies

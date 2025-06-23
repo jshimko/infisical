@@ -16,14 +16,19 @@ import {
   AwsSecretsManagerSyncReviewFields
 } from "./AwsSecretsManagerSyncReviewFields";
 import { AzureAppConfigurationSyncReviewFields } from "./AzureAppConfigurationSyncReviewFields";
+import { AzureDevOpsSyncReviewFields } from "./AzureDevOpsSyncReviewFields";
 import { AzureKeyVaultSyncReviewFields } from "./AzureKeyVaultSyncReviewFields";
 import { CamundaSyncReviewFields } from "./CamundaSyncReviewFields";
 import { DatabricksSyncReviewFields } from "./DatabricksSyncReviewFields";
+import { FlyioSyncReviewFields } from "./FlyioSyncReviewFields";
 import { GcpSyncReviewFields } from "./GcpSyncReviewFields";
 import { GitHubSyncReviewFields } from "./GitHubSyncReviewFields";
 import { HCVaultSyncReviewFields } from "./HCVaultSyncReviewFields";
+import { HerokuSyncReviewFields } from "./HerokuSyncReviewFields";
 import { HumanitecSyncReviewFields } from "./HumanitecSyncReviewFields";
 import { OCIVaultSyncReviewFields } from "./OCIVaultSyncReviewFields";
+import { OnePassSyncReviewFields } from "./OnePassSyncReviewFields";
+import { RenderSyncReviewFields } from "./RenderSyncReviewFields";
 import { TeamCitySyncReviewFields } from "./TeamCitySyncReviewFields";
 import { TerraformCloudSyncReviewFields } from "./TerraformCloudSyncReviewFields";
 import { VercelSyncReviewFields } from "./VercelSyncReviewFields";
@@ -69,6 +74,9 @@ export const SecretSyncReviewFields = () => {
     case SecretSync.AzureAppConfiguration:
       DestinationFieldsComponent = <AzureAppConfigurationSyncReviewFields />;
       break;
+    case SecretSync.AzureDevOps:
+      DestinationFieldsComponent = <AzureDevOpsSyncReviewFields />;
+      break;
     case SecretSync.Databricks:
       DestinationFieldsComponent = <DatabricksSyncReviewFields />;
       break;
@@ -95,6 +103,18 @@ export const SecretSyncReviewFields = () => {
       break;
     case SecretSync.OCIVault:
       DestinationFieldsComponent = <OCIVaultSyncReviewFields />;
+      break;
+    case SecretSync.OnePass:
+      DestinationFieldsComponent = <OnePassSyncReviewFields />;
+      break;
+    case SecretSync.Heroku:
+      DestinationFieldsComponent = <HerokuSyncReviewFields />;
+      break;
+    case SecretSync.Render:
+      DestinationFieldsComponent = <RenderSyncReviewFields />;
+      break;
+    case SecretSync.Flyio:
+      DestinationFieldsComponent = <FlyioSyncReviewFields />;
       break;
     default:
       throw new Error(`Unhandled Destination Review Fields: ${destination}`);

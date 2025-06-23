@@ -1,8 +1,9 @@
 import { ForbiddenError, subject } from "@casl/ability";
+import RE2 from "re2";
 
 import { ActionProjectType } from "@app/db/schemas";
 import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import {
   ProjectPermissionDynamicSecretActions,
   ProjectPermissionSub
@@ -11,10 +12,13 @@ import { getConfig } from "@app/lib/config/env";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { logger } from "@app/lib/logger";
 import { ms } from "@app/lib/ms";
+import { ActorType } from "@app/services/auth/auth-type";
+import { TIdentityDALFactory } from "@app/services/identity/identity-dal";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { KmsDataKey } from "@app/services/kms/kms-types";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
 import { TSecretFolderDALFactory } from "@app/services/secret-folder/secret-folder-dal";
+import { TUserDALFactory } from "@app/services/user/user-dal";
 
 import { TDynamicSecretDALFactory } from "../dynamic-secret/dynamic-secret-dal";
 import { DynamicSecretProviders, TDynamicProviderFns } from "../dynamic-secret/providers/models";
@@ -22,11 +26,8 @@ import { TDynamicSecretLeaseDALFactory } from "./dynamic-secret-lease-dal";
 import { TDynamicSecretLeaseQueueServiceFactory } from "./dynamic-secret-lease-queue";
 import {
   DynamicSecretLeaseStatus,
-  TCreateDynamicSecretLeaseDTO,
-  TDeleteDynamicSecretLeaseDTO,
-  TDetailsDynamicSecretLeaseDTO,
-  TListDynamicSecretLeasesDTO,
-  TRenewDynamicSecretLeaseDTO
+  TDynamicSecretLeaseConfig,
+  TDynamicSecretLeaseServiceFactory
 } from "./dynamic-secret-lease-types";
 
 type TDynamicSecretLeaseServiceFactoryDep = {
@@ -39,9 +40,9 @@ type TDynamicSecretLeaseServiceFactoryDep = {
   permissionService: Pick<TPermissionServiceFactory, "getProjectPermission">;
   projectDAL: Pick<TProjectDALFactory, "findProjectBySlug">;
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">;
+  userDAL: Pick<TUserDALFactory, "findById">;
+  identityDAL: TIdentityDALFactory;
 };
-
-export type TDynamicSecretLeaseServiceFactory = ReturnType<typeof dynamicSecretLeaseServiceFactory>;
 
 export const dynamicSecretLeaseServiceFactory = ({
   dynamicSecretLeaseDAL,
@@ -52,9 +53,17 @@ export const dynamicSecretLeaseServiceFactory = ({
   dynamicSecretQueueService,
   projectDAL,
   licenseService,
-  kmsService
-}: TDynamicSecretLeaseServiceFactoryDep) => {
-  const create = async ({
+  kmsService,
+  userDAL,
+  identityDAL
+}: TDynamicSecretLeaseServiceFactoryDep): TDynamicSecretLeaseServiceFactory => {
+  const extractEmailUsername = (email: string) => {
+    const regex = new RE2(/^([^@]+)/);
+    const match = email.match(regex);
+    return match ? match[1] : email;
+  };
+
+  const create: TDynamicSecretLeaseServiceFactory["create"] = async ({
     environmentSlug,
     path,
     name,
@@ -63,8 +72,9 @@ export const dynamicSecretLeaseServiceFactory = ({
     actorId,
     actorOrgId,
     actorAuthMethod,
-    ttl
-  }: TCreateDynamicSecretLeaseDTO) => {
+    ttl,
+    config
+  }) => {
     const appCfg = getConfig();
     const project = await projectDAL.findProjectBySlug(projectSlug, actorOrgId);
     if (!project) throw new NotFoundError({ message: `Project with slug '${projectSlug}' not found` });
@@ -132,7 +142,26 @@ export const dynamicSecretLeaseServiceFactory = ({
 
     let result;
     try {
-      result = await selectedProvider.create(decryptedStoredInput, expireAt.getTime());
+      const identity: { name: string } = { name: "" };
+      if (actor === ActorType.USER) {
+        const user = await userDAL.findById(actorId);
+        if (user) {
+          identity.name = extractEmailUsername(user.username);
+        }
+      } else if (actor === ActorType.Machine) {
+        const machineIdentity = await identityDAL.findById(actorId);
+        if (machineIdentity) {
+          identity.name = machineIdentity.name;
+        }
+      }
+      result = await selectedProvider.create({
+        inputs: decryptedStoredInput,
+        expireAt: expireAt.getTime(),
+        usernameTemplate: dynamicSecretCfg.usernameTemplate,
+        identity,
+        metadata: { projectId },
+        config
+      });
     } catch (error: unknown) {
       if (error && typeof error === "object" && error !== null && "sqlMessage" in error) {
         throw new BadRequestError({ message: error.sqlMessage as string });
@@ -145,13 +174,15 @@ export const dynamicSecretLeaseServiceFactory = ({
       expireAt,
       version: 1,
       dynamicSecretId: dynamicSecretCfg.id,
-      externalEntityId: entityId
+      externalEntityId: entityId,
+      config
     });
-    await dynamicSecretQueueService.setLeaseRevocation(dynamicSecretLease.id, Number(expireAt) - Number(new Date()));
+
+    await dynamicSecretQueueService.setLeaseRevocation(dynamicSecretLease.id, expireAt);
     return { lease: dynamicSecretLease, dynamicSecret: dynamicSecretCfg, data };
   };
 
-  const renewLease = async ({
+  const renewLease: TDynamicSecretLeaseServiceFactory["renewLease"] = async ({
     ttl,
     actorAuthMethod,
     actorOrgId,
@@ -161,7 +192,7 @@ export const dynamicSecretLeaseServiceFactory = ({
     path,
     environmentSlug,
     leaseId
-  }: TRenewDynamicSecretLeaseDTO) => {
+  }) => {
     const project = await projectDAL.findProjectBySlug(projectSlug, actorOrgId);
     if (!project) throw new NotFoundError({ message: `Project with slug '${projectSlug}' not found` });
 
@@ -227,17 +258,21 @@ export const dynamicSecretLeaseServiceFactory = ({
     const expireAt = new Date(dynamicSecretLease.expireAt.getTime() + ms(selectedTTL));
     if (maxTTL) {
       const maxExpiryDate = new Date(dynamicSecretLease.createdAt.getTime() + ms(maxTTL));
-      if (expireAt > maxExpiryDate) throw new BadRequestError({ message: "TTL cannot be larger than max ttl" });
+      if (expireAt > maxExpiryDate)
+        throw new BadRequestError({
+          message: "The requested renewal would exceed the maximum allowed lease duration. Please choose a shorter TTL"
+        });
     }
 
     const { entityId } = await selectedProvider.renew(
       decryptedStoredInput,
       dynamicSecretLease.externalEntityId,
-      expireAt.getTime()
+      expireAt.getTime(),
+      { projectId }
     );
 
     await dynamicSecretQueueService.unsetLeaseRevocation(dynamicSecretLease.id);
-    await dynamicSecretQueueService.setLeaseRevocation(dynamicSecretLease.id, Number(expireAt) - Number(new Date()));
+    await dynamicSecretQueueService.setLeaseRevocation(dynamicSecretLease.id, expireAt);
     const updatedDynamicSecretLease = await dynamicSecretLeaseDAL.updateById(dynamicSecretLease.id, {
       expireAt,
       externalEntityId: entityId
@@ -245,7 +280,7 @@ export const dynamicSecretLeaseServiceFactory = ({
     return updatedDynamicSecretLease;
   };
 
-  const revokeLease = async ({
+  const revokeLease: TDynamicSecretLeaseServiceFactory["revokeLease"] = async ({
     leaseId,
     environmentSlug,
     path,
@@ -255,7 +290,7 @@ export const dynamicSecretLeaseServiceFactory = ({
     actorOrgId,
     actorAuthMethod,
     isForced
-  }: TDeleteDynamicSecretLeaseDTO) => {
+  }) => {
     const project = await projectDAL.findProjectBySlug(projectSlug, actorOrgId);
     if (!project) throw new NotFoundError({ message: `Project with slug '${projectSlug}' not found` });
 
@@ -309,7 +344,12 @@ export const dynamicSecretLeaseServiceFactory = ({
     ) as object;
 
     const revokeResponse = await selectedProvider
-      .revoke(decryptedStoredInput, dynamicSecretLease.externalEntityId)
+      .revoke(
+        decryptedStoredInput,
+        dynamicSecretLease.externalEntityId,
+        { projectId },
+        dynamicSecretLease.config as TDynamicSecretLeaseConfig
+      )
       .catch(async (err) => {
         // only propogate this error if forced is false
         if (!isForced) return { error: err as Error };
@@ -330,7 +370,7 @@ export const dynamicSecretLeaseServiceFactory = ({
     return deletedDynamicSecretLease;
   };
 
-  const listLeases = async ({
+  const listLeases: TDynamicSecretLeaseServiceFactory["listLeases"] = async ({
     path,
     name,
     actor,
@@ -339,7 +379,7 @@ export const dynamicSecretLeaseServiceFactory = ({
     actorOrgId,
     environmentSlug,
     actorAuthMethod
-  }: TListDynamicSecretLeasesDTO) => {
+  }) => {
     const project = await projectDAL.findProjectBySlug(projectSlug, actorOrgId);
     if (!project) throw new NotFoundError({ message: `Project with slug '${projectSlug}' not found` });
 
@@ -378,7 +418,7 @@ export const dynamicSecretLeaseServiceFactory = ({
     return dynamicSecretLeases;
   };
 
-  const getLeaseDetails = async ({
+  const getLeaseDetails: TDynamicSecretLeaseServiceFactory["getLeaseDetails"] = async ({
     projectSlug,
     actorOrgId,
     path,
@@ -387,7 +427,7 @@ export const dynamicSecretLeaseServiceFactory = ({
     actorId,
     leaseId,
     actorAuthMethod
-  }: TDetailsDynamicSecretLeaseDTO) => {
+  }) => {
     const project = await projectDAL.findProjectBySlug(projectSlug, actorOrgId);
     if (!project) throw new NotFoundError({ message: `Project with slug '${projectSlug}' not found` });
 

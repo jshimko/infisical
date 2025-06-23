@@ -13,7 +13,7 @@ import {
   TSecrets
 } from "@app/db/schemas";
 import { hasSecretReadValueOrDescribePermission } from "@app/ee/services/permission/permission-fns";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { ProjectPermissionSecretActions } from "@app/ee/services/permission/project-permission";
 import { getConfig } from "@app/lib/config/env";
 import {
@@ -778,6 +778,7 @@ export const createManySecretsRawFnFactory = ({
   secretVersionV2BridgeDAL,
   secretV2BridgeDAL,
   secretVersionTagV2BridgeDAL,
+  folderCommitService,
   kmsService,
   resourceMetadataDAL
 }: TCreateManySecretsRawFnFactory) => {
@@ -850,6 +851,7 @@ export const createManySecretsRawFnFactory = ({
           secretVersionDAL: secretVersionV2BridgeDAL,
           secretTagDAL,
           secretVersionTagDAL: secretVersionTagV2BridgeDAL,
+          folderCommitService,
           tx
         })
       );
@@ -942,6 +944,7 @@ export const updateManySecretsRawFnFactory = ({
   secretVersionV2BridgeDAL,
   secretV2BridgeDAL,
   resourceMetadataDAL,
+  folderCommitService,
   kmsService
 }: TUpdateManySecretsRawFnFactory) => {
   const getBotKeyFn = getBotKeyFnFactory(projectBotDAL, projectDAL);
@@ -1032,7 +1035,8 @@ export const updateManySecretsRawFnFactory = ({
           secretDAL: secretV2BridgeDAL,
           secretVersionDAL: secretVersionV2BridgeDAL,
           secretTagDAL,
-          secretVersionTagDAL: secretVersionTagV2BridgeDAL
+          secretVersionTagDAL: secretVersionTagV2BridgeDAL,
+          folderCommitService
         })
       );
 

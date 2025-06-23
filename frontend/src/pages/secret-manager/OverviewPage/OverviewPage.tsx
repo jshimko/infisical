@@ -64,6 +64,11 @@ import {
   useWorkspace
 } from "@app/context";
 import { ProjectPermissionSecretRotationActions } from "@app/context/ProjectPermissionContext/types";
+import {
+  getUserTablePreference,
+  PreferenceKey,
+  setUserTablePreference
+} from "@app/helpers/userTablePreferences";
 import { useDebounce, usePagination, usePopUp, useResetPageHelper } from "@app/hooks";
 import {
   useCreateFolder,
@@ -91,6 +96,10 @@ import { SecretOverviewSecretRotationRow } from "@app/pages/secret-manager/Overv
 
 import { CreateDynamicSecretForm } from "../SecretDashboardPage/components/ActionBar/CreateDynamicSecretForm";
 import { FolderForm } from "../SecretDashboardPage/components/ActionBar/FolderForm";
+import {
+  HIDDEN_SECRET_VALUE,
+  HIDDEN_SECRET_VALUE_API_MASK
+} from "../SecretDashboardPage/components/SecretListView/SecretItem";
 import { CreateSecretForm } from "./components/CreateSecretForm";
 import { FolderBreadCrumbs } from "./components/FolderBreadCrumbs";
 import { SecretOverviewDynamicSecretRow } from "./components/SecretOverviewDynamicSecretRow";
@@ -180,7 +189,14 @@ export const OverviewPage = () => {
     page,
     setPerPage,
     orderBy
-  } = usePagination<DashboardSecretsOrderBy>(DashboardSecretsOrderBy.Name);
+  } = usePagination<DashboardSecretsOrderBy>(DashboardSecretsOrderBy.Name, {
+    initPerPage: getUserTablePreference("secretOverviewTable", PreferenceKey.PerPage, 100)
+  });
+
+  const handlePerPageChange = (newPerPage: number) => {
+    setPerPage(newPerPage);
+    setUserTablePreference("secretOverviewTable", PreferenceKey.PerPage, newPerPage);
+  };
 
   const resetSelectedEntries = useCallback(() => {
     setSelectedEntries({
@@ -497,15 +513,25 @@ export const OverviewPage = () => {
     env: string,
     key: string,
     value: string,
+    secretValueHidden: boolean,
     type = SecretType.Shared
   ) => {
+    let secretValue: string | undefined = value;
+
+    if (
+      secretValueHidden &&
+      (value === HIDDEN_SECRET_VALUE_API_MASK || value === HIDDEN_SECRET_VALUE)
+    ) {
+      secretValue = undefined;
+    }
+
     try {
       const result = await updateSecretV3({
         environment: env,
         workspaceId,
         secretPath,
         secretKey: key,
-        secretValue: value,
+        secretValue,
         type
       });
 
@@ -1416,7 +1442,7 @@ export const OverviewPage = () => {
               page={page}
               perPage={perPage}
               onChangePage={(newPage) => setPage(newPage)}
-              onChangePerPage={(newPerPage) => setPerPage(newPerPage)}
+              onChangePerPage={handlePerPageChange}
             />
           )}
         </div>

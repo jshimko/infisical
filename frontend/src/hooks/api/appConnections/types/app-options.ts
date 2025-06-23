@@ -17,6 +17,11 @@ export type TGitHubConnectionOption = TAppConnectionOptionBase & {
   appClientSlug?: string;
 };
 
+export type TGitHubRadarConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.GitHubRadar;
+  appClientSlug?: string;
+};
+
 export type TGcpConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.GCP;
 };
@@ -40,6 +45,11 @@ export type TDatabricksConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.Databricks;
 };
 
+export type TAzureDevOpsConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.AzureDevOps;
+  oauthClientId?: string;
+};
+
 export type THumanitecConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.Humanitec;
 };
@@ -58,6 +68,14 @@ export type TPostgresConnectionOption = TAppConnectionOptionBase & {
 
 export type TMsSqlConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.MsSql;
+};
+
+export type TMySqlConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.MySql;
+};
+
+export type TOracleDBConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.OracleDB;
 };
 
 export type TCamundaConnectionOption = TAppConnectionOptionBase & {
@@ -88,6 +106,23 @@ export type TOCIConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.OCI;
 };
 
+export type THerokuConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Heroku;
+  oauthClientId?: string;
+};
+
+export type TOnePassConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.OnePass;
+};
+
+export type TRenderConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Render;
+};
+
+export type TFlyioConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Flyio;
+};
+
 export type TAppConnectionOption =
   | TAwsConnectionOption
   | TGitHubConnectionOption
@@ -95,32 +130,43 @@ export type TAppConnectionOption =
   | TAzureAppConfigurationConnectionOption
   | TAzureKeyVaultConnectionOption
   | TAzureClientSecretsConnectionOption
+  | TAzureDevOpsConnectionOption
   | TDatabricksConnectionOption
   | THumanitecConnectionOption
   | TTerraformCloudConnectionOption
   | TVercelConnectionOption
   | TPostgresConnectionOption
   | TMsSqlConnectionOption
+  | TMySqlConnectionOption
+  | TOracleDBConnectionOption
   | TCamundaConnectionOption
   | TWindmillConnectionOption
   | TAuth0ConnectionOption
   | THCVaultConnectionOption
   | TTeamCityConnectionOption
-  | TOCIConnectionOption;
+  | TOCIConnectionOption
+  | TOnePassConnectionOption
+  | THerokuConnectionOption
+  | TRenderConnectionOption
+  | TFlyioConnectionOption;
 
 export type TAppConnectionOptionMap = {
   [AppConnection.AWS]: TAwsConnectionOption;
   [AppConnection.GitHub]: TGitHubConnectionOption;
+  [AppConnection.GitHubRadar]: TGitHubRadarConnectionOption;
   [AppConnection.GCP]: TGcpConnectionOption;
   [AppConnection.AzureKeyVault]: TAzureKeyVaultConnectionOption;
   [AppConnection.AzureAppConfiguration]: TAzureAppConfigurationConnectionOption;
   [AppConnection.AzureClientSecrets]: TAzureClientSecretsConnectionOption;
+  [AppConnection.AzureDevOps]: TAzureDevOpsConnectionOption;
   [AppConnection.Databricks]: TDatabricksConnectionOption;
   [AppConnection.Humanitec]: THumanitecConnectionOption;
   [AppConnection.TerraformCloud]: TTerraformCloudConnectionOption;
   [AppConnection.Vercel]: TVercelConnectionOption;
   [AppConnection.Postgres]: TPostgresConnectionOption;
   [AppConnection.MsSql]: TMsSqlConnectionOption;
+  [AppConnection.MySql]: TMySqlConnectionOption;
+  [AppConnection.OracleDB]: TOracleDBConnectionOption;
   [AppConnection.Camunda]: TCamundaConnectionOption;
   [AppConnection.Windmill]: TWindmillConnectionOption;
   [AppConnection.Auth0]: TAuth0ConnectionOption;
@@ -128,4 +174,8 @@ export type TAppConnectionOptionMap = {
   [AppConnection.LDAP]: TLdapConnectionOption;
   [AppConnection.TeamCity]: TTeamCityConnectionOption;
   [AppConnection.OCI]: TOCIConnectionOption;
+  [AppConnection.OnePass]: TOnePassConnectionOption;
+  [AppConnection.Heroku]: THerokuConnectionOption;
+  [AppConnection.Render]: TRenderConnectionOption;
+  [AppConnection.Flyio]: TFlyioConnectionOption;
 };

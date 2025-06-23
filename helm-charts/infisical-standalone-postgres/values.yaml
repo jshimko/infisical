@@ -5,8 +5,10 @@ nameOverride: ""
 fullnameOverride: ""
 
 infisical:
-  enabled: true # -- Enable Infisical chart deployment
-  name: infisical # -- Sets the name of the deployment within this chart
+  # -- Enable Infisical chart deployment
+  enabled: true
+  # -- Sets the name of the deployment within this chart
+  name: infisical
 
   # -- The public URL of the Infisical service (full URL with protocol and optional port is required)
   siteUrl: http://localhost:8080
@@ -109,12 +111,12 @@ infisical:
     nodePort: ""
 
   resources:
-    # limits:
-    #   # -- Memory limit for Infisical container
-    #   memory: 600Mi
-    # requests:
-    #   # -- CPU request for Infisical container
-    #   cpu: 350m
+    limits:
+      # -- Memory limit for Infisical container
+      memory: 1000Mi
+    requests:
+      # -- CPU request for Infisical container
+      cpu: 350m
 
 ingress:
   # -- Enable or disable ingress configuration

@@ -1,7 +1,7 @@
 import { ForbiddenError } from "@casl/ability";
 
 import { ActionProjectType, ProjectType, TPkiCollectionItems } from "@app/db/schemas";
-import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { ProjectPermissionActions, ProjectPermissionSub } from "@app/ee/services/permission/project-permission";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { TCertificateDALFactory } from "@app/services/certificate/certificate-dal";
@@ -269,14 +269,8 @@ export const pkiCollectionServiceFactory = ({
         });
         if (isCertAdded) throw new BadRequestError({ message: "Certificate already part of the PKI collection" });
 
-        // validate that there exists a certificate in same project as PKI collection
-        const cas = await certificateAuthorityDAL.find({ projectId: pkiCollection.projectId });
-
-        // TODO: consider making this more efficient
         const [certificate] = await certificateDAL.find({
-          $in: {
-            caId: cas.map((ca) => ca.id)
-          },
+          projectId: pkiCollection.projectId,
           id: itemId
         });
         if (!certificate) throw new NotFoundError({ message: `Certificate with ID '${itemId}' not found` });

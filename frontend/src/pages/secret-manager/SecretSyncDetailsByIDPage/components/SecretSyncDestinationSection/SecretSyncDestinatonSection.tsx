@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { subject } from "@casl/ability";
 import { faEdit } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
@@ -10,17 +11,22 @@ import { ProjectPermissionSecretSyncActions } from "@app/context/ProjectPermissi
 import { APP_CONNECTION_MAP } from "@app/helpers/appConnections";
 import { SecretSync, TSecretSync } from "@app/hooks/api/secretSyncs";
 
+import { OnePassSyncDestinationSection } from "./1PasswordSyncDestinationSection";
 import { AwsParameterStoreSyncDestinationSection } from "./AwsParameterStoreSyncDestinationSection";
 import { AwsSecretsManagerSyncDestinationSection } from "./AwsSecretsManagerSyncDestinationSection";
 import { AzureAppConfigurationSyncDestinationSection } from "./AzureAppConfigurationSyncDestinationSection";
+import { AzureDevOpsSyncDestinationSection } from "./AzureDevOpsSyncDestinationSection";
 import { AzureKeyVaultSyncDestinationSection } from "./AzureKeyVaultSyncDestinationSection";
 import { CamundaSyncDestinationSection } from "./CamundaSyncDestinationSection";
 import { DatabricksSyncDestinationSection } from "./DatabricksSyncDestinationSection";
+import { FlyioSyncDestinationSection } from "./FlyioSyncDestinationSection";
 import { GcpSyncDestinationSection } from "./GcpSyncDestinationSection";
 import { GitHubSyncDestinationSection } from "./GitHubSyncDestinationSection";
 import { HCVaultSyncDestinationSection } from "./HCVaultSyncDestinationSection";
+import { HerokuSyncDestinationSection } from "./HerokuSyncDestinationSection";
 import { HumanitecSyncDestinationSection } from "./HumanitecSyncDestinationSection";
 import { OCIVaultSyncDestinationSection } from "./OCIVaultSyncDestinationSection";
+import { RenderSyncDestinationSection } from "./RenderSyncDestinationSection";
 import { TeamCitySyncDestinationSection } from "./TeamCitySyncDestinationSection";
 import { TerraformCloudSyncDestinationSection } from "./TerraformCloudSyncDestinationSection";
 import { VercelSyncDestinationSection } from "./VercelSyncDestinationSection";
@@ -32,7 +38,7 @@ type Props = {
 };
 
 export const SecretSyncDestinationSection = ({ secretSync, onEditDestination }: Props) => {
-  const { destination, connection } = secretSync;
+  const { destination, connection, folder, environment } = secretSync;
 
   const app = APP_CONNECTION_MAP[connection.app].name;
 
@@ -85,18 +91,38 @@ export const SecretSyncDestinationSection = ({ secretSync, onEditDestination }: 
     case SecretSync.OCIVault:
       DestinationComponents = <OCIVaultSyncDestinationSection secretSync={secretSync} />;
       break;
+    case SecretSync.OnePass:
+      DestinationComponents = <OnePassSyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.AzureDevOps:
+      DestinationComponents = <AzureDevOpsSyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.Heroku:
+      DestinationComponents = <HerokuSyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.Render:
+      DestinationComponents = <RenderSyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.Flyio:
+      DestinationComponents = <FlyioSyncDestinationSection secretSync={secretSync} />;
+      break;
     default:
       throw new Error(`Unhandled Destination Section components: ${destination}`);
   }
+
+  const permissionSubject =
+    environment && folder
+      ? subject(ProjectPermissionSub.SecretSyncs, {
+          environment: environment.slug,
+          secretPath: folder.path
+        })
+      : ProjectPermissionSub.SecretSyncs;
 
   return (
     <div className="flex w-full flex-col gap-3 rounded-lg border border-mineshaft-600 bg-mineshaft-900 px-4 py-3">
       <div className="flex items-center justify-between border-b border-mineshaft-400 pb-2">
         <h3 className="font-semibold text-mineshaft-100">Destination Configuration</h3>
-        <ProjectPermissionCan
-          I={ProjectPermissionSecretSyncActions.Edit}
-          a={ProjectPermissionSub.SecretSyncs}
-        >
+        <ProjectPermissionCan I={ProjectPermissionSecretSyncActions.Edit} a={permissionSubject}>
           {(isAllowed) => (
             <IconButton
               variant="plain"

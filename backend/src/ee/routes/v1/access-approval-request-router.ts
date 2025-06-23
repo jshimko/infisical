@@ -89,7 +89,7 @@ export const registerAccessApprovalRequestRouter = async (server: FastifyZodProv
     schema: {
       querystring: z.object({
         projectSlug: z.string().trim(),
-        authorProjectMembershipId: z.string().trim().optional(),
+        authorUserId: z.string().trim().optional(),
         envSlug: z.string().trim().optional()
       }),
       response: {
@@ -112,7 +112,16 @@ export const registerAccessApprovalRequestRouter = async (server: FastifyZodProv
               id: z.string(),
               name: z.string(),
               approvals: z.number(),
-              approvers: z.string().array(),
+              approvers: z
+                .object({
+                  userId: z.string().nullable().optional(),
+                  sequence: z.number().nullable().optional(),
+                  approvalsRequired: z.number().nullable().optional(),
+                  email: z.string().nullable().optional(),
+                  username: z.string().nullable().optional()
+                })
+                .array(),
+              bypassers: z.string().array(),
               secretPath: z.string().nullish(),
               envId: z.string(),
               enforcementLevel: z.string(),
@@ -134,7 +143,7 @@ export const registerAccessApprovalRequestRouter = async (server: FastifyZodProv
     handler: async (req) => {
       const { requests } = await server.services.accessApprovalRequest.listApprovalRequests({
         projectSlug: req.query.projectSlug,
-        authorProjectMembershipId: req.query.authorProjectMembershipId,
+        authorUserId: req.query.authorUserId,
         envSlug: req.query.envSlug,
         actor: req.permission.type,
         actorId: req.permission.id,
@@ -154,7 +163,8 @@ export const registerAccessApprovalRequestRouter = async (server: FastifyZodProv
         requestId: z.string().trim()
       }),
       body: z.object({
-        status: z.enum([ApprovalStatus.APPROVED, ApprovalStatus.REJECTED])
+        status: z.enum([ApprovalStatus.APPROVED, ApprovalStatus.REJECTED]),
+        bypassReason: z.string().min(10).max(1000).optional()
       }),
       response: {
         200: z.object({
@@ -170,7 +180,8 @@ export const registerAccessApprovalRequestRouter = async (server: FastifyZodProv
         actorOrgId: req.permission.orgId,
         actorAuthMethod: req.permission.authMethod,
         requestId: req.params.requestId,
-        status: req.body.status
+        status: req.body.status,
+        bypassReason: req.body.bypassReason
       });
 
       return { review };

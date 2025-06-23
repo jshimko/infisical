@@ -11,7 +11,8 @@ export enum ApprovalStatus {
 export enum CommitType {
   DELETE = "delete",
   UPDATE = "update",
-  CREATE = "create"
+  CREATE = "create",
+  ADD = "add"
 }
 
 export type TSecretApprovalSecChangeData = {
@@ -31,6 +32,7 @@ export type TSecretApprovalSecChange = {
   version: number;
   secretKey: string;
   secretValue?: string;
+  secretValueHidden?: boolean;
   secretComment?: string;
   isRotatedSecret?: boolean;
   tags?: string[];
@@ -57,8 +59,15 @@ export type TSecretApprovalRequest = {
   secretPath: string;
   hasMerged: boolean;
   status: "open" | "close";
-  policy: Omit<TSecretApprovalPolicy, "approvers"> & {
+  policy: Omit<TSecretApprovalPolicy, "approvers" | "bypassers"> & {
     approvers: {
+      userId: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      username: string;
+    }[];
+    bypassers: {
       userId: string;
       email: string;
       firstName: string;
@@ -104,6 +113,7 @@ export type TGetSecretApprovalRequestList = {
   committer?: string;
   limit?: number;
   offset?: number;
+  search?: string;
 };
 
 export type TGetSecretApprovalRequestCount = {
