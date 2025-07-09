@@ -210,6 +210,7 @@
                 "group": "Secret Scanning",
                 "pages": [
                   "documentation/platform/secret-scanning/overview",
+                  "documentation/platform/secret-scanning/bitbucket",
                   "documentation/platform/secret-scanning/github"
                 ]
               }
@@ -288,6 +289,7 @@
                   "documentation/platform/identities/kubernetes-auth",
                   "documentation/platform/identities/oci-auth",
                   "documentation/platform/identities/token-auth",
+                  "documentation/platform/identities/tls-cert-auth",
                   "documentation/platform/identities/universal-auth",
                   {
                     "group": "OIDC Auth",
@@ -468,12 +470,15 @@
                   "integrations/app-connections/azure-client-secrets",
                   "integrations/app-connections/azure-devops",
                   "integrations/app-connections/azure-key-vault",
+                  "integrations/app-connections/bitbucket",
                   "integrations/app-connections/camunda",
+                  "integrations/app-connections/cloudflare",
                   "integrations/app-connections/databricks",
                   "integrations/app-connections/flyio",
                   "integrations/app-connections/gcp",
                   "integrations/app-connections/github",
                   "integrations/app-connections/github-radar",
+                  "integrations/app-connections/gitlab",
                   "integrations/app-connections/hashicorp-vault",
                   "integrations/app-connections/heroku",
                   "integrations/app-connections/humanitec",
@@ -487,7 +492,8 @@
                   "integrations/app-connections/teamcity",
                   "integrations/app-connections/terraform-cloud",
                   "integrations/app-connections/vercel",
-                  "integrations/app-connections/windmill"
+                  "integrations/app-connections/windmill",
+                  "integrations/app-connections/zabbix"
                 ]
               }
             ]
@@ -506,10 +512,12 @@
                   "integrations/secret-syncs/azure-devops",
                   "integrations/secret-syncs/azure-key-vault",
                   "integrations/secret-syncs/camunda",
+                  "integrations/secret-syncs/cloudflare-pages",
                   "integrations/secret-syncs/databricks",
                   "integrations/secret-syncs/flyio",
                   "integrations/secret-syncs/gcp-secret-manager",
                   "integrations/secret-syncs/github",
+                  "integrations/secret-syncs/gitlab",
                   "integrations/secret-syncs/hashicorp-vault",
                   "integrations/secret-syncs/heroku",
                   "integrations/secret-syncs/humanitec",
@@ -518,7 +526,8 @@
                   "integrations/secret-syncs/teamcity",
                   "integrations/secret-syncs/terraform-cloud",
                   "integrations/secret-syncs/vercel",
-                  "integrations/secret-syncs/windmill"
+                  "integrations/secret-syncs/windmill",
+                  "integrations/secret-syncs/zabbix"
                 ]
               }
             ]
@@ -749,6 +758,16 @@
                 ]
               },
               {
+                "group": "TLS Certificate Auth",
+                "pages": [
+                  "api-reference/endpoints/tls-cert-auth/login",
+                  "api-reference/endpoints/tls-cert-auth/attach",
+                  "api-reference/endpoints/tls-cert-auth/retrieve",
+                  "api-reference/endpoints/tls-cert-auth/update",
+                  "api-reference/endpoints/tls-cert-auth/revoke"
+                ]
+              },
+              {
                 "group": "AWS Auth",
                 "pages": [
                   "api-reference/endpoints/aws-auth/login",
@@ -834,6 +853,30 @@
               {
                 "group": "Organizations",
                 "pages": [
+                {
+                  "group": "OIDC SSO",
+                  "pages": [
+                    "api-reference/endpoints/organizations/oidc-sso/get-oidc-config",
+                    "api-reference/endpoints/organizations/oidc-sso/update-oidc-config",
+                    "api-reference/endpoints/organizations/oidc-sso/create-oidc-config"
+                  ]
+                },
+                {
+                  "group": "LDAP SSO",
+                  "pages": [
+                    "api-reference/endpoints/organizations/ldap-sso/get-ldap-config",
+                    "api-reference/endpoints/organizations/ldap-sso/update-ldap-config",
+                    "api-reference/endpoints/organizations/ldap-sso/create-ldap-config"
+                  ]
+                },
+                {
+                  "group": "SAML SSO",
+                  "pages": [
+                    "api-reference/endpoints/organizations/saml-sso/get-saml-config",
+                    "api-reference/endpoints/organizations/saml-sso/update-saml-config",
+                    "api-reference/endpoints/organizations/saml-sso/create-saml-config"
+                  ]
+                },
                   "api-reference/endpoints/organizations/memberships",
                   "api-reference/endpoints/organizations/update-membership",
                   "api-reference/endpoints/organizations/delete-membership",
@@ -1095,6 +1138,21 @@
                       "api-reference/endpoints/secret-scanning/data-sources/list",
                       "api-reference/endpoints/secret-scanning/data-sources/options",
                       {
+                        "group": "Bitbucket",
+                        "pages": [
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/list",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/get-by-id",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/get-by-name",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/list-resources",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/list-scans",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/create",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/update",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/delete",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/scan",
+                          "api-reference/endpoints/secret-scanning/data-sources/bitbucket/scan-resource"
+                        ]
+                      },
+                      {
                         "group": "GitHub",
                         "pages": [
                           "api-reference/endpoints/secret-scanning/data-sources/github/list",
@@ -1244,6 +1302,18 @@
                     ]
                   },
                   {
+                    "group": "Bitbucket",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/bitbucket/list",
+                      "api-reference/endpoints/app-connections/bitbucket/available",
+                      "api-reference/endpoints/app-connections/bitbucket/get-by-id",
+                      "api-reference/endpoints/app-connections/bitbucket/get-by-name",
+                      "api-reference/endpoints/app-connections/bitbucket/create",
+                      "api-reference/endpoints/app-connections/bitbucket/update",
+                      "api-reference/endpoints/app-connections/bitbucket/delete"
+                    ]
+                  },
+                  {
                     "group": "Camunda",
                     "pages": [
                       "api-reference/endpoints/app-connections/camunda/list",
@@ -1253,6 +1323,18 @@
                       "api-reference/endpoints/app-connections/camunda/create",
                       "api-reference/endpoints/app-connections/camunda/update",
                       "api-reference/endpoints/app-connections/camunda/delete"
+                    ]
+                  },
+                  {
+                    "group": "Cloudflare",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/cloudflare/list",
+                      "api-reference/endpoints/app-connections/cloudflare/available",
+                      "api-reference/endpoints/app-connections/cloudflare/get-by-id",
+                      "api-reference/endpoints/app-connections/cloudflare/get-by-name",
+                      "api-reference/endpoints/app-connections/cloudflare/create",
+                      "api-reference/endpoints/app-connections/cloudflare/update",
+                      "api-reference/endpoints/app-connections/cloudflare/delete"
                     ]
                   },
                   {
@@ -1301,6 +1383,18 @@
                       "api-reference/endpoints/app-connections/github/create",
                       "api-reference/endpoints/app-connections/github/update",
                       "api-reference/endpoints/app-connections/github/delete"
+                    ]
+                  },
+                  {
+                    "group": "GitLab",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/gitlab/list",
+                      "api-reference/endpoints/app-connections/gitlab/available",
+                      "api-reference/endpoints/app-connections/gitlab/get-by-id",
+                      "api-reference/endpoints/app-connections/gitlab/get-by-name",
+                      "api-reference/endpoints/app-connections/gitlab/create",
+                      "api-reference/endpoints/app-connections/gitlab/update",
+                      "api-reference/endpoints/app-connections/gitlab/delete"
                     ]
                   },
                   {
@@ -1482,6 +1576,18 @@
                       "api-reference/endpoints/app-connections/windmill/update",
                       "api-reference/endpoints/app-connections/windmill/delete"
                     ]
+                  },
+                  {
+                    "group": "Zabbix",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/zabbix/list",
+                      "api-reference/endpoints/app-connections/zabbix/available",
+                      "api-reference/endpoints/app-connections/zabbix/get-by-id",
+                      "api-reference/endpoints/app-connections/zabbix/get-by-name",
+                      "api-reference/endpoints/app-connections/zabbix/create",
+                      "api-reference/endpoints/app-connections/zabbix/update",
+                      "api-reference/endpoints/app-connections/zabbix/delete"
+                    ]
                   }
                 ]
               },
@@ -1588,6 +1694,19 @@
                     ]
                   },
                   {
+                    "group": "Cloudflare Pages",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/list",
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/get-by-id",
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/get-by-name",
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/create",
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/update",
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/delete",
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/cloudflare-pages/remove-secrets"
+                    ]
+                  },
+                  {
                     "group": "Databricks",
                     "pages": [
                       "api-reference/endpoints/secret-syncs/databricks/list",
@@ -1638,6 +1757,19 @@
                       "api-reference/endpoints/secret-syncs/github/delete",
                       "api-reference/endpoints/secret-syncs/github/sync-secrets",
                       "api-reference/endpoints/secret-syncs/github/remove-secrets"
+                    ]
+                  },
+                  {
+                    "group": "GitLab",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/gitlab/list",
+                      "api-reference/endpoints/secret-syncs/gitlab/get-by-id",
+                      "api-reference/endpoints/secret-syncs/gitlab/get-by-name",
+                      "api-reference/endpoints/secret-syncs/gitlab/create",
+                      "api-reference/endpoints/secret-syncs/gitlab/update",
+                      "api-reference/endpoints/secret-syncs/gitlab/delete",
+                      "api-reference/endpoints/secret-syncs/gitlab/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/gitlab/remove-secrets"
                     ]
                   },
                   {
@@ -1761,6 +1893,20 @@
                       "api-reference/endpoints/secret-syncs/windmill/sync-secrets",
                       "api-reference/endpoints/secret-syncs/windmill/import-secrets",
                       "api-reference/endpoints/secret-syncs/windmill/remove-secrets"
+                    ]
+                  },
+                  {
+                    "group": "Zabbix",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/zabbix/list",
+                      "api-reference/endpoints/secret-syncs/zabbix/get-by-id",
+                      "api-reference/endpoints/secret-syncs/zabbix/get-by-name",
+                      "api-reference/endpoints/secret-syncs/zabbix/create",
+                      "api-reference/endpoints/secret-syncs/zabbix/update",
+                      "api-reference/endpoints/secret-syncs/zabbix/delete",
+                      "api-reference/endpoints/secret-syncs/zabbix/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/zabbix/import-secrets",
+                      "api-reference/endpoints/secret-syncs/zabbix/remove-secrets"
                     ]
                   }
                 ]
@@ -1991,7 +2137,7 @@
         "tab": "SDKs",
         "groups": [
           {
-            "group": "",
+            "group": "Overview",
             "pages": ["sdks/overview"]
           },
           {
@@ -2011,7 +2157,7 @@
         "tab": "Changelog",
         "groups": [
           {
-            "group": "",
+            "group": "Overview",
             "pages": ["changelog/overview"]
           }
         ]
