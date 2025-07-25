@@ -8,6 +8,7 @@ metadata:
     helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
 spec:
   backoffLimit: 10
+  ttlSecondsAfterFinished: 300
   template:
     metadata:
       name: "{{ .Release.Name }}-create-tables"
