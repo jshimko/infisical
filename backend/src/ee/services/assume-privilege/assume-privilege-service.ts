@@ -1,7 +1,8 @@
 import { ForbiddenError } from "@casl/ability";
-import jwt from "jsonwebtoken";
 
+import { ActionProjectType } from "@app/db/schemas";
 import { getConfig } from "@app/lib/config/env";
+import { crypto } from "@app/lib/crypto/cryptography";
 import { ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
 import { ActorType } from "@app/services/auth/auth-type";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
@@ -37,7 +38,8 @@ export const assumePrivilegeServiceFactory = ({
       actorId: actorPermissionDetails.id,
       projectId,
       actorAuthMethod: actorPermissionDetails.authMethod,
-      actorOrgId: actorPermissionDetails.orgId
+      actorOrgId: actorPermissionDetails.orgId,
+      actionProjectType: ActionProjectType.Any
     });
 
     if (targetActorType === ActorType.USER) {
@@ -58,11 +60,12 @@ export const assumePrivilegeServiceFactory = ({
       actorId: targetActorId,
       projectId,
       actorAuthMethod: actorPermissionDetails.authMethod,
-      actorOrgId: actorPermissionDetails.orgId
+      actorOrgId: actorPermissionDetails.orgId,
+      actionProjectType: ActionProjectType.Any
     });
 
     const appCfg = getConfig();
-    const assumePrivilegesToken = jwt.sign(
+    const assumePrivilegesToken = crypto.jwt().sign(
       {
         tokenVersionId,
         actorType: targetActorType,
@@ -82,7 +85,7 @@ export const assumePrivilegeServiceFactory = ({
     tokenVersionId
   ) => {
     const appCfg = getConfig();
-    const decodedToken = jwt.verify(token, appCfg.AUTH_SECRET) as {
+    const decodedToken = crypto.jwt().verify(token, appCfg.AUTH_SECRET) as {
       tokenVersionId: string;
       projectId: string;
       requesterId: string;

@@ -18,9 +18,13 @@ import {
 import { AzureAppConfigurationSyncReviewFields } from "./AzureAppConfigurationSyncReviewFields";
 import { AzureDevOpsSyncReviewFields } from "./AzureDevOpsSyncReviewFields";
 import { AzureKeyVaultSyncReviewFields } from "./AzureKeyVaultSyncReviewFields";
+import { BitbucketSyncReviewFields } from "./BitbucketSyncReviewFields";
 import { CamundaSyncReviewFields } from "./CamundaSyncReviewFields";
+import { ChecklySyncReviewFields } from "./ChecklySyncReviewFields";
 import { CloudflarePagesSyncReviewFields } from "./CloudflarePagesReviewFields";
+import { CloudflareWorkersSyncReviewFields } from "./CloudflareWorkersReviewFields";
 import { DatabricksSyncReviewFields } from "./DatabricksSyncReviewFields";
+import { DigitalOceanAppPlatformSyncReviewFields } from "./DigitalOceanAppPlatformSyncReviewFields";
 import { FlyioSyncReviewFields } from "./FlyioSyncReviewFields";
 import { GcpSyncReviewFields } from "./GcpSyncReviewFields";
 import { GitHubSyncReviewFields } from "./GitHubSyncReviewFields";
@@ -30,7 +34,9 @@ import { HerokuSyncReviewFields } from "./HerokuSyncReviewFields";
 import { HumanitecSyncReviewFields } from "./HumanitecSyncReviewFields";
 import { OCIVaultSyncReviewFields } from "./OCIVaultSyncReviewFields";
 import { OnePassSyncReviewFields } from "./OnePassSyncReviewFields";
+import { RailwaySyncReviewFields } from "./RailwaySyncReviewFields";
 import { RenderSyncReviewFields } from "./RenderSyncReviewFields";
+import { SupabaseSyncReviewFields } from "./SupabaseSyncReviewFields";
 import { TeamCitySyncReviewFields } from "./TeamCitySyncReviewFields";
 import { TerraformCloudSyncReviewFields } from "./TerraformCloudSyncReviewFields";
 import { VercelSyncReviewFields } from "./VercelSyncReviewFields";
@@ -125,8 +131,26 @@ export const SecretSyncReviewFields = () => {
     case SecretSync.CloudflarePages:
       DestinationFieldsComponent = <CloudflarePagesSyncReviewFields />;
       break;
+    case SecretSync.CloudflareWorkers:
+      DestinationFieldsComponent = <CloudflareWorkersSyncReviewFields />;
+      break;
     case SecretSync.Zabbix:
       DestinationFieldsComponent = <ZabbixSyncReviewFields />;
+      break;
+    case SecretSync.Railway:
+      DestinationFieldsComponent = <RailwaySyncReviewFields />;
+      break;
+    case SecretSync.Checkly:
+      DestinationFieldsComponent = <ChecklySyncReviewFields />;
+      break;
+    case SecretSync.Supabase:
+      DestinationFieldsComponent = <SupabaseSyncReviewFields />;
+      break;
+    case SecretSync.DigitalOceanAppPlatform:
+      DestinationFieldsComponent = <DigitalOceanAppPlatformSyncReviewFields />;
+      break;
+    case SecretSync.Bitbucket:
+      DestinationFieldsComponent = <BitbucketSyncReviewFields />;
       break;
     default:
       throw new Error(`Unhandled Destination Review Fields: ${destination}`);

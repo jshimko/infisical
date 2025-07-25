@@ -149,6 +149,7 @@
                   "documentation/platform/secret-rotation/ldap-password",
                   "documentation/platform/secret-rotation/mssql-credentials",
                   "documentation/platform/secret-rotation/mysql-credentials",
+                  "documentation/platform/secret-rotation/okta-client-secret",
                   "documentation/platform/secret-rotation/oracledb-credentials",
                   "documentation/platform/secret-rotation/postgres-credentials"
                 ]
@@ -195,6 +196,14 @@
                 "pages": [
                   "documentation/platform/workflow-integrations/slack-integration",
                   "documentation/platform/workflow-integrations/microsoft-teams-integration"
+                ]
+              },
+              {
+                "group": "External Migrations",
+                "pages": [
+                  "documentation/platform/external-migrations/overview",
+                  "documentation/platform/external-migrations/envkey",
+                  "documentation/platform/external-migrations/vault"
                 ]
               },
               {
@@ -472,8 +481,10 @@
                   "integrations/app-connections/azure-key-vault",
                   "integrations/app-connections/bitbucket",
                   "integrations/app-connections/camunda",
+                  "integrations/app-connections/checkly",
                   "integrations/app-connections/cloudflare",
                   "integrations/app-connections/databricks",
+                  "integrations/app-connections/digital-ocean",
                   "integrations/app-connections/flyio",
                   "integrations/app-connections/gcp",
                   "integrations/app-connections/github",
@@ -486,9 +497,12 @@
                   "integrations/app-connections/mssql",
                   "integrations/app-connections/mysql",
                   "integrations/app-connections/oci",
+                  "integrations/app-connections/okta",
                   "integrations/app-connections/oracledb",
                   "integrations/app-connections/postgres",
+                  "integrations/app-connections/railway",
                   "integrations/app-connections/render",
+                  "integrations/app-connections/supabase",
                   "integrations/app-connections/teamcity",
                   "integrations/app-connections/terraform-cloud",
                   "integrations/app-connections/vercel",
@@ -511,9 +525,13 @@
                   "integrations/secret-syncs/azure-app-configuration",
                   "integrations/secret-syncs/azure-devops",
                   "integrations/secret-syncs/azure-key-vault",
+                  "integrations/secret-syncs/bitbucket",
                   "integrations/secret-syncs/camunda",
+                  "integrations/secret-syncs/checkly",
                   "integrations/secret-syncs/cloudflare-pages",
+                  "integrations/secret-syncs/cloudflare-workers",
                   "integrations/secret-syncs/databricks",
+                  "integrations/secret-syncs/digital-ocean-app-platform",
                   "integrations/secret-syncs/flyio",
                   "integrations/secret-syncs/gcp-secret-manager",
                   "integrations/secret-syncs/github",
@@ -522,7 +540,9 @@
                   "integrations/secret-syncs/heroku",
                   "integrations/secret-syncs/humanitec",
                   "integrations/secret-syncs/oci-vault",
+                  "integrations/secret-syncs/railway",
                   "integrations/secret-syncs/render",
+                  "integrations/secret-syncs/supabase",
                   "integrations/secret-syncs/teamcity",
                   "integrations/secret-syncs/terraform-cloud",
                   "integrations/secret-syncs/vercel",
@@ -563,8 +583,8 @@
                   "integrations/cloud/digital-ocean-app-platform",
                   "integrations/cloud/heroku",
                   "integrations/cloud/netlify",
-                  "integrations/cloud/railway",
                   "integrations/cloud/flyio",
+                  "integrations/cloud/railway",
                   "integrations/cloud/render",
                   "integrations/cloud/laravel-forge",
                   "integrations/cloud/supabase",
@@ -853,30 +873,30 @@
               {
                 "group": "Organizations",
                 "pages": [
-                {
-                  "group": "OIDC SSO",
-                  "pages": [
-                    "api-reference/endpoints/organizations/oidc-sso/get-oidc-config",
-                    "api-reference/endpoints/organizations/oidc-sso/update-oidc-config",
-                    "api-reference/endpoints/organizations/oidc-sso/create-oidc-config"
-                  ]
-                },
-                {
-                  "group": "LDAP SSO",
-                  "pages": [
-                    "api-reference/endpoints/organizations/ldap-sso/get-ldap-config",
-                    "api-reference/endpoints/organizations/ldap-sso/update-ldap-config",
-                    "api-reference/endpoints/organizations/ldap-sso/create-ldap-config"
-                  ]
-                },
-                {
-                  "group": "SAML SSO",
-                  "pages": [
-                    "api-reference/endpoints/organizations/saml-sso/get-saml-config",
-                    "api-reference/endpoints/organizations/saml-sso/update-saml-config",
-                    "api-reference/endpoints/organizations/saml-sso/create-saml-config"
-                  ]
-                },
+                  {
+                    "group": "OIDC SSO",
+                    "pages": [
+                      "api-reference/endpoints/organizations/oidc-sso/get-oidc-config",
+                      "api-reference/endpoints/organizations/oidc-sso/update-oidc-config",
+                      "api-reference/endpoints/organizations/oidc-sso/create-oidc-config"
+                    ]
+                  },
+                  {
+                    "group": "LDAP SSO",
+                    "pages": [
+                      "api-reference/endpoints/organizations/ldap-sso/get-ldap-config",
+                      "api-reference/endpoints/organizations/ldap-sso/update-ldap-config",
+                      "api-reference/endpoints/organizations/ldap-sso/create-ldap-config"
+                    ]
+                  },
+                  {
+                    "group": "SAML SSO",
+                    "pages": [
+                      "api-reference/endpoints/organizations/saml-sso/get-saml-config",
+                      "api-reference/endpoints/organizations/saml-sso/update-saml-config",
+                      "api-reference/endpoints/organizations/saml-sso/create-saml-config"
+                    ]
+                  },
                   "api-reference/endpoints/organizations/memberships",
                   "api-reference/endpoints/organizations/update-membership",
                   "api-reference/endpoints/organizations/delete-membership",
@@ -1099,6 +1119,19 @@
                       "api-reference/endpoints/secret-rotations/mysql-credentials/list",
                       "api-reference/endpoints/secret-rotations/mysql-credentials/rotate-secrets",
                       "api-reference/endpoints/secret-rotations/mysql-credentials/update"
+                    ]
+                  },
+                  {
+                    "group": "Okta Client Secret",
+                    "pages": [
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/create",
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/delete",
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/get-by-id",
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/get-by-name",
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/get-generated-credentials-by-id",
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/list",
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/rotate-secrets",
+                      "api-reference/endpoints/secret-rotations/okta-client-secret/update"
                     ]
                   },
                   {
@@ -1326,6 +1359,17 @@
                     ]
                   },
                   {
+                    "group": "Checkly",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/checkly/list",
+                      "api-reference/endpoints/app-connections/checkly/get-by-id",
+                      "api-reference/endpoints/app-connections/checkly/get-by-name",
+                      "api-reference/endpoints/app-connections/checkly/create",
+                      "api-reference/endpoints/app-connections/checkly/update",
+                      "api-reference/endpoints/app-connections/checkly/delete"
+                    ]
+                  },
+                  {
                     "group": "Cloudflare",
                     "pages": [
                       "api-reference/endpoints/app-connections/cloudflare/list",
@@ -1347,6 +1391,18 @@
                       "api-reference/endpoints/app-connections/databricks/create",
                       "api-reference/endpoints/app-connections/databricks/update",
                       "api-reference/endpoints/app-connections/databricks/delete"
+                    ]
+                  },
+                   {
+                    "group": "Digital Ocean",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/digital-ocean/list",
+                      "api-reference/endpoints/app-connections/digital-ocean/available",
+                      "api-reference/endpoints/app-connections/digital-ocean/get-by-id",
+                      "api-reference/endpoints/app-connections/digital-ocean/get-by-name",
+                      "api-reference/endpoints/app-connections/digital-ocean/create",
+                      "api-reference/endpoints/app-connections/digital-ocean/update",
+                      "api-reference/endpoints/app-connections/digital-ocean/delete"
                     ]
                   },
                   {
@@ -1494,6 +1550,18 @@
                     ]
                   },
                   {
+                    "group": "Okta",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/okta/list",
+                      "api-reference/endpoints/app-connections/okta/available",
+                      "api-reference/endpoints/app-connections/okta/get-by-id",
+                      "api-reference/endpoints/app-connections/okta/get-by-name",
+                      "api-reference/endpoints/app-connections/okta/create",
+                      "api-reference/endpoints/app-connections/okta/update",
+                      "api-reference/endpoints/app-connections/okta/delete"
+                    ]
+                  },
+                  {
                     "group": "OracleDB",
                     "pages": [
                       "api-reference/endpoints/app-connections/oracledb/list",
@@ -1518,6 +1586,18 @@
                     ]
                   },
                   {
+                    "group": "Railway",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/railway/list",
+                      "api-reference/endpoints/app-connections/railway/available",
+                      "api-reference/endpoints/app-connections/railway/get-by-id",
+                      "api-reference/endpoints/app-connections/railway/get-by-name",
+                      "api-reference/endpoints/app-connections/railway/create",
+                      "api-reference/endpoints/app-connections/railway/update",
+                      "api-reference/endpoints/app-connections/railway/delete"
+                    ]
+                  },
+                  {
                     "group": "Render",
                     "pages": [
                       "api-reference/endpoints/app-connections/render/list",
@@ -1527,6 +1607,18 @@
                       "api-reference/endpoints/app-connections/render/create",
                       "api-reference/endpoints/app-connections/render/update",
                       "api-reference/endpoints/app-connections/render/delete"
+                    ]
+                  },
+                  {
+                    "group": "Supabase",
+                    "pages": [
+                      "api-reference/endpoints/app-connections/supabase/list",
+                      "api-reference/endpoints/app-connections/supabase/available",
+                      "api-reference/endpoints/app-connections/supabase/get-by-id",
+                      "api-reference/endpoints/app-connections/supabase/get-by-name",
+                      "api-reference/endpoints/app-connections/supabase/create",
+                      "api-reference/endpoints/app-connections/supabase/update",
+                      "api-reference/endpoints/app-connections/supabase/delete"
                     ]
                   },
                   {
@@ -1681,6 +1773,20 @@
                     ]
                   },
                   {
+                    "group": "Bitbucket",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/bitbucket/list",
+                      "api-reference/endpoints/secret-syncs/bitbucket/get-by-id",
+                      "api-reference/endpoints/secret-syncs/bitbucket/get-by-name",
+                      "api-reference/endpoints/secret-syncs/bitbucket/create",
+                      "api-reference/endpoints/secret-syncs/bitbucket/update",
+                      "api-reference/endpoints/secret-syncs/bitbucket/delete",
+                      "api-reference/endpoints/secret-syncs/bitbucket/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/bitbucket/import-secrets",
+                      "api-reference/endpoints/secret-syncs/bitbucket/remove-secrets"
+                    ]
+                  },
+                  {
                     "group": "Camunda",
                     "pages": [
                       "api-reference/endpoints/secret-syncs/camunda/list",
@@ -1691,6 +1797,19 @@
                       "api-reference/endpoints/secret-syncs/camunda/delete",
                       "api-reference/endpoints/secret-syncs/camunda/sync-secrets",
                       "api-reference/endpoints/secret-syncs/camunda/remove-secrets"
+                    ]
+                  },
+                  {
+                    "group": "Checkly",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/checkly/list",
+                      "api-reference/endpoints/secret-syncs/checkly/get-by-id",
+                      "api-reference/endpoints/secret-syncs/checkly/get-by-name",
+                      "api-reference/endpoints/secret-syncs/checkly/create",
+                      "api-reference/endpoints/secret-syncs/checkly/update",
+                      "api-reference/endpoints/secret-syncs/checkly/delete",
+                      "api-reference/endpoints/secret-syncs/checkly/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/checkly/remove-secrets"
                     ]
                   },
                   {
@@ -1707,6 +1826,19 @@
                     ]
                   },
                   {
+                    "group": "Cloudflare Workers",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/list",
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/get-by-id",
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/get-by-name",
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/create",
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/update",
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/delete",
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/cloudflare-workers/remove-secrets"
+                    ]
+                  },
+                  {
                     "group": "Databricks",
                     "pages": [
                       "api-reference/endpoints/secret-syncs/databricks/list",
@@ -1717,6 +1849,19 @@
                       "api-reference/endpoints/secret-syncs/databricks/delete",
                       "api-reference/endpoints/secret-syncs/databricks/sync-secrets",
                       "api-reference/endpoints/secret-syncs/databricks/remove-secrets"
+                    ]
+                  },
+                  {
+                    "group": "Digital Ocean",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/list",
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/get-by-id",
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/get-by-name",
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/create",
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/update",
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/delete",
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/digital-ocean-app-platform/remove-secrets"
                     ]
                   },
                   {
@@ -1827,6 +1972,20 @@
                     ]
                   },
                   {
+                    "group": "Railway",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/railway/list",
+                      "api-reference/endpoints/secret-syncs/railway/get-by-id",
+                      "api-reference/endpoints/secret-syncs/railway/get-by-name",
+                      "api-reference/endpoints/secret-syncs/railway/create",
+                      "api-reference/endpoints/secret-syncs/railway/update",
+                      "api-reference/endpoints/secret-syncs/railway/delete",
+                      "api-reference/endpoints/secret-syncs/railway/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/railway/import-secrets",
+                      "api-reference/endpoints/secret-syncs/railway/remove-secrets"
+                    ]
+                  },
+                  {
                     "group": "Render",
                     "pages": [
                       "api-reference/endpoints/secret-syncs/render/list",
@@ -1838,6 +1997,19 @@
                       "api-reference/endpoints/secret-syncs/render/sync-secrets",
                       "api-reference/endpoints/secret-syncs/render/import-secrets",
                       "api-reference/endpoints/secret-syncs/render/remove-secrets"
+                    ]
+                  },
+                  {
+                    "group": "Supabase",
+                    "pages": [
+                      "api-reference/endpoints/secret-syncs/supabase/list",
+                      "api-reference/endpoints/secret-syncs/supabase/get-by-id",
+                      "api-reference/endpoints/secret-syncs/supabase/get-by-name",
+                      "api-reference/endpoints/secret-syncs/supabase/create",
+                      "api-reference/endpoints/secret-syncs/supabase/update",
+                      "api-reference/endpoints/secret-syncs/supabase/delete",
+                      "api-reference/endpoints/secret-syncs/supabase/sync-secrets",
+                      "api-reference/endpoints/secret-syncs/supabase/remove-secrets"
                     ]
                   },
                   {
@@ -2147,6 +2319,8 @@
               "sdks/languages/python",
               "sdks/languages/java",
               "sdks/languages/csharp",
+              "sdks/languages/cpp",
+              "sdks/languages/rust",
               "sdks/languages/go",
               "sdks/languages/ruby"
             ]
@@ -2172,7 +2346,7 @@
   "api": {
     "openapi": "https://app.infisical.com/api/docs/json",
     "mdx": {
-      "server": ["https://app.infisical.com", "http://localhost:8080"]
+      "server": ["https://app.infisical.com"]
     }
   },
   "appearance": {

@@ -37,7 +37,8 @@ import {
   TQueueSecretScanningDataSourceFullScan,
   TQueueSecretScanningResourceDiffScan,
   TQueueSecretScanningSendNotification,
-  TSecretScanningDataSourceWithConnection
+  TSecretScanningDataSourceWithConnection,
+  TSecretScanningFinding
 } from "./secret-scanning-v2-types";
 
 type TSecretRotationV2QueueServiceFactoryDep = {
@@ -459,13 +460,16 @@ export const secretScanningV2QueueServiceFactory = async ({
         const newFindings = allFindings.filter((finding) => finding.scanId === scanId);
 
         if (newFindings.length) {
+          const finding = newFindings[0] as TSecretScanningFinding;
           await queueService.queuePg(QueueJobs.SecretScanningV2SendNotification, {
             status: SecretScanningScanStatus.Completed,
             resourceName: resource.name,
             isDiffScan: true,
             dataSource,
             numberOfSecrets: newFindings.length,
-            scanId
+            scanId,
+            authorName: finding?.details?.author,
+            authorEmail: finding?.details?.email
           });
         }
 
@@ -563,14 +567,18 @@ export const secretScanningV2QueueServiceFactory = async ({
         const projectMembers = await projectMembershipDAL.findAllProjectMembers(projectId);
         const project = await projectDAL.findById(projectId);
 
-        const projectAdmins = projectMembers.filter((member) =>
-          member.roles.some((role) => role.role === ProjectMembershipRole.Admin)
-        );
+        const recipients = projectMembers.filter((member) => {
+          const isAdmin = member.roles.some((role) => role.role === ProjectMembershipRole.Admin);
+          const isCompleted = payload.status === SecretScanningScanStatus.Completed;
+          // We assume that the committer is one of the project members
+          const isCommitter = isCompleted && payload.authorEmail === member.user.email;
+          return isAdmin || isCommitter;
+        });
 
         const timestamp = new Date().toISOString();
 
         await smtpService.sendMail({
-          recipients: projectAdmins.map((member) => member.user.email!).filter(Boolean),
+          recipients: recipients.map((member) => member.user.email!).filter(Boolean),
           template:
             payload.status === SecretScanningScanStatus.Completed
               ? SmtpTemplates.SecretScanningV2SecretsDetected
@@ -582,13 +590,13 @@ export const secretScanningV2QueueServiceFactory = async ({
           substitutions:
             payload.status === SecretScanningScanStatus.Completed
               ? {
-                  authorName: "Jim",
-                  authorEmail: "jim@infisical.com",
+                  authorName: payload.authorName,
+                  authorEmail: payload.authorEmail,
                   resourceName,
                   numberOfSecrets: payload.numberOfSecrets,
                   isDiffScan: payload.isDiffScan,
                   url: encodeURI(
-                    `${appCfg.SITE_URL}/projects/${projectId}/secret-scanning/findings?search=scanId:${payload.scanId}`
+                    `${appCfg.SITE_URL}/projects/secret-scanning/${projectId}/findings?search=scanId:${payload.scanId}`
                   ),
                   timestamp
                 }
@@ -599,7 +607,7 @@ export const secretScanningV2QueueServiceFactory = async ({
                   timestamp,
                   errorMessage: payload.errorMessage,
                   url: encodeURI(
-                    `${appCfg.SITE_URL}/projects/${projectId}/secret-scanning/data-sources/${dataSource.type}/${dataSource.id}`
+                    `${appCfg.SITE_URL}/projects/secret-scanning/${projectId}/data-sources/${dataSource.type}/${dataSource.id}`
                   )
                 }
         });

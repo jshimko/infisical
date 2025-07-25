@@ -9,6 +9,7 @@ import {
   TOracleDBConnectionInput,
   TValidateOracleDBConnectionCredentialsSchema
 } from "@app/ee/services/app-connections/oracledb";
+import { TGatewayServiceFactory } from "@app/ee/services/gateway/gateway-service";
 import { TAppConnectionDALFactory } from "@app/services/app-connection/app-connection-dal";
 import { TSqlConnectionConfig } from "@app/services/app-connection/shared/sql/sql-connection-types";
 import { SecretSync } from "@app/services/secret-sync/secret-sync-enums";
@@ -69,6 +70,12 @@ import {
   TValidateCamundaConnectionCredentialsSchema
 } from "./camunda";
 import {
+  TChecklyConnection,
+  TChecklyConnectionConfig,
+  TChecklyConnectionInput,
+  TValidateChecklyConnectionCredentialsSchema
+} from "./checkly";
+import {
   TCloudflareConnection,
   TCloudflareConnectionConfig,
   TCloudflareConnectionInput,
@@ -80,6 +87,12 @@ import {
   TDatabricksConnectionInput,
   TValidateDatabricksConnectionCredentialsSchema
 } from "./databricks";
+import {
+  TDigitalOceanConnection,
+  TDigitalOceanConnectionConfig,
+  TDigitalOceanConnectionInput,
+  TValidateDigitalOceanCredentialsSchema
+} from "./digital-ocean";
 import {
   TFlyioConnection,
   TFlyioConnectionConfig,
@@ -137,16 +150,34 @@ import {
 import { TMsSqlConnection, TMsSqlConnectionInput, TValidateMsSqlConnectionCredentialsSchema } from "./mssql";
 import { TMySqlConnection, TMySqlConnectionInput, TValidateMySqlConnectionCredentialsSchema } from "./mysql";
 import {
+  TOktaConnection,
+  TOktaConnectionConfig,
+  TOktaConnectionInput,
+  TValidateOktaConnectionCredentialsSchema
+} from "./okta";
+import {
   TPostgresConnection,
   TPostgresConnectionInput,
   TValidatePostgresConnectionCredentialsSchema
 } from "./postgres";
+import {
+  TRailwayConnection,
+  TRailwayConnectionConfig,
+  TRailwayConnectionInput,
+  TValidateRailwayConnectionCredentialsSchema
+} from "./railway";
 import {
   TRenderConnection,
   TRenderConnectionConfig,
   TRenderConnectionInput,
   TValidateRenderConnectionCredentialsSchema
 } from "./render/render-connection-types";
+import {
+  TSupabaseConnection,
+  TSupabaseConnectionConfig,
+  TSupabaseConnectionInput,
+  TValidateSupabaseConnectionCredentialsSchema
+} from "./supabase";
 import {
   TTeamCityConnection,
   TTeamCityConnectionConfig,
@@ -210,6 +241,11 @@ export type TAppConnection = { id: string } & (
   | TCloudflareConnection
   | TBitbucketConnection
   | TZabbixConnection
+  | TRailwayConnection
+  | TChecklyConnection
+  | TSupabaseConnection
+  | TDigitalOceanConnection
+  | TOktaConnection
 );
 
 export type TAppConnectionRaw = NonNullable<Awaited<ReturnType<TAppConnectionDALFactory["findById"]>>>;
@@ -248,6 +284,11 @@ export type TAppConnectionInput = { id: string } & (
   | TCloudflareConnectionInput
   | TBitbucketConnectionInput
   | TZabbixConnectionInput
+  | TRailwayConnectionInput
+  | TChecklyConnectionInput
+  | TSupabaseConnectionInput
+  | TDigitalOceanConnectionInput
+  | TOktaConnectionInput
 );
 
 export type TSqlConnectionInput =
@@ -258,7 +299,7 @@ export type TSqlConnectionInput =
 
 export type TCreateAppConnectionDTO = Pick<
   TAppConnectionInput,
-  "credentials" | "method" | "name" | "app" | "description" | "isPlatformManagedCredentials"
+  "credentials" | "method" | "name" | "app" | "description" | "isPlatformManagedCredentials" | "gatewayId"
 >;
 
 export type TUpdateAppConnectionDTO = Partial<Omit<TCreateAppConnectionDTO, "method" | "app">> & {
@@ -293,7 +334,12 @@ export type TAppConnectionConfig =
   | TGitLabConnectionConfig
   | TCloudflareConnectionConfig
   | TBitbucketConnectionConfig
-  | TZabbixConnectionConfig;
+  | TZabbixConnectionConfig
+  | TRailwayConnectionConfig
+  | TChecklyConnectionConfig
+  | TSupabaseConnectionConfig
+  | TDigitalOceanConnectionConfig
+  | TOktaConnectionConfig;
 
 export type TValidateAppConnectionCredentialsSchema =
   | TValidateAwsConnectionCredentialsSchema
@@ -326,7 +372,12 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateGitLabConnectionCredentialsSchema
   | TValidateCloudflareConnectionCredentialsSchema
   | TValidateBitbucketConnectionCredentialsSchema
-  | TValidateZabbixConnectionCredentialsSchema;
+  | TValidateZabbixConnectionCredentialsSchema
+  | TValidateRailwayConnectionCredentialsSchema
+  | TValidateChecklyConnectionCredentialsSchema
+  | TValidateSupabaseConnectionCredentialsSchema
+  | TValidateDigitalOceanCredentialsSchema
+  | TValidateOktaConnectionCredentialsSchema;
 
 export type TListAwsConnectionKmsKeys = {
   connectionId: string;
@@ -339,14 +390,17 @@ export type TListAwsConnectionIamUsers = {
 };
 
 export type TAppConnectionCredentialsValidator = (
-  appConnection: TAppConnectionConfig
+  appConnection: TAppConnectionConfig,
+  gatewayService: Pick<TGatewayServiceFactory, "fnGetGatewayClientTlsByGatewayId">
 ) => Promise<TAppConnection["credentials"]>;
 
 export type TAppConnectionTransitionCredentialsToPlatform = (
   appConnection: TAppConnectionConfig,
-  callback: (credentials: TAppConnection["credentials"]) => Promise<TAppConnectionRaw>
+  callback: (credentials: TAppConnection["credentials"]) => Promise<TAppConnectionRaw>,
+  gatewayService: Pick<TGatewayServiceFactory, "fnGetGatewayClientTlsByGatewayId">
 ) => Promise<TAppConnectionRaw>;
 
 export type TAppConnectionBaseConfig = {
   supportsPlatformManagedCredentials?: boolean;
+  supportsGateways?: boolean;
 };

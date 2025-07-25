@@ -1,7 +1,9 @@
 /* eslint-disable no-nested-ternary */
 import { ForbiddenError, subject } from "@casl/ability";
+import { Knex } from "knex";
 
 import {
+  ActionProjectType,
   ProjectMembershipRole,
   SecretEncryptionAlgo,
   SecretKeyEncoding,
@@ -12,7 +14,7 @@ import {
 } from "@app/db/schemas";
 import { Event, EventType } from "@app/ee/services/audit-log/audit-log-types";
 import { getConfig } from "@app/lib/config/env";
-import { decryptSymmetric128BitHexKeyUTF8 } from "@app/lib/crypto";
+import { crypto, SymmetricKeySize } from "@app/lib/crypto/cryptography";
 import { BadRequestError, ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
 import { groupBy, pick, unique } from "@app/lib/fn";
 import { setKnexStringValue } from "@app/lib/knex";
@@ -183,7 +185,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const count = await secretApprovalRequestDAL.findProjectRequestCount(projectId, actorId, policyId);
@@ -210,7 +213,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const { shouldUseSecretV2Bridge } = await projectBotService.getBotKey(projectId);
@@ -262,7 +266,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     if (
       !hasRole(ProjectMembershipRole.Admin) &&
@@ -411,7 +416,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId: secretApprovalRequest.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     if (
       !hasRole(ProjectMembershipRole.Admin) &&
@@ -480,7 +486,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId: secretApprovalRequest.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     if (
       !hasRole(ProjectMembershipRole.Admin) &&
@@ -536,7 +543,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     if (
@@ -820,11 +828,12 @@ export const secretApprovalRequestServiceFactory = ({
                 type: SecretType.Shared,
                 references: botKey
                   ? getAllNestedSecretReferences(
-                      decryptSymmetric128BitHexKeyUTF8({
+                      crypto.encryption().symmetric().decrypt({
                         ciphertext: el.secretValueCiphertext,
                         iv: el.secretValueIV,
                         tag: el.secretValueTag,
-                        key: botKey
+                        key: botKey,
+                        keySize: SymmetricKeySize.Bits128
                       })
                     )
                   : undefined
@@ -865,11 +874,12 @@ export const secretApprovalRequestServiceFactory = ({
                   ]),
                   references: botKey
                     ? getAllNestedSecretReferences(
-                        decryptSymmetric128BitHexKeyUTF8({
+                        crypto.encryption().symmetric().decrypt({
                           ciphertext: el.secretValueCiphertext,
                           iv: el.secretValueIV,
                           tag: el.secretValueTag,
-                          key: botKey
+                          key: botKey,
+                          keySize: SymmetricKeySize.Bits128
                         })
                       )
                     : undefined
@@ -952,7 +962,7 @@ export const secretApprovalRequestServiceFactory = ({
           bypassReason,
           secretPath: policy.secretPath,
           environment: env.name,
-          approvalUrl: `${cfg.SITE_URL}/projects/${project.id}/secret-manager/approval`
+          approvalUrl: `${cfg.SITE_URL}/projects/secret-management/${project.id}/approval`
         },
         template: SmtpTemplates.AccessSecretRequestBypassed
       });
@@ -1086,7 +1096,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     throwIfMissingSecretReadValueOrDescribePermission(permission, ProjectPermissionSecretActions.ReadValue, {
@@ -1320,7 +1331,7 @@ export const secretApprovalRequestServiceFactory = ({
     });
 
     const env = await projectEnvDAL.findOne({ id: policy.envId });
-    const user = await userDAL.findById(secretApprovalRequest.committerUserId);
+    const user = await userDAL.findById(actorId);
 
     await triggerWorkflowIntegrationNotification({
       input: {
@@ -1366,8 +1377,9 @@ export const secretApprovalRequestServiceFactory = ({
     policy,
     projectId,
     secretPath,
-    environment
-  }: TGenerateSecretApprovalRequestV2BridgeDTO) => {
+    environment,
+    trx: providedTx
+  }: TGenerateSecretApprovalRequestV2BridgeDTO & { trx?: Knex }) => {
     if (actor === ActorType.SERVICE || actor === ActorType.Machine)
       throw new BadRequestError({ message: "Cannot use service token or machine token over protected branches" });
 
@@ -1376,7 +1388,8 @@ export const secretApprovalRequestServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     const folder = await folderDAL.findBySecretPath(projectId, environment, secretPath);
     if (!folder)
@@ -1593,7 +1606,7 @@ export const secretApprovalRequestServiceFactory = ({
       );
     });
 
-    const secretApprovalRequest = await secretApprovalRequestDAL.transaction(async (tx) => {
+    const executeApprovalRequestCreation = async (tx: Knex) => {
       const doc = await secretApprovalRequestDAL.create(
         {
           folderId,
@@ -1655,9 +1668,13 @@ export const secretApprovalRequestServiceFactory = ({
       }
 
       return { ...doc, commits: approvalCommits };
-    });
+    };
 
-    const user = await userDAL.findById(secretApprovalRequest.committerUserId);
+    const secretApprovalRequest = providedTx
+      ? await executeApprovalRequestCreation(providedTx)
+      : await secretApprovalRequestDAL.transaction(executeApprovalRequestCreation);
+
+    const user = await userDAL.findById(actorId);
     const env = await projectEnvDAL.findOne({ id: policy.envId });
 
     await triggerWorkflowIntegrationNotification({

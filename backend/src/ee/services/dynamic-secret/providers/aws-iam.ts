@@ -17,11 +17,12 @@ import {
   RemoveUserFromGroupCommand
 } from "@aws-sdk/client-iam";
 import { AssumeRoleCommand, STSClient } from "@aws-sdk/client-sts";
-import { randomUUID } from "crypto";
 import { z } from "zod";
 
+import { CustomAWSHasher } from "@app/lib/aws/hashing";
 import { getConfig } from "@app/lib/config/env";
-import { BadRequestError } from "@app/lib/errors";
+import { crypto } from "@app/lib/crypto/cryptography";
+import { BadRequestError, UnauthorizedError } from "@app/lib/errors";
 import { alphaNumericNanoId } from "@app/lib/nanoid";
 
 import { AwsIamAuthType, DynamicSecretAwsIamSchema, TDynamicProviderFns } from "./models";
@@ -49,6 +50,8 @@ export const AwsIamProvider = (): TDynamicProviderFns => {
     if (providerInputs.method === AwsIamAuthType.AssumeRole) {
       const stsClient = new STSClient({
         region: providerInputs.region,
+        useFipsEndpoint: crypto.isFipsModeEnabled(),
+        sha256: CustomAWSHasher,
         credentials:
           appCfg.DYNAMIC_SECRET_AWS_ACCESS_KEY_ID && appCfg.DYNAMIC_SECRET_AWS_SECRET_ACCESS_KEY
             ? {
@@ -60,7 +63,7 @@ export const AwsIamProvider = (): TDynamicProviderFns => {
 
       const command = new AssumeRoleCommand({
         RoleArn: providerInputs.roleArn,
-        RoleSessionName: `infisical-dynamic-secret-${randomUUID()}`,
+        RoleSessionName: `infisical-dynamic-secret-${crypto.nativeCrypto.randomUUID()}`,
         DurationSeconds: 900, // 15 mins
         ExternalId: projectId
       });
@@ -72,6 +75,8 @@ export const AwsIamProvider = (): TDynamicProviderFns => {
       }
       const client = new IAMClient({
         region: providerInputs.region,
+        useFipsEndpoint: crypto.isFipsModeEnabled(),
+        sha256: CustomAWSHasher,
         credentials: {
           accessKeyId: assumeRes.Credentials?.AccessKeyId,
           secretAccessKey: assumeRes.Credentials?.SecretAccessKey,
@@ -81,8 +86,27 @@ export const AwsIamProvider = (): TDynamicProviderFns => {
       return client;
     }
 
+    if (providerInputs.method === AwsIamAuthType.IRSA) {
+      // Allow instances to disable automatic service account token fetching (e.g. for shared cloud)
+      if (!appCfg.KUBERNETES_AUTO_FETCH_SERVICE_ACCOUNT_TOKEN) {
+        throw new UnauthorizedError({
+          message: "Failed to get AWS credentials via IRSA: KUBERNETES_AUTO_FETCH_SERVICE_ACCOUNT_TOKEN is not enabled."
+        });
+      }
+
+      // The SDK will automatically pick up credentials from the environment
+      const client = new IAMClient({
+        region: providerInputs.region,
+        useFipsEndpoint: crypto.isFipsModeEnabled(),
+        sha256: CustomAWSHasher
+      });
+      return client;
+    }
+
     const client = new IAMClient({
       region: providerInputs.region,
+      useFipsEndpoint: crypto.isFipsModeEnabled(),
+      sha256: CustomAWSHasher,
       credentials: {
         accessKeyId: providerInputs.accessKey,
         secretAccessKey: providerInputs.secretAccessKey
@@ -101,7 +125,7 @@ export const AwsIamProvider = (): TDynamicProviderFns => {
       .catch((err) => {
         const message = (err as Error)?.message;
         if (
-          providerInputs.method === AwsIamAuthType.AssumeRole &&
+          (providerInputs.method === AwsIamAuthType.AssumeRole || providerInputs.method === AwsIamAuthType.IRSA) &&
           // assume role will throw an error asking to provider username, but if so this has access in aws correctly
           message.includes("Must specify userName when calling with non-User credentials")
         ) {

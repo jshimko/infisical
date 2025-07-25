@@ -30,8 +30,13 @@ export const APP_CONNECTION_NAME_MAP: Record<AppConnection, string> = {
   [AppConnection.Flyio]: "Fly.io",
   [AppConnection.GitLab]: "GitLab",
   [AppConnection.Cloudflare]: "Cloudflare",
+  [AppConnection.Zabbix]: "Zabbix",
+  [AppConnection.Railway]: "Railway",
   [AppConnection.Bitbucket]: "Bitbucket",
-  [AppConnection.Zabbix]: "Zabbix"
+  [AppConnection.Checkly]: "Checkly",
+  [AppConnection.Supabase]: "Supabase",
+  [AppConnection.DigitalOcean]: "DigitalOcean App Platform",
+  [AppConnection.Okta]: "Okta"
 };
 
 export const APP_CONNECTION_PLAN_MAP: Record<AppConnection, AppConnectionPlanType> = {
@@ -64,6 +69,11 @@ export const APP_CONNECTION_PLAN_MAP: Record<AppConnection, AppConnectionPlanTyp
   [AppConnection.Flyio]: AppConnectionPlanType.Regular,
   [AppConnection.GitLab]: AppConnectionPlanType.Regular,
   [AppConnection.Cloudflare]: AppConnectionPlanType.Regular,
+  [AppConnection.Zabbix]: AppConnectionPlanType.Regular,
+  [AppConnection.Railway]: AppConnectionPlanType.Regular,
   [AppConnection.Bitbucket]: AppConnectionPlanType.Regular,
-  [AppConnection.Zabbix]: AppConnectionPlanType.Regular
+  [AppConnection.Checkly]: AppConnectionPlanType.Regular,
+  [AppConnection.Supabase]: AppConnectionPlanType.Regular,
+  [AppConnection.DigitalOcean]: AppConnectionPlanType.Regular,
+  [AppConnection.Okta]: AppConnectionPlanType.Regular
 };

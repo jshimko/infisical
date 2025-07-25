@@ -21,6 +21,7 @@ import {
   Tag,
   Tooltip
 } from "@app/components/v2";
+import { SecretPathInput } from "@app/components/v2/SecretPathInput";
 import { useWorkspace } from "@app/context";
 import { getMemberLabel } from "@app/helpers/members";
 import { policyDetails } from "@app/helpers/policies";
@@ -55,7 +56,7 @@ const formSchema = z
   .object({
     environment: z.object({ slug: z.string(), name: z.string() }),
     name: z.string().optional(),
-    secretPath: z.string().optional(),
+    secretPath: z.string().trim().min(1),
     approvals: z.number().min(1).default(1),
     userApprovers: z
       .object({ type: z.literal(ApproverType.User), id: z.string() })
@@ -93,20 +94,19 @@ const formSchema = z
       .optional()
   })
   .superRefine((data, ctx) => {
-    if (
-      data.policyType === PolicyType.ChangePolicy &&
-      !(data.groupApprovers.length || data.userApprovers.length)
-    ) {
-      ctx.addIssue({
-        path: ["userApprovers"],
-        code: z.ZodIssueCode.custom,
-        message: "At least one approver should be provided"
-      });
-      ctx.addIssue({
-        path: ["groupApprovers"],
-        code: z.ZodIssueCode.custom,
-        message: "At least one approver should be provided"
-      });
+    if (data.policyType === PolicyType.ChangePolicy) {
+      if (!(data.groupApprovers.length || data.userApprovers.length)) {
+        ctx.addIssue({
+          path: ["userApprovers"],
+          code: z.ZodIssueCode.custom,
+          message: "At least one approver should be provided"
+        });
+        ctx.addIssue({
+          path: ["groupApprovers"],
+          code: z.ZodIssueCode.custom,
+          message: "At least one approver should be provided"
+        });
+      }
     }
   });
 
@@ -127,6 +127,7 @@ const Form = ({
     control,
     handleSubmit,
     watch,
+    resetField,
     formState: { isSubmitting }
   } = useForm<TFormSchema>({
     resolver: zodResolver(formSchema),
@@ -177,6 +178,7 @@ const Form = ({
       : undefined,
     defaultValues: !editValues
       ? {
+          secretPath: "/",
           sequenceApprovers: [{ approvals: 1 }]
         }
       : undefined
@@ -202,6 +204,7 @@ const Form = ({
 
   const formUserBypassers = watch("userBypassers");
   const formGroupBypassers = watch("groupBypassers");
+  const formEnvironment = watch("environment")?.slug;
   const bypasserCount = (formUserBypassers || []).length + (formGroupBypassers || []).length;
 
   const handleCreatePolicy = async ({
@@ -405,7 +408,10 @@ const Form = ({
                 <Select
                   isDisabled={isEditMode}
                   value={value}
-                  onValueChange={(val) => onChange(val as PolicyType)}
+                  onValueChange={(val) => {
+                    onChange(val as PolicyType);
+                    resetField("secretPath");
+                  }}
                   className="w-full border border-mineshaft-500"
                 >
                   {Object.values(PolicyType).map((policyType) => {
@@ -465,11 +471,16 @@ const Form = ({
               <FormControl
                 tooltipText="Secret paths support glob patterns. For example, '/**' will match all paths."
                 label="Secret Path"
+                isRequired
                 isError={Boolean(error)}
                 errorText={error?.message}
                 className="flex-1"
               >
-                <Input {...field} value={field.value || ""} />
+                <SecretPathInput
+                  {...field}
+                  value={field.value || ""}
+                  environment={formEnvironment}
+                />
               </FormControl>
             )}
           />

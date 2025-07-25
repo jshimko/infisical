@@ -1,11 +1,13 @@
 import { ForbiddenError, subject } from "@casl/ability";
 
+import { ActionProjectType } from "@app/db/schemas";
 import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import {
   ProjectPermissionDynamicSecretActions,
   ProjectPermissionSub
 } from "@app/ee/services/permission/project-permission";
+import { crypto } from "@app/lib/crypto";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { OrderByDirection } from "@app/lib/types";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
@@ -77,7 +79,8 @@ export const dynamicSecretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -89,6 +92,12 @@ export const dynamicSecretServiceFactory = ({
     if (!plan?.dynamicSecret) {
       throw new BadRequestError({
         message: "Failed to create dynamic secret due to plan restriction. Upgrade plan to create dynamic secret."
+      });
+    }
+
+    if (provider.type === DynamicSecretProviders.MongoAtlas && crypto.isFipsModeEnabled()) {
+      throw new BadRequestError({
+        message: "MongoDB Atlas dynamic secret is not supported in FIPS mode of operation"
       });
     }
 
@@ -200,7 +209,8 @@ export const dynamicSecretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const plan = await licenseService.getPlan(actorOrgId);
@@ -351,7 +361,8 @@ export const dynamicSecretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const folder = await folderDAL.findBySecretPath(projectId, environmentSlug, path);
@@ -416,7 +427,8 @@ export const dynamicSecretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const folder = await folderDAL.findBySecretPath(projectId, environmentSlug, path);
@@ -480,7 +492,8 @@ export const dynamicSecretServiceFactory = ({
         actorId,
         projectId,
         actorAuthMethod,
-        actorOrgId
+        actorOrgId,
+        actionProjectType: ActionProjectType.SecretManager
       });
 
       // verify user has access to each env in request
@@ -523,7 +536,8 @@ export const dynamicSecretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionDynamicSecretActions.ReadRootCredential,
@@ -571,7 +585,8 @@ export const dynamicSecretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const folder = await folderDAL.findBySecretPath(projectId, environmentSlug, path);
@@ -608,7 +623,8 @@ export const dynamicSecretServiceFactory = ({
       actorId: actor.id,
       projectId,
       actorAuthMethod: actor.authMethod,
-      actorOrgId: actor.orgId
+      actorOrgId: actor.orgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const userAccessibleFolderMappings = folderMappings.filter(({ path, environment }) =>
@@ -652,7 +668,8 @@ export const dynamicSecretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const folders = await folderDAL.findBySecretPathMultiEnv(projectId, environmentSlugs, path);

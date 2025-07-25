@@ -40,6 +40,10 @@ import {
   SanitizedCamundaConnectionSchema
 } from "@app/services/app-connection/camunda";
 import {
+  ChecklyConnectionListItemSchema,
+  SanitizedChecklyConnectionSchema
+} from "@app/services/app-connection/checkly";
+import {
   CloudflareConnectionListItemSchema,
   SanitizedCloudflareConnectionSchema
 } from "@app/services/app-connection/cloudflare/cloudflare-connection-schema";
@@ -47,6 +51,10 @@ import {
   DatabricksConnectionListItemSchema,
   SanitizedDatabricksConnectionSchema
 } from "@app/services/app-connection/databricks";
+import {
+  DigitalOceanConnectionListItemSchema,
+  SanitizedDigitalOceanConnectionSchema
+} from "@app/services/app-connection/digital-ocean";
 import { FlyioConnectionListItemSchema, SanitizedFlyioConnectionSchema } from "@app/services/app-connection/flyio";
 import { GcpConnectionListItemSchema, SanitizedGcpConnectionSchema } from "@app/services/app-connection/gcp";
 import { GitHubConnectionListItemSchema, SanitizedGitHubConnectionSchema } from "@app/services/app-connection/github";
@@ -67,14 +75,23 @@ import {
 import { LdapConnectionListItemSchema, SanitizedLdapConnectionSchema } from "@app/services/app-connection/ldap";
 import { MsSqlConnectionListItemSchema, SanitizedMsSqlConnectionSchema } from "@app/services/app-connection/mssql";
 import { MySqlConnectionListItemSchema, SanitizedMySqlConnectionSchema } from "@app/services/app-connection/mysql";
+import { OktaConnectionListItemSchema, SanitizedOktaConnectionSchema } from "@app/services/app-connection/okta";
 import {
   PostgresConnectionListItemSchema,
   SanitizedPostgresConnectionSchema
 } from "@app/services/app-connection/postgres";
 import {
+  RailwayConnectionListItemSchema,
+  SanitizedRailwayConnectionSchema
+} from "@app/services/app-connection/railway";
+import {
   RenderConnectionListItemSchema,
   SanitizedRenderConnectionSchema
 } from "@app/services/app-connection/render/render-connection-schema";
+import {
+  SanitizedSupabaseConnectionSchema,
+  SupabaseConnectionListItemSchema
+} from "@app/services/app-connection/supabase";
 import {
   SanitizedTeamCityConnectionSchema,
   TeamCityConnectionListItemSchema
@@ -123,7 +140,12 @@ const SanitizedAppConnectionSchema = z.union([
   ...SanitizedGitLabConnectionSchema.options,
   ...SanitizedCloudflareConnectionSchema.options,
   ...SanitizedBitbucketConnectionSchema.options,
-  ...SanitizedZabbixConnectionSchema.options
+  ...SanitizedZabbixConnectionSchema.options,
+  ...SanitizedRailwayConnectionSchema.options,
+  ...SanitizedChecklyConnectionSchema.options,
+  ...SanitizedSupabaseConnectionSchema.options,
+  ...SanitizedDigitalOceanConnectionSchema.options,
+  ...SanitizedOktaConnectionSchema.options
 ]);
 
 const AppConnectionOptionsSchema = z.discriminatedUnion("app", [
@@ -157,7 +179,12 @@ const AppConnectionOptionsSchema = z.discriminatedUnion("app", [
   GitLabConnectionListItemSchema,
   CloudflareConnectionListItemSchema,
   BitbucketConnectionListItemSchema,
-  ZabbixConnectionListItemSchema
+  ZabbixConnectionListItemSchema,
+  RailwayConnectionListItemSchema,
+  ChecklyConnectionListItemSchema,
+  SupabaseConnectionListItemSchema,
+  DigitalOceanConnectionListItemSchema,
+  OktaConnectionListItemSchema
 ]);
 
 export const registerAppConnectionRouter = async (server: FastifyZodProvider) => {

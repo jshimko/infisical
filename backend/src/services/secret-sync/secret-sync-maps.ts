@@ -24,7 +24,13 @@ export const SECRET_SYNC_NAME_MAP: Record<SecretSync, string> = {
   [SecretSync.Flyio]: "Fly.io",
   [SecretSync.GitLab]: "GitLab",
   [SecretSync.CloudflarePages]: "Cloudflare Pages",
-  [SecretSync.Zabbix]: "Zabbix"
+  [SecretSync.CloudflareWorkers]: "Cloudflare Workers",
+  [SecretSync.Supabase]: "Supabase",
+  [SecretSync.Zabbix]: "Zabbix",
+  [SecretSync.Railway]: "Railway",
+  [SecretSync.Checkly]: "Checkly",
+  [SecretSync.DigitalOceanAppPlatform]: "Digital Ocean App Platform",
+  [SecretSync.Bitbucket]: "Bitbucket"
 };
 
 export const SECRET_SYNC_CONNECTION_MAP: Record<SecretSync, AppConnection> = {
@@ -50,7 +56,13 @@ export const SECRET_SYNC_CONNECTION_MAP: Record<SecretSync, AppConnection> = {
   [SecretSync.Flyio]: AppConnection.Flyio,
   [SecretSync.GitLab]: AppConnection.GitLab,
   [SecretSync.CloudflarePages]: AppConnection.Cloudflare,
-  [SecretSync.Zabbix]: AppConnection.Zabbix
+  [SecretSync.CloudflareWorkers]: AppConnection.Cloudflare,
+  [SecretSync.Supabase]: AppConnection.Supabase,
+  [SecretSync.Zabbix]: AppConnection.Zabbix,
+  [SecretSync.Railway]: AppConnection.Railway,
+  [SecretSync.Checkly]: AppConnection.Checkly,
+  [SecretSync.DigitalOceanAppPlatform]: AppConnection.DigitalOcean,
+  [SecretSync.Bitbucket]: AppConnection.Bitbucket
 };
 
 export const SECRET_SYNC_PLAN_MAP: Record<SecretSync, SecretSyncPlanType> = {
@@ -76,5 +88,11 @@ export const SECRET_SYNC_PLAN_MAP: Record<SecretSync, SecretSyncPlanType> = {
   [SecretSync.Flyio]: SecretSyncPlanType.Regular,
   [SecretSync.GitLab]: SecretSyncPlanType.Regular,
   [SecretSync.CloudflarePages]: SecretSyncPlanType.Regular,
-  [SecretSync.Zabbix]: SecretSyncPlanType.Regular
+  [SecretSync.CloudflareWorkers]: SecretSyncPlanType.Regular,
+  [SecretSync.Supabase]: SecretSyncPlanType.Regular,
+  [SecretSync.Zabbix]: SecretSyncPlanType.Regular,
+  [SecretSync.Railway]: SecretSyncPlanType.Regular,
+  [SecretSync.Checkly]: SecretSyncPlanType.Regular,
+  [SecretSync.DigitalOceanAppPlatform]: SecretSyncPlanType.Regular,
+  [SecretSync.Bitbucket]: SecretSyncPlanType.Regular
 };

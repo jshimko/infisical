@@ -5,12 +5,14 @@ import { Tab, TabList, TabPanel, Tabs } from "@app/components/v2";
 import { ROUTE_PATHS } from "@app/const/routes";
 
 import { AuditLogStreamsTab } from "../AuditLogStreamTab";
-import { ImportTab } from "../ImportTab";
+import { ExternalMigrationsTab } from "../ExternalMigrationsTab";
 import { KmipTab } from "../KmipTab/OrgKmipTab";
 import { OrgEncryptionTab } from "../OrgEncryptionTab";
 import { OrgGeneralTab } from "../OrgGeneralTab";
+import { OrgProvisioningTab } from "../OrgProvisioningTab";
 import { OrgSecurityTab } from "../OrgSecurityTab";
-import { OrgWorkflowIntegrationTab } from "../OrgWorkflowIntegrationTab/OrgWorkflowIntegrationTab";
+import { OrgSsoTab } from "../OrgSsoTab";
+import { OrgWorkflowIntegrationTab } from "../OrgWorkflowIntegrationTab";
 import { ProjectTemplatesTab } from "../ProjectTemplatesTab";
 
 export const OrgTabGroup = () => {
@@ -19,6 +21,16 @@ export const OrgTabGroup = () => {
   });
   const tabs = [
     { name: "General", key: "tab-org-general", component: OrgGeneralTab },
+    {
+      name: "SSO",
+      key: "sso-settings",
+      component: OrgSsoTab
+    },
+    {
+      name: "Provisioning",
+      key: "provisioning-settings",
+      component: OrgProvisioningTab
+    },
     { name: "Security", key: "tab-org-security", component: OrgSecurityTab },
     { name: "Encryption", key: "tab-org-encryption", component: OrgEncryptionTab },
     {
@@ -27,7 +39,11 @@ export const OrgTabGroup = () => {
       component: OrgWorkflowIntegrationTab
     },
     { name: "Audit Log Streams", key: "tag-audit-log-streams", component: AuditLogStreamsTab },
-    { name: "Import", key: "tab-import", component: ImportTab },
+    {
+      name: "External Migrations",
+      key: "tab-external-migrations",
+      component: ExternalMigrationsTab
+    },
     {
       name: "Project Templates",
       key: "project-templates",

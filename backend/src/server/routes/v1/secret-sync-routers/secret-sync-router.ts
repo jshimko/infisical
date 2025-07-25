@@ -21,12 +21,22 @@ import {
 } from "@app/services/secret-sync/azure-app-configuration";
 import { AzureDevOpsSyncListItemSchema, AzureDevOpsSyncSchema } from "@app/services/secret-sync/azure-devops";
 import { AzureKeyVaultSyncListItemSchema, AzureKeyVaultSyncSchema } from "@app/services/secret-sync/azure-key-vault";
+import { BitbucketSyncListItemSchema, BitbucketSyncSchema } from "@app/services/secret-sync/bitbucket";
 import { CamundaSyncListItemSchema, CamundaSyncSchema } from "@app/services/secret-sync/camunda";
+import { ChecklySyncListItemSchema, ChecklySyncSchema } from "@app/services/secret-sync/checkly/checkly-sync-schemas";
 import {
   CloudflarePagesSyncListItemSchema,
   CloudflarePagesSyncSchema
 } from "@app/services/secret-sync/cloudflare-pages/cloudflare-pages-schema";
+import {
+  CloudflareWorkersSyncListItemSchema,
+  CloudflareWorkersSyncSchema
+} from "@app/services/secret-sync/cloudflare-workers/cloudflare-workers-schemas";
 import { DatabricksSyncListItemSchema, DatabricksSyncSchema } from "@app/services/secret-sync/databricks";
+import {
+  DigitalOceanAppPlatformSyncListItemSchema,
+  DigitalOceanAppPlatformSyncSchema
+} from "@app/services/secret-sync/digital-ocean-app-platform";
 import { FlyioSyncListItemSchema, FlyioSyncSchema } from "@app/services/secret-sync/flyio";
 import { GcpSyncListItemSchema, GcpSyncSchema } from "@app/services/secret-sync/gcp";
 import { GitHubSyncListItemSchema, GitHubSyncSchema } from "@app/services/secret-sync/github";
@@ -34,7 +44,9 @@ import { GitLabSyncListItemSchema, GitLabSyncSchema } from "@app/services/secret
 import { HCVaultSyncListItemSchema, HCVaultSyncSchema } from "@app/services/secret-sync/hc-vault";
 import { HerokuSyncListItemSchema, HerokuSyncSchema } from "@app/services/secret-sync/heroku";
 import { HumanitecSyncListItemSchema, HumanitecSyncSchema } from "@app/services/secret-sync/humanitec";
+import { RailwaySyncListItemSchema, RailwaySyncSchema } from "@app/services/secret-sync/railway/railway-sync-schemas";
 import { RenderSyncListItemSchema, RenderSyncSchema } from "@app/services/secret-sync/render/render-sync-schemas";
+import { SupabaseSyncListItemSchema, SupabaseSyncSchema } from "@app/services/secret-sync/supabase";
 import { TeamCitySyncListItemSchema, TeamCitySyncSchema } from "@app/services/secret-sync/teamcity";
 import { TerraformCloudSyncListItemSchema, TerraformCloudSyncSchema } from "@app/services/secret-sync/terraform-cloud";
 import { VercelSyncListItemSchema, VercelSyncSchema } from "@app/services/secret-sync/vercel";
@@ -64,7 +76,13 @@ const SecretSyncSchema = z.discriminatedUnion("destination", [
   FlyioSyncSchema,
   GitLabSyncSchema,
   CloudflarePagesSyncSchema,
-  ZabbixSyncSchema
+  CloudflareWorkersSyncSchema,
+  SupabaseSyncSchema,
+  ZabbixSyncSchema,
+  RailwaySyncSchema,
+  ChecklySyncSchema,
+  DigitalOceanAppPlatformSyncSchema,
+  BitbucketSyncSchema
 ]);
 
 const SecretSyncOptionsSchema = z.discriminatedUnion("destination", [
@@ -90,7 +108,13 @@ const SecretSyncOptionsSchema = z.discriminatedUnion("destination", [
   FlyioSyncListItemSchema,
   GitLabSyncListItemSchema,
   CloudflarePagesSyncListItemSchema,
-  ZabbixSyncListItemSchema
+  CloudflareWorkersSyncListItemSchema,
+  DigitalOceanAppPlatformSyncListItemSchema,
+  ZabbixSyncListItemSchema,
+  RailwaySyncListItemSchema,
+  ChecklySyncListItemSchema,
+  SupabaseSyncListItemSchema,
+  BitbucketSyncListItemSchema
 ]);
 
 export const registerSecretSyncRouter = async (server: FastifyZodProvider) => {

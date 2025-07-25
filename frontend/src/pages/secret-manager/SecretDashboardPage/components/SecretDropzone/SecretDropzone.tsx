@@ -9,7 +9,7 @@ import { twMerge } from "tailwind-merge";
 import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
 // TODO:(akhilmhdh) convert all the util functions like this into a lib folder grouped by functionality
-import { parseDotEnv, parseJson } from "@app/components/utilities/parseSecrets";
+import { parseDotEnv, parseJson, parseYaml } from "@app/components/utilities/parseSecrets";
 import { Button, Lottie, Modal, ModalContent } from "@app/components/v2";
 import { ProjectPermissionActions, ProjectPermissionSub } from "@app/context";
 import { usePopUp, useToggle } from "@app/hooks";
@@ -127,7 +127,7 @@ export const SecretDropzone = ({
     }
   };
 
-  const parseFile = (file?: File, isJson?: boolean) => {
+  const parseFile = (file?: File) => {
     const reader = new FileReader();
     if (!file) {
       createNotification({
@@ -140,10 +140,25 @@ export const SecretDropzone = ({
     setIsLoading.on();
     reader.onload = (event) => {
       if (!event?.target?.result) return;
-      // parse function's argument looks like to be ArrayBuffer
-      const env = isJson
-        ? parseJson(event.target.result as ArrayBuffer)
-        : parseDotEnv(event.target.result as ArrayBuffer);
+
+      let env: TParsedEnv;
+
+      const src = event.target.result as ArrayBuffer;
+
+      switch (file.type) {
+        case "application/json":
+          env = parseJson(src);
+          break;
+        case "text/yaml":
+        case "application/x-yaml":
+        case "application/yaml":
+          env = parseYaml(src);
+          break;
+
+        default:
+          env = parseDotEnv(src);
+          break;
+      }
       setIsLoading.off();
       handleParsedEnv(env);
     };
@@ -165,12 +180,12 @@ export const SecretDropzone = ({
 
     e.dataTransfer.dropEffect = "copy";
     setDragActive.off();
-    parseFile(e.dataTransfer.files[0], e.dataTransfer.files[0].type === "application/json");
+    parseFile(e.dataTransfer.files[0]);
   };
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-    parseFile(e.target?.files?.[0], e.target?.files?.[0]?.type === "application/json");
+    parseFile(e.target?.files?.[0]);
   };
 
   const handleSaveSecrets = async () => {
@@ -247,7 +262,7 @@ export const SecretDropzone = ({
         className={twMerge(
           "relative mx-0.5 mb-4 mt-4 flex cursor-pointer items-center justify-center rounded-md bg-mineshaft-900 px-2 py-4 text-sm text-mineshaft-200 opacity-60 outline-dashed outline-2 outline-chicago-600 duration-200 hover:opacity-100",
           isDragActive && "opacity-100",
-          !isSmaller && "mx-auto w-full max-w-3xl flex-col space-y-4 py-20",
+          !isSmaller && "mx-auto mt-40 w-full max-w-3xl flex-col space-y-4 py-20",
           isLoading && "bg-bunker-800"
         )}
       >

@@ -1,10 +1,9 @@
 import { ForbiddenError } from "@casl/ability";
 
-import { ProjectVersion } from "@app/db/schemas";
+import { ActionProjectType, ProjectVersion } from "@app/db/schemas";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { ProjectPermissionActions, ProjectPermissionSub } from "@app/ee/services/permission/project-permission";
-import { generateAsymmetricKeyPair } from "@app/lib/crypto";
-import { infisicalSymmetricEncypt } from "@app/lib/crypto/encryption";
+import { crypto } from "@app/lib/crypto/cryptography";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 
 import { TProjectDALFactory } from "../project/project-dal";
@@ -46,7 +45,8 @@ export const projectBotServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.Any
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
 
@@ -54,9 +54,13 @@ export const projectBotServiceFactory = ({
       const doc = await projectBotDAL.findOne({ projectId }, tx);
       if (doc) return doc;
 
-      const keys = privateKey && publicKey ? { privateKey, publicKey } : generateAsymmetricKeyPair();
+      const keys =
+        privateKey && publicKey ? { privateKey, publicKey } : await crypto.encryption().asymmetric().generateKeyPair();
 
-      const { iv, tag, ciphertext, encoding, algorithm } = infisicalSymmetricEncypt(keys.privateKey);
+      const { iv, tag, ciphertext, encoding, algorithm } = crypto
+        .encryption()
+        .symmetric()
+        .encryptWithRootEncryptionKey(keys.privateKey);
 
       const project = await projectDAL.findById(projectId, tx);
 
@@ -112,7 +116,8 @@ export const projectBotServiceFactory = ({
       actorId,
       projectId: bot.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.Any
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Edit, ProjectPermissionSub.Integrations);
 

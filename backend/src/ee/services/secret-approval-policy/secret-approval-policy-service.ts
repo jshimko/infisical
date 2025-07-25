@@ -1,6 +1,7 @@
 import { ForbiddenError } from "@casl/ability";
 import picomatch from "picomatch";
 
+import { ActionProjectType } from "@app/db/schemas";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { ProjectPermissionActions, ProjectPermissionSub } from "@app/ee/services/permission/project-permission";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
@@ -55,6 +56,26 @@ export const secretApprovalPolicyServiceFactory = ({
   licenseService,
   secretApprovalRequestDAL
 }: TSecretApprovalPolicyServiceFactoryDep) => {
+  const $policyExists = async ({
+    envId,
+    secretPath,
+    policyId
+  }: {
+    envId: string;
+    secretPath: string;
+    policyId?: string;
+  }) => {
+    const policy = await secretApprovalPolicyDAL
+      .findOne({
+        envId,
+        secretPath,
+        deletedAt: null
+      })
+      .catch(() => null);
+
+    return policyId ? policy && policy.id !== policyId : Boolean(policy);
+  };
+
   const createSecretApprovalPolicy = async ({
     name,
     actor,
@@ -90,7 +111,8 @@ export const secretApprovalPolicyServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionActions.Create,
@@ -106,10 +128,17 @@ export const secretApprovalPolicyServiceFactory = ({
     }
 
     const env = await projectEnvDAL.findOne({ slug: environment, projectId });
-    if (!env)
+    if (!env) {
       throw new NotFoundError({
         message: `Environment with slug '${environment}' not found in project with ID ${projectId}`
       });
+    }
+
+    if (await $policyExists({ envId: env.id, secretPath })) {
+      throw new BadRequestError({
+        message: `A policy for secret path '${secretPath}' already exists in environment '${environment}'`
+      });
+    }
 
     let groupBypassers: string[] = [];
     let bypasserUserIds: string[] = [];
@@ -260,12 +289,25 @@ export const secretApprovalPolicyServiceFactory = ({
       });
     }
 
+    if (
+      await $policyExists({
+        envId: secretApprovalPolicy.envId,
+        secretPath: secretPath || secretApprovalPolicy.secretPath,
+        policyId: secretApprovalPolicy.id
+      })
+    ) {
+      throw new BadRequestError({
+        message: `A policy for secret path '${secretPath}' already exists in environment '${secretApprovalPolicy.environment.slug}'`
+      });
+    }
+
     const { permission } = await permissionService.getProjectPermission({
       actor,
       actorId,
       projectId: secretApprovalPolicy.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Edit, ProjectPermissionSub.SecretApproval);
 
@@ -420,7 +462,8 @@ export const secretApprovalPolicyServiceFactory = ({
       actorId,
       projectId: sapPolicy.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionActions.Delete,
@@ -459,7 +502,8 @@ export const secretApprovalPolicyServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.SecretApproval);
 
@@ -503,7 +547,8 @@ export const secretApprovalPolicyServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     return getSecretApprovalPolicy(projectId, environment, secretPath);
@@ -529,7 +574,8 @@ export const secretApprovalPolicyServiceFactory = ({
       actorId,
       projectId: sapPolicy.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.SecretApproval);

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@app/config/request";
 
 import { organizationKeys } from "../organization/queries";
+import { subscriptionQueryKeys } from "../subscriptions/queries";
 import { identitiesKeys } from "./queries";
 import {
   AddIdentityAliCloudAuthDTO,
@@ -82,6 +83,10 @@ export const useCreateIdentity = () => {
       queryClient.invalidateQueries({
         queryKey: organizationKeys.getOrgIdentityMemberships(organizationId)
       });
+      queryClient.invalidateQueries({
+        queryKey: subscriptionQueryKeys.getOrgSubsription(organizationId)
+      });
+      queryClient.invalidateQueries({ queryKey: identitiesKeys.searchIdentitiesRoot });
     }
   });
 };
@@ -106,6 +111,7 @@ export const useUpdateIdentity = () => {
         queryKey: organizationKeys.getOrgIdentityMemberships(organizationId)
       });
       queryClient.invalidateQueries({ queryKey: identitiesKeys.getIdentityById(identityId) });
+      queryClient.invalidateQueries({ queryKey: identitiesKeys.searchIdentitiesRoot });
     }
   });
 };
@@ -123,6 +129,10 @@ export const useDeleteIdentity = () => {
       queryClient.invalidateQueries({
         queryKey: organizationKeys.getOrgIdentityMemberships(organizationId)
       });
+      queryClient.invalidateQueries({
+        queryKey: subscriptionQueryKeys.getOrgSubsription(organizationId)
+      });
+      queryClient.invalidateQueries({ queryKey: identitiesKeys.searchIdentitiesRoot });
     }
   });
 };

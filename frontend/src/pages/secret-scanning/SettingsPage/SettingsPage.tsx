@@ -5,6 +5,7 @@ import { ProjectPermissionCan } from "@app/components/permissions";
 import { PageHeader, Tab, TabList, TabPanel, Tabs } from "@app/components/v2";
 import { ProjectPermissionSub } from "@app/context";
 import { ProjectPermissionSecretScanningConfigActions } from "@app/context/ProjectPermissionContext/types";
+import { ProjectGeneralTab } from "@app/pages/project/SettingsPage/components/ProjectGeneralTab";
 
 import { ProjectScanningConfigTab } from "./components/ProjectScanningConfigTab";
 
@@ -24,8 +25,12 @@ export const SettingsPage = () => {
         <Tabs defaultValue="tab-project-general">
           <TabList>
             <Tab value="tab-project-general">General</Tab>
+            <Tab value="tab-project-secret-scanning">Scanning Settings</Tab>
           </TabList>
           <TabPanel value="tab-project-general">
+            <ProjectGeneralTab />
+          </TabPanel>
+          <TabPanel value="tab-project-secret-scanning">
             <ProjectPermissionCan
               I={ProjectPermissionSecretScanningConfigActions.Read}
               a={ProjectPermissionSub.SecretScanningConfigs}

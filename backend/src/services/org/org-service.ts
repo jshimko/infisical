@@ -1,10 +1,9 @@
 import { ForbiddenError } from "@casl/ability";
 import slugify from "@sindresorhus/slugify";
-import crypto from "crypto";
-import jwt from "jsonwebtoken";
 import { Knex } from "knex";
 
 import {
+  ActionProjectType,
   OrgMembershipRole,
   OrgMembershipStatus,
   ProjectMembershipRole,
@@ -33,9 +32,10 @@ import { ProjectPermissionMemberActions, ProjectPermissionSub } from "@app/ee/se
 import { TProjectUserAdditionalPrivilegeDALFactory } from "@app/ee/services/project-user-additional-privilege/project-user-additional-privilege-dal";
 import { TSamlConfigDALFactory } from "@app/ee/services/saml-config/saml-config-dal";
 import { getConfig } from "@app/lib/config/env";
-import { generateAsymmetricKeyPair } from "@app/lib/crypto";
-import { generateSymmetricKey, infisicalSymmetricDecrypt, infisicalSymmetricEncypt } from "@app/lib/crypto/encryption";
+import { crypto } from "@app/lib/crypto/cryptography";
 import { generateUserSrpKeys } from "@app/lib/crypto/srp";
+import { applyJitter } from "@app/lib/dates";
+import { delay as delayMs } from "@app/lib/delay";
 import {
   BadRequestError,
   ForbiddenRequestError,
@@ -44,9 +44,10 @@ import {
   UnauthorizedError
 } from "@app/lib/errors";
 import { groupBy } from "@app/lib/fn";
+import { logger } from "@app/lib/logger";
 import { alphaNumericNanoId } from "@app/lib/nanoid";
 import { isDisposableEmail } from "@app/lib/validator";
-import { TQueueServiceFactory } from "@app/queue";
+import { QueueName } from "@app/queue";
 import { getDefaultOrgMembershipRoleForUpdateOrg } from "@app/services/org/org-role-fns";
 import { TOrgMembershipDALFactory } from "@app/services/org-membership/org-membership-dal";
 import { TUserAliasDALFactory } from "@app/services/user-alias/user-alias-dal";
@@ -64,6 +65,7 @@ import { TProjectKeyDALFactory } from "../project-key/project-key-dal";
 import { TProjectMembershipDALFactory } from "../project-membership/project-membership-dal";
 import { TProjectUserMembershipRoleDALFactory } from "../project-membership/project-user-membership-role-dal";
 import { TProjectRoleDALFactory } from "../project-role/project-role-dal";
+import { TReminderServiceFactory } from "../reminder/reminder-types";
 import { TSecretDALFactory } from "../secret/secret-dal";
 import { fnDeleteProjectSecretReminders } from "../secret/secret-fns";
 import { TSecretFolderDALFactory } from "../secret-folder/secret-folder-dal";
@@ -131,8 +133,8 @@ type TOrgServiceFactoryDep = {
   projectBotDAL: Pick<TProjectBotDALFactory, "findOne" | "updateById">;
   projectUserMembershipRoleDAL: Pick<TProjectUserMembershipRoleDALFactory, "insertMany" | "create">;
   projectBotService: Pick<TProjectBotServiceFactory, "getBotKey">;
-  queueService: Pick<TQueueServiceFactory, "stopRepeatableJob">;
   loginService: Pick<TAuthLoginFactory, "generateUserTokens">;
+  reminderService: Pick<TReminderServiceFactory, "deleteReminderBySecretId">;
 };
 
 export type TOrgServiceFactory = ReturnType<typeof orgServiceFactory>;
@@ -164,8 +166,8 @@ export const orgServiceFactory = ({
   projectUserMembershipRoleDAL,
   identityMetadataDAL,
   projectBotService,
-  queueService,
-  loginService
+  loginService,
+  reminderService
 }: TOrgServiceFactoryDep) => {
   /*
    * Get organization details by the organization id
@@ -258,6 +260,7 @@ export const orgServiceFactory = ({
 
   const addGhostUser = async (orgId: string, tx?: Knex) => {
     const email = `sudo-${alphaNumericNanoId(16)}-${orgId}@infisical.com`; // We add a nanoid because the email is unique. And we have to create a new ghost user each time, so we can have access to the private key.
+
     const password = crypto.randomBytes(128).toString("hex");
 
     const user = await userDAL.create(
@@ -499,22 +502,22 @@ export const orgServiceFactory = ({
     orgName: string;
     userEmail?: string | null;
   }) => {
-    const { privateKey, publicKey } = generateAsymmetricKeyPair();
-    const key = generateSymmetricKey();
+    const { privateKey, publicKey } = await crypto.encryption().asymmetric().generateKeyPair();
+    const key = crypto.randomBytes(32).toString("base64");
     const {
       ciphertext: encryptedPrivateKey,
       iv: privateKeyIV,
       tag: privateKeyTag,
       encoding: privateKeyKeyEncoding,
       algorithm: privateKeyAlgorithm
-    } = infisicalSymmetricEncypt(privateKey);
+    } = crypto.encryption().symmetric().encryptWithRootEncryptionKey(privateKey);
     const {
       ciphertext: encryptedSymmetricKey,
       iv: symmetricKeyIV,
       tag: symmetricKeyTag,
       encoding: symmetricKeyKeyEncoding,
       algorithm: symmetricKeyAlgorithm
-    } = infisicalSymmetricEncypt(key);
+    } = crypto.encryption().symmetric().encryptWithRootEncryptionKey(key);
 
     const customerId = await licenseService.generateOrgCustomerId(orgName, userEmail);
     const organization = await orgDAL.transaction(async (tx) => {
@@ -597,7 +600,7 @@ export const orgServiceFactory = ({
     const cfg = getConfig();
     const authToken = authorizationHeader.replace("Bearer ", "");
 
-    const decodedToken = jwt.verify(authToken, cfg.AUTH_SECRET) as AuthModeJwtTokenPayload;
+    const decodedToken = crypto.jwt().verify(authToken, cfg.AUTH_SECRET) as AuthModeJwtTokenPayload;
     if (!decodedToken.authMethod) throw new UnauthorizedError({ name: "Auth method not found on existing token" });
 
     const response = await orgDAL.transaction(async (tx) => {
@@ -607,7 +610,7 @@ export const orgServiceFactory = ({
         await fnDeleteProjectSecretReminders(project.id, {
           secretDAL,
           secretV2BridgeDAL,
-          queueService,
+          reminderService,
           projectBotService,
           folderDAL
         });
@@ -836,6 +839,7 @@ export const orgServiceFactory = ({
     const mailsForOrgInvitation: { email: string; userId: string; firstName: string; lastName: string }[] = [];
     const mailsForProjectInvitation: { email: string[]; projectName: string }[] = [];
     const newProjectMemberships: TProjectMemberships[] = [];
+
     await orgDAL.transaction(async (tx) => {
       const users: Pick<TUsers, "id" | "firstName" | "lastName" | "email" | "username">[] = [];
 
@@ -875,7 +879,10 @@ export const orgServiceFactory = ({
         // Then when user sign in (as login is not possible as isAccepted is false) we rencrypt the private key with the user password
         if (!inviteeUser || (inviteeUser && !inviteeUser?.isAccepted && !existingEncrytionKey)) {
           const serverGeneratedPassword = crypto.randomBytes(32).toString("hex");
-          const { tag, encoding, ciphertext, iv } = infisicalSymmetricEncypt(serverGeneratedPassword);
+          const { tag, encoding, ciphertext, iv } = crypto
+            .encryption()
+            .symmetric()
+            .encryptWithRootEncryptionKey(serverGeneratedPassword);
           const encKeys = await generateUserSrpKeys(inviteeEmail, serverGeneratedPassword);
           await userDAL.createUserEncryption(
             {
@@ -909,14 +916,6 @@ export const orgServiceFactory = ({
 
         // if there exist no org membership we set is as given by the request
         if (!inviteeOrgMembership) {
-          if (plan?.slug !== "enterprise" && plan?.memberLimit && plan.membersUsed >= plan.memberLimit) {
-            // limit imposed on number of members allowed / number of members used exceeds the number of members allowed
-            throw new BadRequestError({
-              name: "InviteUser",
-              message: "Failed to invite member due to member limit reached. Upgrade plan to invite more members."
-            });
-          }
-
           if (plan?.slug !== "enterprise" && plan?.identityLimit && plan.identitiesUsed >= plan.identityLimit) {
             // limit imposed on number of identities allowed / number of identities used exceeds the number of identities allowed
             throw new BadRequestError({
@@ -983,7 +982,8 @@ export const orgServiceFactory = ({
           actorId,
           projectId,
           actorAuthMethod,
-          actorOrgId
+          actorOrgId,
+          actionProjectType: ActionProjectType.Any
         });
         ForbiddenError.from(projectPermission).throwUnlessCan(
           ProjectPermissionMemberActions.Create,
@@ -1101,9 +1101,10 @@ export const orgServiceFactory = ({
             tx
           );
 
-          const { iv, tag, ciphertext, encoding, algorithm } = infisicalSymmetricEncypt(
-            newGhostUser.keys.plainPrivateKey
-          );
+          const { iv, tag, ciphertext, encoding, algorithm } = crypto
+            .encryption()
+            .symmetric()
+            .encryptWithRootEncryptionKey(newGhostUser.keys.plainPrivateKey);
           if (autoGeneratedBot) {
             await projectBotDAL.updateById(
               autoGeneratedBot.id,
@@ -1141,12 +1142,15 @@ export const orgServiceFactory = ({
           });
         }
 
-        const botPrivateKey = infisicalSymmetricDecrypt({
-          keyEncoding: bot.keyEncoding as SecretKeyEncoding,
-          iv: bot.iv,
-          tag: bot.tag,
-          ciphertext: bot.encryptedPrivateKey
-        });
+        const botPrivateKey = crypto
+          .encryption()
+          .symmetric()
+          .decryptWithRootEncryptionKey({
+            keyEncoding: bot.keyEncoding as SecretKeyEncoding,
+            iv: bot.iv,
+            tag: bot.tag,
+            ciphertext: bot.encryptedPrivateKey
+          });
 
         const newWsMembers = assignWorkspaceKeysToMembers({
           decryptKey: ghostUserLatestKey,
@@ -1279,6 +1283,8 @@ export const orgServiceFactory = ({
         message: "No pending invitation found"
       });
 
+    const organization = await orgDAL.findById(orgId);
+
     await tokenService.validateTokenForUser({
       type: TokenType.TOKEN_EMAIL_ORG_INVITATION,
       userId: user.id,
@@ -1301,8 +1307,15 @@ export const orgServiceFactory = ({
       return { user };
     }
 
+    if (
+      organization.authEnforced &&
+      !(organization.bypassOrgAuthEnabled && orgMembership.role === OrgMembershipRole.Admin)
+    ) {
+      return { user };
+    }
+
     const appCfg = getConfig();
-    const token = jwt.sign(
+    const token = crypto.jwt().sign(
       {
         authTokenType: AuthTokenType.SIGNUP_TOKEN,
         userId: user.id
@@ -1438,6 +1451,8 @@ export const orgServiceFactory = ({
    * Re-send emails to users who haven't accepted an invite yet
    */
   const notifyInvitedUsers = async () => {
+    logger.info(`${QueueName.DailyResourceCleanUp}: notify invited users started`);
+
     const invitedUsers = await orgMembershipDAL.findRecentInvitedMemberships();
     const appCfg = getConfig();
 
@@ -1461,24 +1476,32 @@ export const orgServiceFactory = ({
         });
 
         if (invitedUser.inviteEmail) {
-          await smtpService.sendMail({
-            template: SmtpTemplates.OrgInvite,
-            subjectLine: `Reminder: You have been invited to ${org.name} on Infisical`,
-            recipients: [invitedUser.inviteEmail],
-            substitutions: {
-              organizationName: org.name,
-              email: invitedUser.inviteEmail,
-              organizationId: org.id.toString(),
-              token,
-              callback_url: `${appCfg.SITE_URL}/signupinvite`
-            }
-          });
-          notifiedUsers.push(invitedUser.id);
+          await delayMs(Math.max(0, applyJitter(0, 2000)));
+
+          try {
+            await smtpService.sendMail({
+              template: SmtpTemplates.OrgInvite,
+              subjectLine: `Reminder: You have been invited to ${org.name} on Infisical`,
+              recipients: [invitedUser.inviteEmail],
+              substitutions: {
+                organizationName: org.name,
+                email: invitedUser.inviteEmail,
+                organizationId: org.id.toString(),
+                token,
+                callback_url: `${appCfg.SITE_URL}/signupinvite`
+              }
+            });
+            notifiedUsers.push(invitedUser.id);
+          } catch (err) {
+            logger.error(err, `${QueueName.DailyResourceCleanUp}: notify invited users failed to send email`);
+          }
         }
       })
     );
 
     await orgMembershipDAL.updateLastInvitedAtByIds(notifiedUsers);
+
+    logger.info(`${QueueName.DailyResourceCleanUp}: notify invited users completed`);
   };
 
   return {

@@ -1,13 +1,12 @@
 import {
   faBook,
-  faCheckCircle,
   faCog,
-  faCubes,
   faDoorClosed,
   faInfinity,
   faMoneyBill,
   faPlug,
   faShare,
+  faTable,
   faUserCog,
   faUsers,
   faUserTie
@@ -57,7 +56,7 @@ export const OrgSidebar = ({ isHidden }: Props) => {
                       <MenuItem isSelected={isActive}>
                         <div className="mx-1 flex gap-2">
                           <div className="w-6">
-                            <FontAwesomeIcon icon={faCubes} />
+                            <FontAwesomeIcon icon={faTable} />
                           </div>
                           Projects
                         </div>
@@ -96,18 +95,6 @@ export const OrgSidebar = ({ isHidden }: Props) => {
                             <FontAwesomeIcon icon={faBook} className="mr-4" />
                           </div>
                           Audit Logs
-                        </div>
-                      </MenuItem>
-                    )}
-                  </Link>
-                  <Link to="/organization/sso">
-                    {({ isActive }) => (
-                      <MenuItem isSelected={isActive}>
-                        <div className="mx-1 flex gap-2">
-                          <div className="w-6">
-                            <FontAwesomeIcon icon={faCheckCircle} className="mr-4" />
-                          </div>
-                          SSO Settings
                         </div>
                       </MenuItem>
                     )}

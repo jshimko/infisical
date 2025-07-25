@@ -140,6 +140,26 @@ export type TZabbixConnectionOption = TAppConnectionOptionBase & {
   app: AppConnection.Zabbix;
 };
 
+export type TRailwayConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Railway;
+};
+
+export type TChecklyConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Checkly;
+};
+
+export type TSupabaseConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Supabase;
+};
+
+export type TDigitalOceanConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.DigitalOcean;
+};
+
+export type TOktaConnectionOption = TAppConnectionOptionBase & {
+  app: AppConnection.Okta;
+};
+
 export type TAppConnectionOption =
   | TAwsConnectionOption
   | TGitHubConnectionOption
@@ -169,7 +189,11 @@ export type TAppConnectionOption =
   | TGitlabConnectionOption
   | TCloudflareConnectionOption
   | TBitbucketConnectionOption
-  | TZabbixConnectionOption;
+  | TZabbixConnectionOption
+  | TRailwayConnectionOption
+  | TChecklyConnectionOption
+  | TDigitalOceanConnectionOption
+  | TOktaConnectionOption;
 
 export type TAppConnectionOptionMap = {
   [AppConnection.AWS]: TAwsConnectionOption;
@@ -203,4 +227,9 @@ export type TAppConnectionOptionMap = {
   [AppConnection.Cloudflare]: TCloudflareConnectionOption;
   [AppConnection.Bitbucket]: TBitbucketConnectionOption;
   [AppConnection.Zabbix]: TZabbixConnectionOption;
+  [AppConnection.Railway]: TRailwayConnectionOption;
+  [AppConnection.Checkly]: TChecklyConnectionOption;
+  [AppConnection.Supabase]: TSupabaseConnectionOption;
+  [AppConnection.DigitalOcean]: TDigitalOceanConnectionOption;
+  [AppConnection.Okta]: TOktaConnectionOption;
 };

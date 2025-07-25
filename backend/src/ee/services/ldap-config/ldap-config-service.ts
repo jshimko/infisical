@@ -1,11 +1,11 @@
 import { ForbiddenError } from "@casl/ability";
-import jwt from "jsonwebtoken";
 
 import { OrgMembershipStatus, TableName, TLdapConfigsUpdate, TUsers } from "@app/db/schemas";
 import { TGroupDALFactory } from "@app/ee/services/group/group-dal";
 import { addUsersToGroupByUserIds, removeUsersFromGroupByUserIds } from "@app/ee/services/group/group-fns";
 import { TUserGroupMembershipDALFactory } from "@app/ee/services/group/user-group-membership-dal";
 import { getConfig } from "@app/lib/config/env";
+import { crypto } from "@app/lib/crypto";
 import { BadRequestError, ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
 import { AuthMethod, AuthTokenType } from "@app/services/auth/auth-type";
 import { TAuthTokenServiceFactory } from "@app/services/auth-token/auth-token-service";
@@ -361,13 +361,6 @@ export const ldapConfigServiceFactory = ({
       });
     } else {
       const plan = await licenseService.getPlan(orgId);
-      if (plan?.slug !== "enterprise" && plan?.memberLimit && plan.membersUsed >= plan.memberLimit) {
-        // limit imposed on number of members allowed / number of members used exceeds the number of members allowed
-        throw new BadRequestError({
-          message: "Failed to create new member via LDAP due to member limit reached. Upgrade plan to add more members."
-        });
-      }
-
       if (plan?.slug !== "enterprise" && plan?.identityLimit && plan.identitiesUsed >= plan.identityLimit) {
         // limit imposed on number of identities allowed / number of identities used exceeds the number of identities allowed
         throw new BadRequestError({
@@ -536,7 +529,7 @@ export const ldapConfigServiceFactory = ({
     const isUserCompleted = Boolean(user.isAccepted);
     const userEnc = await userDAL.findUserEncKeyByUserId(user.id);
 
-    const providerAuthToken = jwt.sign(
+    const providerAuthToken = crypto.jwt().sign(
       {
         authTokenType: AuthTokenType.PROVIDER_TOKEN,
         userId: user.id,

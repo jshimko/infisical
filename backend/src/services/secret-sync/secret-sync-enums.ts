@@ -21,7 +21,13 @@ export enum SecretSync {
   Flyio = "flyio",
   GitLab = "gitlab",
   CloudflarePages = "cloudflare-pages",
-  Zabbix = "zabbix"
+  CloudflareWorkers = "cloudflare-workers",
+  Supabase = "supabase",
+  Zabbix = "zabbix",
+  Railway = "railway",
+  Checkly = "checkly",
+  DigitalOceanAppPlatform = "digital-ocean-app-platform",
+  Bitbucket = "bitbucket"
 }
 
 export enum SecretSyncInitialSyncBehavior {

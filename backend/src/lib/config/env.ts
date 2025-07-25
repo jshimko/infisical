@@ -1,6 +1,8 @@
 import { z } from "zod";
 
+import { crypto } from "@app/lib/crypto/cryptography";
 import { QueueWorkerProfile } from "@app/lib/types";
+import { TSuperAdminDALFactory } from "@app/services/super-admin/super-admin-dal";
 
 import { BadRequestError } from "../errors";
 import { removeTrailingSlash } from "../fn";
@@ -28,6 +30,7 @@ const databaseReadReplicaSchema = z
 const envSchema = z
   .object({
     INFISICAL_PLATFORM_VERSION: zpStr(z.string().optional()),
+    KUBERNETES_AUTO_FETCH_SERVICE_ACCOUNT_TOKEN: zodStrBool.default("false"),
     PORT: z.coerce.number().default(IS_PACKAGED ? 8080 : 4000),
     DISABLE_SECRET_SCANNING: z
       .enum(["true", "false"])
@@ -64,7 +67,7 @@ const envSchema = z
     DB_PASSWORD: zpStr(z.string().describe("Postgres database password").optional()),
     DB_NAME: zpStr(z.string().describe("Postgres database name").optional()),
     DB_READ_REPLICAS: zpStr(z.string().describe("Postgres read replicas").optional()),
-    BCRYPT_SALT_ROUND: z.number().default(12),
+    BCRYPT_SALT_ROUND: z.number().optional(), // note(daniel): this is deprecated, use SALT_ROUNDS instead. only keeping this for backwards compatibility.
     NODE_ENV: z.enum(["development", "test", "production"]).default("production"),
     SALT_ROUNDS: z.coerce.number().default(10),
     INITIAL_ORGANIZATION_NAME: zpStr(z.string().optional()),
@@ -307,6 +310,7 @@ const envSchema = z
   )
   .transform((data) => ({
     ...data,
+    SALT_ROUNDS: data.SALT_ROUNDS || data.BCRYPT_SALT_ROUND || 12,
     DB_READ_REPLICAS: data.DB_READ_REPLICAS
       ? databaseReadReplicaSchema.parse(JSON.parse(data.DB_READ_REPLICAS))
       : undefined,
@@ -348,7 +352,7 @@ export const getConfig = () => envCfg;
 export const getOriginalConfig = () => originalEnvConfig;
 
 // cannot import singleton logger directly as it needs config to load various transport
-export const initEnvConfig = (logger?: CustomLogger) => {
+export const initEnvConfig = async (superAdminDAL?: TSuperAdminDALFactory, logger?: CustomLogger) => {
   const parsedEnv = envSchema.safeParse(process.env);
   if (!parsedEnv.success) {
     (logger ?? console).error("Invalid environment variables. Check the error below");
@@ -363,7 +367,68 @@ export const initEnvConfig = (logger?: CustomLogger) => {
     originalEnvConfig = config;
   }
 
+  if (superAdminDAL) {
+    const fipsEnabled = await crypto.initialize(superAdminDAL);
+
+    if (fipsEnabled) {
+      const newEnvCfg = {
+        ...parsedEnv.data,
+        ROOT_ENCRYPTION_KEY: envCfg.ENCRYPTION_KEY
+      };
+
+      delete newEnvCfg.ENCRYPTION_KEY;
+
+      envCfg = Object.freeze(newEnvCfg);
+    }
+  }
+
   return envCfg;
+};
+
+export const getTelemetryConfig = () => {
+  const parsedEnv = envSchema.safeParse(process.env);
+  if (!parsedEnv.success) {
+    console.error("Invalid environment variables. Check the error below");
+    console.error(parsedEnv.error.issues);
+    process.exit(-1);
+  }
+
+  return {
+    useOtel: parsedEnv.data.OTEL_TELEMETRY_COLLECTION_ENABLED,
+    useDataDogTracer: parsedEnv.data.SHOULD_USE_DATADOG_TRACER,
+    OTEL: {
+      otlpURL: parsedEnv.data.OTEL_EXPORT_OTLP_ENDPOINT,
+      otlpUser: parsedEnv.data.OTEL_COLLECTOR_BASIC_AUTH_USERNAME,
+      otlpPassword: parsedEnv.data.OTEL_COLLECTOR_BASIC_AUTH_PASSWORD,
+      otlpPushInterval: parsedEnv.data.OTEL_OTLP_PUSH_INTERVAL,
+      exportType: parsedEnv.data.OTEL_EXPORT_TYPE
+    },
+    TRACER: {
+      profiling: parsedEnv.data.DATADOG_PROFILING_ENABLED,
+      version: parsedEnv.data.INFISICAL_PLATFORM_VERSION,
+      env: parsedEnv.data.DATADOG_ENV,
+      service: parsedEnv.data.DATADOG_SERVICE,
+      hostname: parsedEnv.data.DATADOG_HOSTNAME
+    }
+  };
+};
+
+export const getDatabaseCredentials = (logger?: CustomLogger) => {
+  const parsedEnv = envSchema.safeParse(process.env);
+  if (!parsedEnv.success) {
+    (logger ?? console).error("Invalid environment variables. Check the error below");
+    (logger ?? console).error(parsedEnv.error.issues);
+    process.exit(-1);
+  }
+
+  return {
+    dbConnectionUri: parsedEnv.data.DB_CONNECTION_URI,
+    dbRootCert: parsedEnv.data.DB_ROOT_CERT,
+    readReplicas: parsedEnv.data.DB_READ_REPLICAS?.map((el) => ({
+      dbRootCert: el.DB_ROOT_CERT,
+      dbConnectionUri: el.DB_CONNECTION_URI
+    }))
+  };
 };
 
 // A list of environment variables that can be overwritten
@@ -373,6 +438,19 @@ export const overwriteSchema: {
     fields: { key: keyof TEnvConfig; description?: string }[];
   };
 } = {
+  aws: {
+    name: "AWS",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_AWS_ACCESS_KEY_ID",
+        description: "The Access Key ID of your AWS account."
+      },
+      {
+        key: "INF_APP_CONNECTION_AWS_SECRET_ACCESS_KEY",
+        description: "The Client Secret of your AWS application."
+      }
+    ]
+  },
   azure: {
     name: "Azure",
     fields: [
@@ -386,16 +464,79 @@ export const overwriteSchema: {
       }
     ]
   },
-  google_sso: {
-    name: "Google SSO",
+  gcp: {
+    name: "GCP",
     fields: [
       {
-        key: "CLIENT_ID_GOOGLE_LOGIN",
-        description: "The Client ID of your GCP OAuth2 application."
+        key: "INF_APP_CONNECTION_GCP_SERVICE_ACCOUNT_CREDENTIAL",
+        description: "The GCP Service Account JSON credentials."
+      }
+    ]
+  },
+  github_app: {
+    name: "GitHub App",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_GITHUB_APP_CLIENT_ID",
+        description: "The Client ID of your GitHub application."
       },
       {
-        key: "CLIENT_SECRET_GOOGLE_LOGIN",
-        description: "The Client Secret of your GCP OAuth2 application."
+        key: "INF_APP_CONNECTION_GITHUB_APP_CLIENT_SECRET",
+        description: "The Client Secret of your GitHub application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_APP_SLUG",
+        description: "The Slug of your GitHub application. This is the one found in the URL."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_APP_ID",
+        description: "The App ID of your GitHub application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_APP_PRIVATE_KEY",
+        description: "The Private Key of your GitHub application."
+      }
+    ]
+  },
+  github_oauth: {
+    name: "GitHub OAuth",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_GITHUB_OAUTH_CLIENT_ID",
+        description: "The Client ID of your GitHub OAuth application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_OAUTH_CLIENT_SECRET",
+        description: "The Client Secret of your GitHub OAuth application."
+      }
+    ]
+  },
+  github_radar_app: {
+    name: "GitHub Radar App",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_GITHUB_RADAR_APP_CLIENT_ID",
+        description: "The Client ID of your GitHub application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_RADAR_APP_CLIENT_SECRET",
+        description: "The Client Secret of your GitHub application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_RADAR_APP_SLUG",
+        description: "The Slug of your GitHub application. This is the one found in the URL."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_RADAR_APP_ID",
+        description: "The App ID of your GitHub application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_RADAR_APP_PRIVATE_KEY",
+        description: "The Private Key of your GitHub application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITHUB_RADAR_APP_WEBHOOK_SECRET",
+        description: "The Webhook Secret of your GitHub application."
       }
     ]
   },
@@ -409,6 +550,19 @@ export const overwriteSchema: {
       {
         key: "CLIENT_SECRET_GITHUB_LOGIN",
         description: "The Client Secret of your GitHub OAuth application."
+      }
+    ]
+  },
+  gitlab_oauth: {
+    name: "GitLab OAuth",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_GITLAB_OAUTH_CLIENT_ID",
+        description: "The Client ID of your GitLab OAuth application."
+      },
+      {
+        key: "INF_APP_CONNECTION_GITLAB_OAUTH_CLIENT_SECRET",
+        description: "The Client Secret of your GitLab OAuth application."
       }
     ]
   },
@@ -427,6 +581,19 @@ export const overwriteSchema: {
         key: "CLIENT_GITLAB_LOGIN_URL",
         description:
           "The URL of your self-hosted instance of GitLab where the OAuth application is registered. If no URL is passed in, this will default to https://gitlab.com."
+      }
+    ]
+  },
+  google_sso: {
+    name: "Google SSO",
+    fields: [
+      {
+        key: "CLIENT_ID_GOOGLE_LOGIN",
+        description: "The Client ID of your GCP OAuth2 application."
+      },
+      {
+        key: "CLIENT_SECRET_GOOGLE_LOGIN",
+        description: "The Client Secret of your GCP OAuth2 application."
       }
     ]
   }
@@ -461,7 +628,11 @@ export const overrideEnvConfig = (config: Record<string, string>) => {
   const parsedResult = envSchema.safeParse(tempEnv);
 
   if (parsedResult.success) {
-    envCfg = Object.freeze(parsedResult.data);
+    envCfg = Object.freeze({
+      ...parsedResult.data,
+      ENCRYPTION_KEY: envCfg.ENCRYPTION_KEY,
+      ROOT_ENCRYPTION_KEY: envCfg.ROOT_ENCRYPTION_KEY
+    });
   }
 };
 

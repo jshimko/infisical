@@ -3,6 +3,7 @@ import path from "path";
 import RE2 from "re2";
 
 import {
+  ActionProjectType,
   SecretEncryptionAlgo,
   SecretKeyEncoding,
   SecretType,
@@ -15,16 +16,11 @@ import { hasSecretReadValueOrDescribePermission } from "@app/ee/services/permiss
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { ProjectPermissionSecretActions } from "@app/ee/services/permission/project-permission";
 import { getConfig } from "@app/lib/config/env";
-import {
-  buildSecretBlindIndexFromName,
-  decryptSymmetric128BitHexKeyUTF8,
-  encryptSymmetric128BitHexKeyUTF8
-} from "@app/lib/crypto";
-import { daysToMillisecond, secondsToMillis } from "@app/lib/dates";
+import { buildSecretBlindIndexFromName } from "@app/lib/crypto";
+import { crypto, SymmetricKeySize } from "@app/lib/crypto/cryptography";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { groupBy, unique } from "@app/lib/fn";
 import { logger } from "@app/lib/logger";
-import { QueueJobs, QueueName, TQueueServiceFactory } from "@app/queue";
 import {
   fnSecretBulkInsert as fnSecretV2BridgeBulkInsert,
   fnSecretBulkUpdate as fnSecretV2BridgeBulkUpdate,
@@ -36,6 +32,7 @@ import { KmsDataKey } from "../kms/kms-types";
 import { getBotKeyFnFactory } from "../project-bot/project-bot-fns";
 import { TProjectBotServiceFactory } from "../project-bot/project-bot-service";
 import { TProjectEnvDALFactory } from "../project-env/project-env-dal";
+import { TReminderServiceFactory } from "../reminder/reminder-types";
 import { TSecretFolderDALFactory } from "../secret-folder/secret-folder-dal";
 import { TSecretV2BridgeDALFactory } from "../secret-v2-bridge/secret-v2-bridge-dal";
 import { TSecretDALFactory } from "./secret-dal";
@@ -184,7 +181,8 @@ export const recursivelyGetSecretPaths = ({
       actorId: auth.actorId,
       projectId,
       actorAuthMethod: auth.actorAuthMethod,
-      actorOrgId: auth.actorOrgId
+      actorOrgId: auth.actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     // Filter out paths that the user does not have permission to access, and paths that are not in the current path
@@ -237,17 +235,19 @@ export const interpolateSecrets = ({ projectId, secretEncKey, secretDAL, folderD
     const secrets = await secretDAL.findByFolderId(folder.id);
 
     const decryptedSec = secrets.reduce<Record<string, string>>((prev, secret) => {
-      const decryptedSecretKey = decryptSymmetric128BitHexKeyUTF8({
+      const decryptedSecretKey = crypto.encryption().symmetric().decrypt({
         ciphertext: secret.secretKeyCiphertext,
         iv: secret.secretKeyIV,
         tag: secret.secretKeyTag,
-        key: secretEncKey
+        key: secretEncKey,
+        keySize: SymmetricKeySize.Bits128
       });
-      const decryptedSecretValue = decryptSymmetric128BitHexKeyUTF8({
+      const decryptedSecretValue = crypto.encryption().symmetric().decrypt({
         ciphertext: secret.secretValueCiphertext,
         iv: secret.secretValueIV,
         tag: secret.secretValueTag,
-        key: secretEncKey
+        key: secretEncKey,
+        keySize: SymmetricKeySize.Bits128
       });
 
       // eslint-disable-next-line
@@ -364,30 +364,33 @@ export const decryptSecretRaw = (
   },
   key: string
 ) => {
-  const secretKey = decryptSymmetric128BitHexKeyUTF8({
+  const secretKey = crypto.encryption().symmetric().decrypt({
     ciphertext: secret.secretKeyCiphertext,
     iv: secret.secretKeyIV,
     tag: secret.secretKeyTag,
-    key
+    key,
+    keySize: SymmetricKeySize.Bits128
   });
 
   const secretValue = !secret.secretValueHidden
-    ? decryptSymmetric128BitHexKeyUTF8({
+    ? crypto.encryption().symmetric().decrypt({
         ciphertext: secret.secretValueCiphertext,
         iv: secret.secretValueIV,
         tag: secret.secretValueTag,
-        key
+        key,
+        keySize: SymmetricKeySize.Bits128
       })
     : INFISICAL_SECRET_VALUE_HIDDEN_MASK;
 
   let secretComment = "";
 
   if (secret.secretCommentCiphertext && secret.secretCommentIV && secret.secretCommentTag) {
-    secretComment = decryptSymmetric128BitHexKeyUTF8({
+    secretComment = crypto.encryption().symmetric().decrypt({
       ciphertext: secret.secretCommentCiphertext,
       iv: secret.secretCommentIV,
       tag: secret.secretCommentTag,
-      key
+      key,
+      keySize: SymmetricKeySize.Bits128
     });
   }
 
@@ -741,7 +744,8 @@ export const fnSecretBulkDelete = async ({
   tx,
   actorId,
   secretDAL,
-  secretQueueService
+  secretQueueService,
+  projectId
 }: TFnSecretBulkDelete) => {
   const deletedSecrets = await secretDAL.deleteMany(
     inputSecrets.map(({ type, secretBlindIndex }) => ({
@@ -757,7 +761,10 @@ export const fnSecretBulkDelete = async ({
     deletedSecrets
       .filter(({ secretReminderRepeatDays }) => Boolean(secretReminderRepeatDays))
       .map(({ id, secretReminderRepeatDays }) =>
-        secretQueueService.removeSecretReminder({ secretId: id, repeatDays: secretReminderRepeatDays as number }, tx)
+        secretQueueService.removeSecretReminder(
+          { secretId: id, repeatDays: secretReminderRepeatDays as number, projectId },
+          tx
+        )
       )
   );
 
@@ -875,11 +882,30 @@ export const createManySecretsRawFnFactory = ({
         message: `Project bot not found for project with ID '${projectId}'. Please upgrade your project.`,
         name: "bot_not_found_error"
       });
+
     const inputSecrets = secrets.map((secret) => {
-      const secretKeyEncrypted = encryptSymmetric128BitHexKeyUTF8(secret.secretName, botKey);
-      const secretValueEncrypted = encryptSymmetric128BitHexKeyUTF8(secret.secretValue || "", botKey);
+      const secretKeyEncrypted = crypto.encryption().symmetric().encrypt({
+        plaintext: secret.secretName,
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
+      });
+      const secretValueEncrypted = crypto
+        .encryption()
+        .symmetric()
+        .encrypt({
+          plaintext: secret.secretValue || "",
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
       const secretReferences = getAllNestedSecretReferences(secret.secretValue || "");
-      const secretCommentEncrypted = encryptSymmetric128BitHexKeyUTF8(secret.secretComment || "", botKey);
+      const secretCommentEncrypted = crypto
+        .encryption()
+        .symmetric()
+        .encrypt({
+          plaintext: secret.secretComment || "",
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
 
       return {
         type: secret.type,
@@ -1063,10 +1089,28 @@ export const updateManySecretsRawFnFactory = ({
         throw new BadRequestError({ message: "New secret name cannot be empty" });
       }
 
-      const secretKeyEncrypted = encryptSymmetric128BitHexKeyUTF8(secret.secretName, botKey);
-      const secretValueEncrypted = encryptSymmetric128BitHexKeyUTF8(secret.secretValue || "", botKey);
+      const secretKeyEncrypted = crypto.encryption().symmetric().encrypt({
+        plaintext: secret.secretName,
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
+      });
+      const secretValueEncrypted = crypto
+        .encryption()
+        .symmetric()
+        .encrypt({
+          plaintext: secret.secretValue || "",
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
       const secretReferences = getAllNestedSecretReferences(secret.secretValue || "");
-      const secretCommentEncrypted = encryptSymmetric128BitHexKeyUTF8(secret.secretComment || "", botKey);
+      const secretCommentEncrypted = crypto
+        .encryption()
+        .symmetric()
+        .encrypt({
+          plaintext: secret.secretComment || "",
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
 
       return {
         type: secret.type,
@@ -1149,28 +1193,31 @@ export const decryptSecretWithBot = (
   >,
   key: string
 ) => {
-  const secretKey = decryptSymmetric128BitHexKeyUTF8({
+  const secretKey = crypto.encryption().symmetric().decrypt({
     ciphertext: secret.secretKeyCiphertext,
     iv: secret.secretKeyIV,
     tag: secret.secretKeyTag,
-    key
+    key,
+    keySize: SymmetricKeySize.Bits128
   });
 
-  const secretValue = decryptSymmetric128BitHexKeyUTF8({
+  const secretValue = crypto.encryption().symmetric().decrypt({
     ciphertext: secret.secretValueCiphertext,
     iv: secret.secretValueIV,
     tag: secret.secretValueTag,
-    key
+    key,
+    keySize: SymmetricKeySize.Bits128
   });
 
   let secretComment = "";
 
   if (secret.secretCommentCiphertext && secret.secretCommentIV && secret.secretCommentTag) {
-    secretComment = decryptSymmetric128BitHexKeyUTF8({
+    secretComment = crypto.encryption().symmetric().decrypt({
       ciphertext: secret.secretCommentCiphertext,
       iv: secret.secretCommentIV,
       tag: secret.secretCommentTag,
-      key
+      key,
+      keySize: SymmetricKeySize.Bits128
     });
   }
 
@@ -1184,14 +1231,14 @@ export const decryptSecretWithBot = (
 type TFnDeleteProjectSecretReminders = {
   secretDAL: Pick<TSecretDALFactory, "find">;
   secretV2BridgeDAL: Pick<TSecretV2BridgeDALFactory, "find">;
-  queueService: Pick<TQueueServiceFactory, "stopRepeatableJob">;
+  reminderService: Pick<TReminderServiceFactory, "deleteReminderBySecretId">;
   projectBotService: Pick<TProjectBotServiceFactory, "getBotKey">;
   folderDAL: Pick<TSecretFolderDALFactory, "findByProjectId">;
 };
 
 export const fnDeleteProjectSecretReminders = async (
   projectId: string,
-  { secretDAL, secretV2BridgeDAL, queueService, projectBotService, folderDAL }: TFnDeleteProjectSecretReminders
+  { secretDAL, secretV2BridgeDAL, reminderService, projectBotService, folderDAL }: TFnDeleteProjectSecretReminders
 ) => {
   const projectFolders = await folderDAL.findByProjectId(projectId);
   const { shouldUseSecretV2Bridge } = await projectBotService.getBotKey(projectId, false);
@@ -1206,23 +1253,13 @@ export const fnDeleteProjectSecretReminders = async (
         $notNull: ["secretReminderRepeatDays"]
       });
 
-  const appCfg = getConfig();
   for await (const secret of projectSecrets) {
     const repeatDays = shouldUseSecretV2Bridge
       ? (secret as { reminderRepeatDays: number }).reminderRepeatDays
       : (secret as { secretReminderRepeatDays: number }).secretReminderRepeatDays;
 
-    // We're using the queue service directly to get around conflicting imports.
     if (repeatDays) {
-      await queueService.stopRepeatableJob(
-        QueueName.SecretReminder,
-        QueueJobs.SecretReminder,
-        {
-          // on prod it this will be in days, in development this will be second
-          every: appCfg.NODE_ENV === "development" ? secondsToMillis(repeatDays) : daysToMillisecond(repeatDays)
-        },
-        `reminder-${secret.id}`
-      );
+      await reminderService.deleteReminderBySecretId(secret.id, projectId);
     }
   }
 };

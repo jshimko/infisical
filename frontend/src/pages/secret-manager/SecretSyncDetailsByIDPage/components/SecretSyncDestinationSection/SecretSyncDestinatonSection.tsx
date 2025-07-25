@@ -17,9 +17,13 @@ import { AwsSecretsManagerSyncDestinationSection } from "./AwsSecretsManagerSync
 import { AzureAppConfigurationSyncDestinationSection } from "./AzureAppConfigurationSyncDestinationSection";
 import { AzureDevOpsSyncDestinationSection } from "./AzureDevOpsSyncDestinationSection";
 import { AzureKeyVaultSyncDestinationSection } from "./AzureKeyVaultSyncDestinationSection";
+import { BitbucketSyncDestinationSection } from "./BitbucketSyncDestinationSection";
 import { CamundaSyncDestinationSection } from "./CamundaSyncDestinationSection";
+import { ChecklySyncDestinationSection } from "./ChecklySyncDestinationSection";
 import { CloudflarePagesSyncDestinationSection } from "./CloudflarePagesSyncDestinationSection";
+import { CloudflareWorkersSyncDestinationSection } from "./CloudflareWorkersSyncDestinationSection";
 import { DatabricksSyncDestinationSection } from "./DatabricksSyncDestinationSection";
+import { DigitalOceanAppPlatformSyncDestinationSection } from "./DigitalOceanAppPlatformSyncDestinationSection";
 import { FlyioSyncDestinationSection } from "./FlyioSyncDestinationSection";
 import { GcpSyncDestinationSection } from "./GcpSyncDestinationSection";
 import { GitHubSyncDestinationSection } from "./GitHubSyncDestinationSection";
@@ -28,7 +32,9 @@ import { HCVaultSyncDestinationSection } from "./HCVaultSyncDestinationSection";
 import { HerokuSyncDestinationSection } from "./HerokuSyncDestinationSection";
 import { HumanitecSyncDestinationSection } from "./HumanitecSyncDestinationSection";
 import { OCIVaultSyncDestinationSection } from "./OCIVaultSyncDestinationSection";
+import { RailwaySyncDestinationSection } from "./RailwaySyncDestinationSection";
 import { RenderSyncDestinationSection } from "./RenderSyncDestinationSection";
+import { SupabaseSyncDestinationSection } from "./SupabaseSyncDestinationSection";
 import { TeamCitySyncDestinationSection } from "./TeamCitySyncDestinationSection";
 import { TerraformCloudSyncDestinationSection } from "./TerraformCloudSyncDestinationSection";
 import { VercelSyncDestinationSection } from "./VercelSyncDestinationSection";
@@ -115,8 +121,28 @@ export const SecretSyncDestinationSection = ({ secretSync, onEditDestination }: 
     case SecretSync.CloudflarePages:
       DestinationComponents = <CloudflarePagesSyncDestinationSection secretSync={secretSync} />;
       break;
+    case SecretSync.CloudflareWorkers:
+      DestinationComponents = <CloudflareWorkersSyncDestinationSection secretSync={secretSync} />;
+      break;
     case SecretSync.Zabbix:
       DestinationComponents = <ZabbixSyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.Railway:
+      DestinationComponents = <RailwaySyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.Checkly:
+      DestinationComponents = <ChecklySyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.Supabase:
+      DestinationComponents = <SupabaseSyncDestinationSection secretSync={secretSync} />;
+      break;
+    case SecretSync.DigitalOceanAppPlatform:
+      DestinationComponents = (
+        <DigitalOceanAppPlatformSyncDestinationSection secretSync={secretSync} />
+      );
+      break;
+    case SecretSync.Bitbucket:
+      DestinationComponents = <BitbucketSyncDestinationSection secretSync={secretSync} />;
       break;
     default:
       throw new Error(`Unhandled Destination Section components: ${destination}`);

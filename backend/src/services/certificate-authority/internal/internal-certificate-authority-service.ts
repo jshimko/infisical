@@ -2,10 +2,9 @@
 import { ForbiddenError, subject } from "@casl/ability";
 import * as x509 from "@peculiar/x509";
 import slugify from "@sindresorhus/slugify";
-import crypto, { KeyObject } from "crypto";
 import { z } from "zod";
 
-import { TableName, TCertificateAuthorities, TCertificateTemplates } from "@app/db/schemas";
+import { ActionProjectType, TableName, TCertificateAuthorities, TCertificateTemplates } from "@app/db/schemas";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import {
   ProjectPermissionActions,
@@ -15,6 +14,7 @@ import {
 } from "@app/ee/services/permission/project-permission";
 import { extractX509CertFromChain } from "@app/lib/certificates/extract-certificate";
 import { getConfig } from "@app/lib/config/env";
+import { crypto } from "@app/lib/crypto/cryptography";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { ms } from "@app/lib/ms";
 import { alphaNumericNanoId } from "@app/lib/nanoid";
@@ -150,7 +150,8 @@ export const internalCertificateAuthorityServiceFactory = ({
         actorId: dto.actorId,
         projectId,
         actorAuthMethod: dto.actorAuthMethod,
-        actorOrgId: dto.actorOrgId
+        actorOrgId: dto.actorOrgId,
+        actionProjectType: ActionProjectType.CertificateManager
       });
 
       ForbiddenError.from(permission).throwUnlessCan(
@@ -171,7 +172,7 @@ export const internalCertificateAuthorityServiceFactory = ({
     });
 
     const alg = keyAlgorithmToAlgCfg(keyAlgorithm);
-    const keys = await crypto.subtle.generateKey(alg, true, ["sign", "verify"]);
+    const keys = await crypto.nativeCrypto.subtle.generateKey(alg, true, ["sign", "verify"]);
 
     const newCa = await certificateAuthorityDAL.transaction(async (tx) => {
       const notBeforeDate = notBefore ? new Date(notBefore) : new Date();
@@ -225,8 +226,8 @@ export const internalCertificateAuthorityServiceFactory = ({
         kmsId: certificateManagerKmsId
       });
 
-      // // https://nodejs.org/api/crypto.html#static-method-keyobjectfromkey
-      const skObj = KeyObject.from(keys.privateKey);
+      // https://nodejs.org/api/crypto.html#static-method-keyobjectfromkey
+      const skObj = crypto.nativeCrypto.KeyObject.from(keys.privateKey);
 
       const { cipherTextBlob: encryptedPrivateKey } = await kmsEncryptor({
         plainText: skObj.export({
@@ -333,7 +334,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionActions.Read,
@@ -357,7 +359,8 @@ export const internalCertificateAuthorityServiceFactory = ({
         actorId: dto.actorId,
         projectId: ca.projectId,
         actorAuthMethod: dto.actorAuthMethod,
-        actorOrgId: dto.actorOrgId
+        actorOrgId: dto.actorOrgId,
+        actionProjectType: ActionProjectType.CertificateManager
       });
 
       ForbiddenError.from(permission).throwUnlessCan(
@@ -389,7 +392,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -414,7 +418,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -477,7 +482,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -763,7 +769,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -799,7 +806,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -879,7 +887,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -1026,7 +1035,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -1068,11 +1078,11 @@ export const internalCertificateAuthorityServiceFactory = ({
       throw new BadRequestError({ message: "Invalid certificate chain" });
 
     const parentCertObj = chainItems[1];
-    const parentCertSubject = parentCertObj.subject;
+    const parentSerialNumber = parentCertObj.serialNumber;
 
     const [parentCa] = await certificateAuthorityDAL.findWithAssociatedCa({
       [`${TableName.CertificateAuthority}.projectId` as "projectId"]: ca.projectId,
-      [`${TableName.InternalCertificateAuthority}.dn` as "dn"]: parentCertSubject
+      [`${TableName.InternalCertificateAuthority}.serialNumber` as "serialNumber"]: parentSerialNumber
     });
 
     const certificateManagerKmsId = await getProjectKmsCertificateKeyId({
@@ -1102,9 +1112,9 @@ export const internalCertificateAuthorityServiceFactory = ({
       kmsService
     });
 
-    const isCaAndCertPublicKeySame = Buffer.from(await crypto.subtle.exportKey("spki", caPublicKey)).equals(
-      Buffer.from(certObj.publicKey.rawData)
-    );
+    const isCaAndCertPublicKeySame = Buffer.from(
+      await crypto.nativeCrypto.subtle.exportKey("spki", caPublicKey)
+    ).equals(Buffer.from(certObj.publicKey.rawData));
 
     if (!isCaAndCertPublicKeySame) {
       throw new BadRequestError({ message: "CA and certificate public key do not match" });
@@ -1197,7 +1207,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -1265,7 +1276,7 @@ export const internalCertificateAuthorityServiceFactory = ({
     }
 
     const alg = keyAlgorithmToAlgCfg(ca.internalCa.keyAlgorithm as CertKeyAlgorithm);
-    const leafKeys = await crypto.subtle.generateKey(alg, true, ["sign", "verify"]);
+    const leafKeys = await crypto.nativeCrypto.subtle.generateKey(alg, true, ["sign", "verify"]);
 
     const csrObj = await x509.Pkcs10CertificateRequestGenerator.create({
       name: `CN=${commonName}`,
@@ -1412,7 +1423,7 @@ export const internalCertificateAuthorityServiceFactory = ({
       extensions
     });
 
-    const skLeafObj = KeyObject.from(leafKeys.privateKey);
+    const skLeafObj = crypto.nativeCrypto.KeyObject.from(leafKeys.privateKey);
     const skLeaf = skLeafObj.export({ format: "pem", type: "pkcs8" }) as string;
 
     const kmsEncryptor = await kmsService.encryptWithKmsKey({
@@ -1553,7 +1564,8 @@ export const internalCertificateAuthorityServiceFactory = ({
         actorId: dto.actorId,
         projectId: ca.projectId,
         actorAuthMethod: dto.actorAuthMethod,
-        actorOrgId: dto.actorOrgId
+        actorOrgId: dto.actorOrgId,
+        actionProjectType: ActionProjectType.CertificateManager
       });
 
       ForbiddenError.from(permission).throwUnlessCan(
@@ -1920,7 +1932,8 @@ export const internalCertificateAuthorityServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     const certificateTemplates = await certificateTemplateDAL.find({ caId });

@@ -115,8 +115,10 @@ export const getSecretSyncDestinationColValues = (secretSync: TSecretSync) => {
       secondaryText = "Vault ID";
       break;
     case SecretSync.AzureDevOps:
-      primaryText = destinationConfig.devopsProjectName;
-      secondaryText = destinationConfig.devopsProjectId;
+      primaryText = destinationConfig.devopsProjectName || destinationConfig.devopsProjectId;
+      secondaryText = destinationConfig.devopsProjectName
+        ? destinationConfig.devopsProjectId
+        : "Project ID";
       break;
     case SecretSync.Heroku:
       primaryText = destinationConfig.appName;
@@ -145,6 +147,10 @@ export const getSecretSyncDestinationColValues = (secretSync: TSecretSync) => {
       primaryText = destinationConfig.projectName;
       secondaryText = destinationConfig.environment;
       break;
+    case SecretSync.CloudflareWorkers:
+      primaryText = destinationConfig.scriptId;
+      secondaryText = "Script ID";
+      break;
     case SecretSync.Zabbix:
       if (destinationConfig.scope === ZabbixSyncScope.Host) {
         primaryText = destinationConfig.hostName;
@@ -155,6 +161,26 @@ export const getSecretSyncDestinationColValues = (secretSync: TSecretSync) => {
       } else {
         throw new Error(`Unhandled Zabbix Scope Destination Col Values ${destination}`);
       }
+      break;
+    case SecretSync.Railway:
+      primaryText = destinationConfig.projectName;
+      secondaryText = "Railway Project";
+      break;
+    case SecretSync.Checkly:
+      primaryText = destinationConfig.accountName;
+      secondaryText = "Checkly Account";
+      break;
+    case SecretSync.Supabase:
+      primaryText = destinationConfig.projectName;
+      secondaryText = "Supabase Project";
+      break;
+    case SecretSync.DigitalOceanAppPlatform:
+      primaryText = destinationConfig.appName;
+      secondaryText = "Digital Ocean App";
+      break;
+    case SecretSync.Bitbucket:
+      primaryText = destinationConfig.workspaceSlug;
+      secondaryText = destinationConfig.repositorySlug;
       break;
     default:
       throw new Error(`Unhandled Destination Col Values ${destination}`);

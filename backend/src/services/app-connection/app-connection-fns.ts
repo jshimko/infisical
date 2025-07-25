@@ -5,8 +5,9 @@ import {
   validateOCIConnectionCredentials
 } from "@app/ee/services/app-connections/oci";
 import { getOracleDBConnectionListItem, OracleDBConnectionMethod } from "@app/ee/services/app-connections/oracledb";
+import { TGatewayServiceFactory } from "@app/ee/services/gateway/gateway-service";
 import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
-import { generateHash } from "@app/lib/crypto/encryption";
+import { crypto } from "@app/lib/crypto/cryptography";
 import { BadRequestError } from "@app/lib/errors";
 import { APP_CONNECTION_NAME_MAP, APP_CONNECTION_PLAN_MAP } from "@app/services/app-connection/app-connection-maps";
 import {
@@ -56,6 +57,7 @@ import {
   validateBitbucketConnectionCredentials
 } from "./bitbucket";
 import { CamundaConnectionMethod, getCamundaConnectionListItem, validateCamundaConnectionCredentials } from "./camunda";
+import { ChecklyConnectionMethod, getChecklyConnectionListItem, validateChecklyConnectionCredentials } from "./checkly";
 import { CloudflareConnectionMethod } from "./cloudflare/cloudflare-connection-enum";
 import {
   getCloudflareConnectionListItem,
@@ -66,6 +68,11 @@ import {
   getDatabricksConnectionListItem,
   validateDatabricksConnectionCredentials
 } from "./databricks";
+import {
+  DigitalOceanConnectionMethod,
+  getDigitalOceanConnectionListItem,
+  validateDigitalOceanConnectionCredentials
+} from "./digital-ocean";
 import { FlyioConnectionMethod, getFlyioConnectionListItem, validateFlyioConnectionCredentials } from "./flyio";
 import { GcpConnectionMethod, getGcpConnectionListItem, validateGcpConnectionCredentials } from "./gcp";
 import { getGitHubConnectionListItem, GitHubConnectionMethod, validateGitHubConnectionCredentials } from "./github";
@@ -90,9 +97,16 @@ import { getLdapConnectionListItem, LdapConnectionMethod, validateLdapConnection
 import { getMsSqlConnectionListItem, MsSqlConnectionMethod } from "./mssql";
 import { MySqlConnectionMethod } from "./mysql/mysql-connection-enums";
 import { getMySqlConnectionListItem } from "./mysql/mysql-connection-fns";
+import { getOktaConnectionListItem, OktaConnectionMethod, validateOktaConnectionCredentials } from "./okta";
 import { getPostgresConnectionListItem, PostgresConnectionMethod } from "./postgres";
+import { getRailwayConnectionListItem, validateRailwayConnectionCredentials } from "./railway";
 import { RenderConnectionMethod } from "./render/render-connection-enums";
 import { getRenderConnectionListItem, validateRenderConnectionCredentials } from "./render/render-connection-fns";
+import {
+  getSupabaseConnectionListItem,
+  SupabaseConnectionMethod,
+  validateSupabaseConnectionCredentials
+} from "./supabase";
 import {
   getTeamCityConnectionListItem,
   TeamCityConnectionMethod,
@@ -143,8 +157,13 @@ export const listAppConnectionOptions = () => {
     getFlyioConnectionListItem(),
     getGitLabConnectionListItem(),
     getCloudflareConnectionListItem(),
+    getZabbixConnectionListItem(),
+    getRailwayConnectionListItem(),
     getBitbucketConnectionListItem(),
-    getZabbixConnectionListItem()
+    getChecklyConnectionListItem(),
+    getSupabaseConnectionListItem(),
+    getDigitalOceanConnectionListItem(),
+    getOktaConnectionListItem()
   ].sort((a, b) => a.name.localeCompare(b.name));
 };
 
@@ -191,7 +210,8 @@ export const decryptAppConnectionCredentials = async ({
 };
 
 export const validateAppConnectionCredentials = async (
-  appConnection: TAppConnectionConfig
+  appConnection: TAppConnectionConfig,
+  gatewayService: Pick<TGatewayServiceFactory, "fnGetGatewayClientTlsByGatewayId">
 ): Promise<TAppConnection["credentials"]> => {
   const VALIDATE_APP_CONNECTION_CREDENTIALS_MAP: Record<AppConnection, TAppConnectionCredentialsValidator> = {
     [AppConnection.AWS]: validateAwsConnectionCredentials as TAppConnectionCredentialsValidator,
@@ -225,11 +245,16 @@ export const validateAppConnectionCredentials = async (
     [AppConnection.Flyio]: validateFlyioConnectionCredentials as TAppConnectionCredentialsValidator,
     [AppConnection.GitLab]: validateGitLabConnectionCredentials as TAppConnectionCredentialsValidator,
     [AppConnection.Cloudflare]: validateCloudflareConnectionCredentials as TAppConnectionCredentialsValidator,
+    [AppConnection.Zabbix]: validateZabbixConnectionCredentials as TAppConnectionCredentialsValidator,
+    [AppConnection.Railway]: validateRailwayConnectionCredentials as TAppConnectionCredentialsValidator,
     [AppConnection.Bitbucket]: validateBitbucketConnectionCredentials as TAppConnectionCredentialsValidator,
-    [AppConnection.Zabbix]: validateZabbixConnectionCredentials as TAppConnectionCredentialsValidator
+    [AppConnection.Checkly]: validateChecklyConnectionCredentials as TAppConnectionCredentialsValidator,
+    [AppConnection.Supabase]: validateSupabaseConnectionCredentials as TAppConnectionCredentialsValidator,
+    [AppConnection.DigitalOcean]: validateDigitalOceanConnectionCredentials as TAppConnectionCredentialsValidator,
+    [AppConnection.Okta]: validateOktaConnectionCredentials as TAppConnectionCredentialsValidator
   };
 
-  return VALIDATE_APP_CONNECTION_CREDENTIALS_MAP[appConnection.app](appConnection);
+  return VALIDATE_APP_CONNECTION_CREDENTIALS_MAP[appConnection.app](appConnection, gatewayService);
 };
 
 export const getAppConnectionMethodName = (method: TAppConnection["method"]) => {
@@ -265,6 +290,8 @@ export const getAppConnectionMethodName = (method: TAppConnection["method"]) => 
     case CloudflareConnectionMethod.APIToken:
     case BitbucketConnectionMethod.ApiToken:
     case ZabbixConnectionMethod.ApiToken:
+    case DigitalOceanConnectionMethod.ApiToken:
+    case OktaConnectionMethod.ApiToken:
       return "API Token";
     case PostgresConnectionMethod.UsernameAndPassword:
     case MsSqlConnectionMethod.UsernameAndPassword:
@@ -284,7 +311,10 @@ export const getAppConnectionMethodName = (method: TAppConnection["method"]) => 
     case LdapConnectionMethod.SimpleBind:
       return "Simple Bind";
     case RenderConnectionMethod.ApiKey:
+    case ChecklyConnectionMethod.ApiKey:
       return "API Key";
+    case SupabaseConnectionMethod.AccessToken:
+      return "Access Token";
     default:
       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
       throw new Error(`Unhandled App Connection Method: ${method}`);
@@ -302,7 +332,7 @@ export const decryptAppConnection = async (
       orgId: appConnection.orgId,
       kmsService
     }),
-    credentialsHash: generateHash(appConnection.encryptedCredentials)
+    credentialsHash: crypto.nativeCrypto.createHash("sha256").update(appConnection.encryptedCredentials).digest("hex")
   } as TAppConnection;
 };
 
@@ -345,8 +375,13 @@ export const TRANSITION_CONNECTION_CREDENTIALS_TO_PLATFORM: Record<
   [AppConnection.Flyio]: platformManagedCredentialsNotSupported,
   [AppConnection.GitLab]: platformManagedCredentialsNotSupported,
   [AppConnection.Cloudflare]: platformManagedCredentialsNotSupported,
+  [AppConnection.Zabbix]: platformManagedCredentialsNotSupported,
+  [AppConnection.Railway]: platformManagedCredentialsNotSupported,
   [AppConnection.Bitbucket]: platformManagedCredentialsNotSupported,
-  [AppConnection.Zabbix]: platformManagedCredentialsNotSupported
+  [AppConnection.Checkly]: platformManagedCredentialsNotSupported,
+  [AppConnection.Supabase]: platformManagedCredentialsNotSupported,
+  [AppConnection.DigitalOcean]: platformManagedCredentialsNotSupported,
+  [AppConnection.Okta]: platformManagedCredentialsNotSupported
 };
 
 export const enterpriseAppCheck = async (

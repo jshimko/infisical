@@ -72,7 +72,7 @@ export const generateCommitText = (commits: { op: CommitType }[] = [], isReplica
   if (score[CommitType.DELETE])
     text.push(
       <span className="deleted-commit">
-        {Boolean(text.length) && "and"}
+        {Boolean(text.length) && " and "}
         {score[CommitType.DELETE]} Secret{score[CommitType.DELETE] !== 1 && "s"}
         <span className="text-red-600"> Deleted</span>
       </span>
@@ -250,10 +250,17 @@ export const SecretApprovalRequestChanges = ({
                 secretApprovalRequestDetails.isReplicated
               )}
             </div>
-            <span className="-mt-1 flex items-center space-x-2 text-xs text-gray-400">
-              By {secretApprovalRequestDetails?.committerUser?.firstName} (
-              {secretApprovalRequestDetails?.committerUser?.email})
-            </span>
+            <p className="-mt-1 text-xs text-gray-400">
+              By{" "}
+              {secretApprovalRequestDetails?.committerUser ? (
+                <>
+                  {secretApprovalRequestDetails?.committerUser?.firstName} (
+                  {secretApprovalRequestDetails?.committerUser?.email})
+                </>
+              ) : (
+                <span className="text-gray-500">Deleted User</span>
+              )}
+            </p>
           </div>
           {!hasMerged &&
             secretApprovalRequestDetails.status === "open" &&

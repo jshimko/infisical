@@ -46,6 +46,7 @@ import {
   DropdownSubMenuTrigger,
   IconButton,
   Modal,
+  ModalClose,
   ModalContent,
   Tooltip
 } from "@app/components/v2";
@@ -53,11 +54,13 @@ import {
   ProjectPermissionActions,
   ProjectPermissionDynamicSecretActions,
   ProjectPermissionSub,
+  useProjectPermission,
   useSubscription,
   useWorkspace
 } from "@app/context";
 import {
   ProjectPermissionCommitsActions,
+  ProjectPermissionSecretActions,
   ProjectPermissionSecretRotationActions
 } from "@app/context/ProjectPermissionContext/types";
 import { usePopUp } from "@app/hooks";
@@ -74,12 +77,15 @@ import {
 } from "@app/hooks/api/dashboard/queries";
 import { UsedBySecretSyncs } from "@app/hooks/api/dashboard/types";
 import { secretApprovalRequestKeys } from "@app/hooks/api/secretApprovalRequest/queries";
+import { PendingAction } from "@app/hooks/api/secretFolders/types";
 import { fetchProjectSecrets, secretKeys } from "@app/hooks/api/secrets/queries";
 import { ApiErrorTypes, SecretType, TApiErrors, WsTag } from "@app/hooks/api/types";
 import { SecretSearchInput } from "@app/pages/secret-manager/OverviewPage/components/SecretSearchInput";
 
 import {
+  PendingFolderCreate,
   PopUpNames,
+  useBatchModeActions,
   usePopUpAction,
   useSelectedSecretActions,
   useSelectedSecrets
@@ -109,6 +115,7 @@ type Props = {
   filter: Filter;
   tags?: WsTag[];
   isVisible?: boolean;
+  isBatchMode?: boolean;
   snapshotCount: number;
   isSnapshotCountLoading?: boolean;
   protectedBranchPolicyName?: string;
@@ -127,6 +134,9 @@ type Props = {
     }[];
   }[];
   isPITEnabled: boolean;
+  onRequestAccess: (actions: ProjectPermissionActions[]) => void;
+  hasPathPolicies: boolean;
+  onClearFilters: () => void;
 };
 
 export const ActionBar = ({
@@ -137,6 +147,7 @@ export const ActionBar = ({
   filter,
   tags = [],
   isVisible,
+  isBatchMode,
   snapshotCount,
   isSnapshotCountLoading,
   onSearchChange,
@@ -147,7 +158,10 @@ export const ActionBar = ({
   protectedBranchPolicyName,
   importedBy,
   isPITEnabled = false,
-  usedBySecretSyncs
+  usedBySecretSyncs,
+  onRequestAccess,
+  hasPathPolicies,
+  onClearFilters
 }: Props) => {
   const { handlePopUpOpen, handlePopUpToggle, handlePopUpClose, popUp } = usePopUp([
     "addFolder",
@@ -159,7 +173,8 @@ export const ActionBar = ({
     "misc",
     "upgradePlan",
     "replicateFolder",
-    "confirmUpload"
+    "confirmUpload",
+    "requestAccess"
   ] as const);
   const isProtectedBranch = Boolean(protectedBranchPolicyName);
   const { subscription } = useSubscription();
@@ -174,15 +189,39 @@ export const ActionBar = ({
     options: { onSuccess: undefined }
   });
   const queryClient = useQueryClient();
+  const { addPendingChange } = useBatchModeActions();
 
   const selectedSecrets = useSelectedSecrets();
   const { reset: resetSelectedSecret } = useSelectedSecretActions();
   const isMultiSelectActive = Boolean(Object.keys(selectedSecrets).length);
 
   const { currentWorkspace } = useWorkspace();
+  const { permission } = useProjectPermission();
 
   const handleFolderCreate = async (folderName: string, description: string | null) => {
     try {
+      if (isBatchMode) {
+        const folderId = `${folderName}`;
+        const pendingFolderCreate: PendingFolderCreate = {
+          id: folderId,
+          resourceType: "folder",
+          type: PendingAction.Create,
+          folderName,
+          description: description || undefined,
+          parentPath: secretPath,
+          timestamp: Date.now()
+        };
+
+        addPendingChange(pendingFolderCreate, {
+          workspaceId,
+          environment,
+          secretPath
+        });
+
+        handlePopUpClose("addFolder");
+        return;
+      }
+
       await createFolder({
         name: folderName,
         path: secretPath,
@@ -624,6 +663,9 @@ export const ActionBar = ({
     }
   };
 
+  const isTableFiltered =
+    Object.values(filter.tags).some(Boolean) || Object.values(filter.include).some(Boolean);
+
   return (
     <>
       <div className="mt-4 flex items-center space-x-2">
@@ -639,18 +681,22 @@ export const ActionBar = ({
         <div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconButton
+              <Button
+                size="sm"
                 variant="outline_bg"
-                ariaLabel="Download"
                 className={twMerge(
-                  "transition-all",
-                  (Object.keys(filter.tags).length ||
-                    Object.values(filter.include).filter((include) => !include).length) &&
-                    "border-primary/50 text-primary"
+                  "flex h-[2.5rem]",
+                  isTableFiltered && "border-primary/40 bg-primary/10"
                 )}
+                leftIcon={
+                  <FontAwesomeIcon
+                    icon={faFilter}
+                    className={isTableFiltered ? "text-primary/80" : undefined}
+                  />
+                }
               >
-                <FontAwesomeIcon icon={faFilter} />
-              </IconButton>
+                Filters
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="p-0">
               <DropdownMenuGroup>Filter By</DropdownMenuGroup>
@@ -725,51 +771,62 @@ export const ActionBar = ({
                   <span>Secrets</span>
                 </div>
               </DropdownMenuItem>
-              <DropdownSubMenu>
-                <DropdownSubMenuTrigger
-                  iconPos="right"
-                  icon={<FontAwesomeIcon icon={faChevronRight} size="sm" />}
-                >
-                  Tags
-                </DropdownSubMenuTrigger>
-                <DropdownSubMenuContent className="thin-scrollbar max-h-[20rem] overflow-y-auto rounded-l-none">
-                  <DropdownMenuLabel className="sticky top-0 bg-mineshaft-900">
-                    Apply Tags to Filter Secrets
-                  </DropdownMenuLabel>
-                  {tags.map(({ id, slug, color }) => (
-                    <DropdownMenuItem
-                      onClick={(evt) => {
-                        evt.preventDefault();
-                        onToggleTagFilter(slug);
-                      }}
-                      key={id}
-                      icon={filter?.tags[slug] && <FontAwesomeIcon icon={faCheckCircle} />}
-                      iconPos="right"
-                    >
-                      <div className="flex items-center">
-                        <div
-                          className="mr-2 h-2 w-2 rounded-full"
-                          style={{ background: color || "#bec2c8" }}
-                        />
-                        {slug}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownSubMenuContent>
-              </DropdownSubMenu>
+              {Boolean(tags.length) && (
+                <DropdownSubMenu>
+                  <DropdownSubMenuTrigger
+                    iconPos="right"
+                    icon={<FontAwesomeIcon icon={faChevronRight} size="sm" />}
+                  >
+                    Tags
+                  </DropdownSubMenuTrigger>
+                  <DropdownSubMenuContent className="thin-scrollbar max-h-[20rem] overflow-y-auto rounded-l-none">
+                    <DropdownMenuLabel className="sticky top-0 bg-mineshaft-900">
+                      Apply Tags to Filter Secrets
+                    </DropdownMenuLabel>
+                    {tags.map(({ id, slug, color }) => (
+                      <DropdownMenuItem
+                        onClick={(evt) => {
+                          evt.preventDefault();
+                          onToggleTagFilter(slug);
+                        }}
+                        key={id}
+                        icon={filter?.tags[slug] && <FontAwesomeIcon icon={faCheckCircle} />}
+                        iconPos="right"
+                      >
+                        <div className="flex items-center">
+                          <div
+                            className="mr-2 h-2 w-2 rounded-full"
+                            style={{ background: color || "#bec2c8" }}
+                          />
+                          {slug}
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownSubMenuContent>
+                </DropdownSubMenu>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+        {isTableFiltered && (
+          <Button variant="plain" colorSchema="secondary" onClick={onClearFilters}>
+            Clear Filters
+          </Button>
+        )}
+        <div className="flex-grow" />
         <div>
           {isProtectedBranch && (
             <Tooltip content={`Protected by policy ${protectedBranchPolicyName}`}>
-              <IconButton variant="outline_bg" ariaLabel="protected">
+              <IconButton
+                variant="outline_bg"
+                className="border-primary/40 bg-primary/10"
+                ariaLabel="protected"
+              >
                 <FontAwesomeIcon icon={faLock} className="text-primary" />
               </IconButton>
             </Tooltip>
           )}
         </div>
-        <div className="flex-grow" />
         <div>
           <IconButton variant="outline_bg" ariaLabel="Download" onClick={handleSecretDownload}>
             <FontAwesomeIcon icon={faDownload} />
@@ -807,27 +864,50 @@ export const ActionBar = ({
           </ProjectPermissionCan>
         </div>
         <div className="flex items-center">
-          <ProjectPermissionCan
-            I={ProjectPermissionActions.Create}
-            a={subject(ProjectPermissionSub.Secrets, {
-              environment,
-              secretPath,
-              secretName: "*",
-              secretTags: ["*"]
-            })}
-          >
-            {(isAllowed) => (
-              <Button
-                variant="outline_bg"
-                leftIcon={<FontAwesomeIcon icon={faPlus} />}
-                onClick={() => openPopUp(PopUpNames.CreateSecretForm)}
-                className="h-10 rounded-r-none"
-                isDisabled={!isAllowed}
-              >
-                Add Secret
-              </Button>
-            )}
-          </ProjectPermissionCan>
+          {hasPathPolicies ? (
+            <Button
+              variant="outline_bg"
+              leftIcon={<FontAwesomeIcon icon={faPlus} />}
+              onClick={() =>
+                permission.can(
+                  ProjectPermissionSecretActions.Create,
+                  subject(ProjectPermissionSub.Secrets, {
+                    environment,
+                    secretPath,
+                    secretName: "*",
+                    secretTags: ["*"]
+                  })
+                )
+                  ? openPopUp(PopUpNames.CreateSecretForm)
+                  : handlePopUpOpen("requestAccess", [ProjectPermissionActions.Create])
+              }
+              className="h-10 rounded-r-none"
+            >
+              Add Secret
+            </Button>
+          ) : (
+            <ProjectPermissionCan
+              I={ProjectPermissionActions.Create}
+              a={subject(ProjectPermissionSub.Secrets, {
+                environment,
+                secretPath,
+                secretName: "*",
+                secretTags: ["*"]
+              })}
+            >
+              {(isAllowed) => (
+                <Button
+                  variant="outline_bg"
+                  leftIcon={<FontAwesomeIcon icon={faPlus} />}
+                  onClick={() => openPopUp(PopUpNames.CreateSecretForm)}
+                  className="h-10 rounded-r-none"
+                  isDisabled={!isAllowed}
+                >
+                  Add Secret
+                </Button>
+              )}
+            </ProjectPermissionCan>
+          )}
           <DropdownMenu
             open={popUp.misc.isOpen}
             onOpenChange={(isOpen) => handlePopUpToggle("misc", isOpen)}
@@ -1164,6 +1244,27 @@ export const ActionBar = ({
               </div>
             </div>
           )}
+        </ModalContent>
+      </Modal>
+      <Modal
+        isOpen={popUp?.requestAccess?.isOpen}
+        onOpenChange={(open) => handlePopUpToggle("requestAccess", open)}
+      >
+        <ModalContent title="Access Restricted">
+          <p className="mb-2 text-bunker-300">You do not have permission to perform this action.</p>
+          <p className="text-bunker-300">Request access to perform this action in this folder.</p>
+          <div className="mt-8 flex items-center gap-4">
+            <ModalClose asChild>
+              <Button onClick={() => onRequestAccess(popUp?.requestAccess.data)}>
+                Request Access
+              </Button>
+            </ModalClose>
+            <ModalClose asChild>
+              <Button variant="plain" colorSchema="secondary">
+                Cancel
+              </Button>
+            </ModalClose>
+          </div>
         </ModalContent>
       </Modal>
     </>

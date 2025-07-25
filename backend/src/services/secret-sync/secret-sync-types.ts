@@ -73,11 +73,34 @@ import {
   TAzureKeyVaultSyncWithCredentials
 } from "./azure-key-vault";
 import {
+  TBitbucketSync,
+  TBitbucketSyncInput,
+  TBitbucketSyncListItem,
+  TBitbucketSyncWithCredentials
+} from "./bitbucket/bitbucket-sync-types";
+import {
+  TChecklySync,
+  TChecklySyncInput,
+  TChecklySyncListItem,
+  TChecklySyncWithCredentials
+} from "./checkly/checkly-sync-types";
+import {
   TCloudflarePagesSync,
   TCloudflarePagesSyncInput,
   TCloudflarePagesSyncListItem,
   TCloudflarePagesSyncWithCredentials
 } from "./cloudflare-pages/cloudflare-pages-types";
+import {
+  TCloudflareWorkersSync,
+  TCloudflareWorkersSyncInput,
+  TCloudflareWorkersSyncListItem,
+  TCloudflareWorkersSyncWithCredentials
+} from "./cloudflare-workers";
+import {
+  TDigitalOceanAppPlatformSyncInput,
+  TDigitalOceanAppPlatformSyncListItem,
+  TDigitalOceanAppPlatformSyncWithCredentials
+} from "./digital-ocean-app-platform/digital-ocean-app-platform-sync-types";
 import { TFlyioSync, TFlyioSyncInput, TFlyioSyncListItem, TFlyioSyncWithCredentials } from "./flyio/flyio-sync-types";
 import { TGcpSync, TGcpSyncInput, TGcpSyncListItem, TGcpSyncWithCredentials } from "./gcp";
 import { TGitLabSync, TGitLabSyncInput, TGitLabSyncListItem, TGitLabSyncWithCredentials } from "./gitlab";
@@ -95,11 +118,23 @@ import {
   THumanitecSyncWithCredentials
 } from "./humanitec";
 import {
+  TRailwaySync,
+  TRailwaySyncInput,
+  TRailwaySyncListItem,
+  TRailwaySyncWithCredentials
+} from "./railway/railway-sync-types";
+import {
   TRenderSync,
   TRenderSyncInput,
   TRenderSyncListItem,
   TRenderSyncWithCredentials
 } from "./render/render-sync-types";
+import {
+  TSupabaseSync,
+  TSupabaseSyncInput,
+  TSupabaseSyncListItem,
+  TSupabaseSyncWithCredentials
+} from "./supabase/supabase-sync-types";
 import {
   TTeamCitySync,
   TTeamCitySyncInput,
@@ -138,7 +173,12 @@ export type TSecretSync =
   | TFlyioSync
   | TGitLabSync
   | TCloudflarePagesSync
-  | TZabbixSync;
+  | TCloudflareWorkersSync
+  | TZabbixSync
+  | TRailwaySync
+  | TChecklySync
+  | TSupabaseSync
+  | TBitbucketSync;
 
 export type TSecretSyncWithCredentials =
   | TAwsParameterStoreSyncWithCredentials
@@ -163,7 +203,13 @@ export type TSecretSyncWithCredentials =
   | TFlyioSyncWithCredentials
   | TGitLabSyncWithCredentials
   | TCloudflarePagesSyncWithCredentials
-  | TZabbixSyncWithCredentials;
+  | TCloudflareWorkersSyncWithCredentials
+  | TZabbixSyncWithCredentials
+  | TRailwaySyncWithCredentials
+  | TChecklySyncWithCredentials
+  | TSupabaseSyncWithCredentials
+  | TDigitalOceanAppPlatformSyncWithCredentials
+  | TBitbucketSyncWithCredentials;
 
 export type TSecretSyncInput =
   | TAwsParameterStoreSyncInput
@@ -188,7 +234,13 @@ export type TSecretSyncInput =
   | TFlyioSyncInput
   | TGitLabSyncInput
   | TCloudflarePagesSyncInput
-  | TZabbixSyncInput;
+  | TCloudflareWorkersSyncInput
+  | TZabbixSyncInput
+  | TRailwaySyncInput
+  | TChecklySyncInput
+  | TSupabaseSyncInput
+  | TDigitalOceanAppPlatformSyncInput
+  | TBitbucketSyncInput;
 
 export type TSecretSyncListItem =
   | TAwsParameterStoreSyncListItem
@@ -213,7 +265,13 @@ export type TSecretSyncListItem =
   | TFlyioSyncListItem
   | TGitLabSyncListItem
   | TCloudflarePagesSyncListItem
-  | TZabbixSyncListItem;
+  | TCloudflareWorkersSyncListItem
+  | TZabbixSyncListItem
+  | TRailwaySyncListItem
+  | TChecklySyncListItem
+  | TSupabaseSyncListItem
+  | TDigitalOceanAppPlatformSyncListItem
+  | TBitbucketSyncListItem;
 
 export type TSyncOptionsConfig = {
   canImportSecrets: boolean;

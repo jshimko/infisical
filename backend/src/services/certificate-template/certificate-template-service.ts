@@ -1,8 +1,7 @@
 import { ForbiddenError, subject } from "@casl/ability";
 import * as x509 from "@peculiar/x509";
-import bcrypt from "bcrypt";
 
-import { TCertificateTemplateEstConfigsUpdate } from "@app/db/schemas";
+import { ActionProjectType, TCertificateTemplateEstConfigsUpdate } from "@app/db/schemas";
 import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import {
@@ -11,6 +10,7 @@ import {
 } from "@app/ee/services/permission/project-permission";
 import { extractX509CertFromChain } from "@app/lib/certificates/extract-certificate";
 import { getConfig } from "@app/lib/config/env";
+import { crypto } from "@app/lib/crypto/cryptography";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 
 import { isCertChainValid } from "../certificate/certificate-fns";
@@ -76,7 +76,8 @@ export const certificateTemplateServiceFactory = ({
       actorId,
       projectId: ca.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -137,7 +138,8 @@ export const certificateTemplateServiceFactory = ({
       actorId,
       projectId: certTemplate.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -201,7 +203,8 @@ export const certificateTemplateServiceFactory = ({
       actorId,
       projectId: certTemplate.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -227,7 +230,8 @@ export const certificateTemplateServiceFactory = ({
       actorId,
       projectId: certTemplate.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -268,7 +272,8 @@ export const certificateTemplateServiceFactory = ({
       actorId,
       projectId: certTemplate.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -308,7 +313,7 @@ export const certificateTemplateServiceFactory = ({
       encryptedCaChain = cipherTextBlob;
     }
 
-    const hashedPassphrase = await bcrypt.hash(passphrase, appCfg.SALT_ROUNDS);
+    const hashedPassphrase = await crypto.hashing().createHash(passphrase, appCfg.SALT_ROUNDS);
     const estConfig = await certificateTemplateEstConfigDAL.create({
       certificateTemplateId,
       hashedPassphrase,
@@ -350,7 +355,8 @@ export const certificateTemplateServiceFactory = ({
       actorId,
       projectId: certTemplate.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.CertificateManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -404,7 +410,7 @@ export const certificateTemplateServiceFactory = ({
     }
 
     if (passphrase) {
-      const hashedPassphrase = await bcrypt.hash(passphrase, appCfg.SALT_ROUNDS);
+      const hashedPassphrase = await crypto.hashing().createHash(passphrase, appCfg.SALT_ROUNDS);
       updatedData.hashedPassphrase = hashedPassphrase;
     }
 
@@ -429,7 +435,8 @@ export const certificateTemplateServiceFactory = ({
         actorId: dto.actorId,
         projectId: certTemplate.projectId,
         actorAuthMethod: dto.actorAuthMethod,
-        actorOrgId: dto.actorOrgId
+        actorOrgId: dto.actorOrgId,
+        actionProjectType: ActionProjectType.CertificateManager
       });
 
       ForbiddenError.from(permission).throwUnlessCan(

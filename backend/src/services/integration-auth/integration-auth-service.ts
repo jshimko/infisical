@@ -4,12 +4,18 @@ import { Octokit } from "@octokit/rest";
 import { Client as OctopusClient, SpaceRepository as OctopusSpaceRepository } from "@octopusdeploy/api-client";
 import AWS from "aws-sdk";
 
-import { SecretEncryptionAlgo, SecretKeyEncoding, TIntegrationAuths, TIntegrationAuthsInsert } from "@app/db/schemas";
+import {
+  ActionProjectType,
+  SecretEncryptionAlgo,
+  SecretKeyEncoding,
+  TIntegrationAuths,
+  TIntegrationAuthsInsert
+} from "@app/db/schemas";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { ProjectPermissionActions, ProjectPermissionSub } from "@app/ee/services/permission/project-permission";
 import { getConfig } from "@app/lib/config/env";
 import { request } from "@app/lib/config/request";
-import { decryptSymmetric128BitHexKeyUTF8, encryptSymmetric128BitHexKeyUTF8 } from "@app/lib/crypto";
+import { crypto, SymmetricKeySize } from "@app/lib/crypto/cryptography";
 import { BadRequestError, InternalServerError, NotFoundError } from "@app/lib/errors";
 import { groupBy } from "@app/lib/fn";
 import { logger } from "@app/lib/logger";
@@ -97,7 +103,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const authorizations = await integrationAuthDAL.find({ projectId });
@@ -115,7 +122,8 @@ export const integrationAuthServiceFactory = ({
             actorId,
             projectId: auth.projectId,
             actorAuthMethod,
-            actorOrgId
+            actorOrgId,
+            actionProjectType: ActionProjectType.SecretManager
           });
 
           return permission.can(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations) ? auth : null;
@@ -138,7 +146,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     return integrationAuth;
@@ -163,7 +172,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Create, ProjectPermissionSub.Integrations);
 
@@ -218,13 +228,22 @@ export const integrationAuthServiceFactory = ({
     } else {
       if (!botKey) throw new NotFoundError({ message: `Project bot key for project with ID '${projectId}' not found` });
       if (tokenExchange.refreshToken) {
-        const refreshEncToken = encryptSymmetric128BitHexKeyUTF8(tokenExchange.refreshToken, botKey);
+        const refreshEncToken = crypto.encryption().symmetric().encrypt({
+          plaintext: tokenExchange.refreshToken,
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
+
         updateDoc.refreshIV = refreshEncToken.iv;
         updateDoc.refreshTag = refreshEncToken.tag;
         updateDoc.refreshCiphertext = refreshEncToken.ciphertext;
       }
       if (tokenExchange.accessToken) {
-        const accessEncToken = encryptSymmetric128BitHexKeyUTF8(tokenExchange.accessToken, botKey);
+        const accessEncToken = crypto.encryption().symmetric().encrypt({
+          plaintext: tokenExchange.accessToken,
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
         updateDoc.accessIV = accessEncToken.iv;
         updateDoc.accessTag = accessEncToken.tag;
         updateDoc.accessCiphertext = accessEncToken.ciphertext;
@@ -272,7 +291,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Create, ProjectPermissionSub.Integrations);
 
@@ -346,11 +366,19 @@ export const integrationAuthServiceFactory = ({
           url,
           updateDoc.metadata as Record<string, string>
         );
-        const refreshEncToken = encryptSymmetric128BitHexKeyUTF8(tokenDetails.refreshToken, botKey);
+        const refreshEncToken = crypto.encryption().symmetric().encrypt({
+          plaintext: tokenDetails.refreshToken,
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
         updateDoc.refreshIV = refreshEncToken.iv;
         updateDoc.refreshTag = refreshEncToken.tag;
         updateDoc.refreshCiphertext = refreshEncToken.ciphertext;
-        const accessEncToken = encryptSymmetric128BitHexKeyUTF8(tokenDetails.accessToken, botKey);
+        const accessEncToken = crypto.encryption().symmetric().encrypt({
+          plaintext: tokenDetails.accessToken,
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
         updateDoc.accessIV = accessEncToken.iv;
         updateDoc.accessTag = accessEncToken.tag;
         updateDoc.accessCiphertext = accessEncToken.ciphertext;
@@ -360,19 +388,31 @@ export const integrationAuthServiceFactory = ({
 
       if (!refreshToken && (accessId || accessToken || awsAssumeIamRoleArn)) {
         if (accessToken) {
-          const accessEncToken = encryptSymmetric128BitHexKeyUTF8(accessToken, botKey);
+          const accessEncToken = crypto.encryption().symmetric().encrypt({
+            plaintext: accessToken,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
           updateDoc.accessIV = accessEncToken.iv;
           updateDoc.accessTag = accessEncToken.tag;
           updateDoc.accessCiphertext = accessEncToken.ciphertext;
         }
         if (accessId) {
-          const accessEncToken = encryptSymmetric128BitHexKeyUTF8(accessId, botKey);
+          const accessEncToken = crypto.encryption().symmetric().encrypt({
+            plaintext: accessId,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
           updateDoc.accessIdIV = accessEncToken.iv;
           updateDoc.accessIdTag = accessEncToken.tag;
           updateDoc.accessIdCiphertext = accessEncToken.ciphertext;
         }
         if (awsAssumeIamRoleArn) {
-          const awsAssumeIamRoleArnEnc = encryptSymmetric128BitHexKeyUTF8(awsAssumeIamRoleArn, botKey);
+          const awsAssumeIamRoleArnEnc = crypto.encryption().symmetric().encrypt({
+            plaintext: awsAssumeIamRoleArn,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
           updateDoc.awsAssumeIamRoleArnCipherText = awsAssumeIamRoleArnEnc.ciphertext;
           updateDoc.awsAssumeIamRoleArnIV = awsAssumeIamRoleArnEnc.iv;
           updateDoc.awsAssumeIamRoleArnTag = awsAssumeIamRoleArnEnc.tag;
@@ -406,7 +446,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Edit, ProjectPermissionSub.Integrations);
 
@@ -487,11 +528,21 @@ export const integrationAuthServiceFactory = ({
           url,
           updateDoc.metadata as Record<string, string>
         );
-        const refreshEncToken = encryptSymmetric128BitHexKeyUTF8(tokenDetails.refreshToken, botKey);
+        const refreshEncToken = crypto.encryption().symmetric().encrypt({
+          plaintext: tokenDetails.refreshToken,
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
         updateDoc.refreshIV = refreshEncToken.iv;
         updateDoc.refreshTag = refreshEncToken.tag;
         updateDoc.refreshCiphertext = refreshEncToken.ciphertext;
-        const accessEncToken = encryptSymmetric128BitHexKeyUTF8(tokenDetails.accessToken, botKey);
+
+        const accessEncToken = crypto.encryption().symmetric().encrypt({
+          plaintext: tokenDetails.accessToken,
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
+
         updateDoc.accessIV = accessEncToken.iv;
         updateDoc.accessTag = accessEncToken.tag;
         updateDoc.accessCiphertext = accessEncToken.ciphertext;
@@ -501,19 +552,32 @@ export const integrationAuthServiceFactory = ({
 
       if (!refreshToken && (accessId || accessToken || awsAssumeIamRoleArn)) {
         if (accessToken) {
-          const accessEncToken = encryptSymmetric128BitHexKeyUTF8(accessToken, botKey);
+          const accessEncToken = crypto.encryption().symmetric().encrypt({
+            plaintext: accessToken,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
           updateDoc.accessIV = accessEncToken.iv;
           updateDoc.accessTag = accessEncToken.tag;
           updateDoc.accessCiphertext = accessEncToken.ciphertext;
         }
         if (accessId) {
-          const accessEncToken = encryptSymmetric128BitHexKeyUTF8(accessId, botKey);
+          const accessEncToken = crypto.encryption().symmetric().encrypt({
+            plaintext: accessId,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
           updateDoc.accessIdIV = accessEncToken.iv;
           updateDoc.accessIdTag = accessEncToken.tag;
           updateDoc.accessIdCiphertext = accessEncToken.ciphertext;
         }
         if (awsAssumeIamRoleArn) {
-          const awsAssumeIamRoleArnEnc = encryptSymmetric128BitHexKeyUTF8(awsAssumeIamRoleArn, botKey);
+          const awsAssumeIamRoleArnEnc = crypto.encryption().symmetric().encrypt({
+            plaintext: awsAssumeIamRoleArn,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
+
           updateDoc.awsAssumeIamRoleArnCipherText = awsAssumeIamRoleArnEnc.ciphertext;
           updateDoc.awsAssumeIamRoleArnIV = awsAssumeIamRoleArnEnc.iv;
           updateDoc.awsAssumeIamRoleArnTag = awsAssumeIamRoleArnEnc.tag;
@@ -596,20 +660,22 @@ export const integrationAuthServiceFactory = ({
     } else {
       if (!botKey) throw new NotFoundError({ message: "Project bot key not found" });
       if (integrationAuth.accessTag && integrationAuth.accessIV && integrationAuth.accessCiphertext) {
-        accessToken = decryptSymmetric128BitHexKeyUTF8({
+        accessToken = crypto.encryption().symmetric().decrypt({
           ciphertext: integrationAuth.accessCiphertext,
           iv: integrationAuth.accessIV,
           tag: integrationAuth.accessTag,
-          key: botKey
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
         });
       }
 
       if (integrationAuth.refreshCiphertext && integrationAuth.refreshIV && integrationAuth.refreshTag) {
-        const refreshToken = decryptSymmetric128BitHexKeyUTF8({
+        const refreshToken = crypto.encryption().symmetric().decrypt({
           key: botKey,
           ciphertext: integrationAuth.refreshCiphertext,
           iv: integrationAuth.refreshIV,
-          tag: integrationAuth.refreshTag
+          tag: integrationAuth.refreshTag,
+          keySize: SymmetricKeySize.Bits128
         });
 
         if (integrationAuth.accessExpiresAt && integrationAuth.accessExpiresAt < new Date()) {
@@ -620,8 +686,18 @@ export const integrationAuthServiceFactory = ({
             integrationAuth?.url,
             integrationAuth.metadata as Record<string, string>
           );
-          const refreshEncToken = encryptSymmetric128BitHexKeyUTF8(tokenDetails.refreshToken, botKey);
-          const accessEncToken = encryptSymmetric128BitHexKeyUTF8(tokenDetails.accessToken, botKey);
+
+          const refreshEncToken = crypto.encryption().symmetric().encrypt({
+            plaintext: tokenDetails.refreshToken,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
+
+          const accessEncToken = crypto.encryption().symmetric().encrypt({
+            plaintext: tokenDetails.accessToken,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
           accessToken = tokenDetails.accessToken;
           await integrationAuthDAL.updateById(integrationAuth.id, {
             refreshIV: refreshEncToken.iv,
@@ -637,11 +713,12 @@ export const integrationAuthServiceFactory = ({
       if (!accessToken) throw new BadRequestError({ message: "Missing access token" });
 
       if (integrationAuth.accessIdTag && integrationAuth.accessIdIV && integrationAuth.accessIdCiphertext) {
-        accessId = decryptSymmetric128BitHexKeyUTF8({
+        accessId = crypto.encryption().symmetric().decrypt({
           key: botKey,
           ciphertext: integrationAuth.accessIdCiphertext,
           iv: integrationAuth.accessIdIV,
-          tag: integrationAuth.accessIdTag
+          tag: integrationAuth.accessIdTag,
+          keySize: SymmetricKeySize.Bits128
         });
       }
     }
@@ -667,7 +744,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
 
@@ -701,7 +779,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
 
@@ -731,7 +810,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -772,7 +852,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -800,7 +881,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -874,7 +956,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -921,7 +1004,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -955,7 +1039,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1013,7 +1098,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1049,7 +1135,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1090,7 +1177,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1130,7 +1218,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1170,7 +1259,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1209,7 +1299,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1249,7 +1340,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1317,7 +1409,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1391,7 +1484,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1441,7 +1535,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1489,7 +1584,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1557,7 +1653,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1598,7 +1695,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1710,7 +1808,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Delete, ProjectPermissionSub.Integrations);
 
@@ -1733,7 +1832,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Delete, ProjectPermissionSub.Integrations);
 
@@ -1766,7 +1866,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(sourcePermission).throwUnlessCan(
@@ -1779,7 +1880,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(targetPermission).throwUnlessCan(
@@ -1812,7 +1914,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
 
@@ -1846,7 +1949,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);
@@ -1886,7 +1990,8 @@ export const integrationAuthServiceFactory = ({
       actorId,
       projectId: integrationAuth.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.Integrations);
     const { shouldUseSecretV2Bridge, botKey } = await projectBotService.getBotKey(integrationAuth.projectId);

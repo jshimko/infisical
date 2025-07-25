@@ -3,6 +3,7 @@
 import { ForbiddenError, subject } from "@casl/ability";
 
 import {
+  ActionProjectType,
   ProjectMembershipRole,
   ProjectUpgradeStatus,
   ProjectVersion,
@@ -28,11 +29,8 @@ import { TSecretApprovalRequestSecretDALFactory } from "@app/ee/services/secret-
 import { TSecretApprovalRequestServiceFactory } from "@app/ee/services/secret-approval-request/secret-approval-request-service";
 import { TSecretSnapshotServiceFactory } from "@app/ee/services/secret-snapshot/secret-snapshot-service";
 import { getConfig } from "@app/lib/config/env";
-import {
-  buildSecretBlindIndexFromName,
-  decryptSymmetric128BitHexKeyUTF8,
-  encryptSymmetric128BitHexKeyUTF8
-} from "@app/lib/crypto";
+import { buildSecretBlindIndexFromName, SymmetricKeySize } from "@app/lib/crypto";
+import { crypto } from "@app/lib/crypto/cryptography";
 import { BadRequestError, ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
 import { groupBy, pick } from "@app/lib/fn";
 import { logger } from "@app/lib/logger";
@@ -48,6 +46,7 @@ import { ChangeType } from "../folder-commit/folder-commit-service";
 import { TProjectDALFactory } from "../project/project-dal";
 import { TProjectBotServiceFactory } from "../project-bot/project-bot-service";
 import { TProjectEnvDALFactory } from "../project-env/project-env-dal";
+import { TReminderServiceFactory } from "../reminder/reminder-types";
 import { TSecretBlindIndexDALFactory } from "../secret-blind-index/secret-blind-index-dal";
 import { TSecretFolderDALFactory } from "../secret-folder/secret-folder-dal";
 import { TSecretImportDALFactory } from "../secret-import/secret-import-dal";
@@ -131,6 +130,7 @@ type TSecretServiceFactoryDep = {
     "insertMany" | "insertApprovalSecretTags"
   >;
   licenseService: Pick<TLicenseServiceFactory, "getPlan">;
+  reminderService: Pick<TReminderServiceFactory, "createReminder">;
 };
 
 export type TSecretServiceFactory = ReturnType<typeof secretServiceFactory>;
@@ -153,7 +153,8 @@ export const secretServiceFactory = ({
   secretApprovalRequestSecretDAL,
   secretV2BridgeService,
   secretApprovalRequestService,
-  licenseService
+  licenseService,
+  reminderService
 }: TSecretServiceFactoryDep) => {
   const getSecretReference = async (projectId: string) => {
     // if bot key missing means e2e still exist
@@ -161,12 +162,16 @@ export const secretServiceFactory = ({
     return (el: { ciphertext?: string; iv: string; tag: string }) =>
       projectBot?.botKey
         ? getAllNestedSecretReferences(
-            decryptSymmetric128BitHexKeyUTF8({
-              ciphertext: el.ciphertext || "",
-              iv: el.iv,
-              tag: el.tag,
-              key: projectBot.botKey
-            })
+            crypto
+              .encryption()
+              .symmetric()
+              .decrypt({
+                ciphertext: el.ciphertext || "",
+                iv: el.iv,
+                tag: el.tag,
+                key: projectBot.botKey,
+                keySize: SymmetricKeySize.Bits128
+              })
           )
         : undefined;
   };
@@ -211,7 +216,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -328,7 +334,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -488,7 +495,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -546,7 +554,8 @@ export const secretServiceFactory = ({
           await secretQueueService.removeSecretReminder(
             {
               repeatDays: secret.secretReminderRepeatDays,
-              secretId: secret.id
+              secretId: secret.id,
+              projectId
             },
             tx
           );
@@ -603,7 +612,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     let paths: { folderId: string; path: string }[] = [];
@@ -708,7 +718,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     throwIfMissingSecretReadValueOrDescribePermission(permission, ProjectPermissionSecretActions.ReadValue, {
       environment,
@@ -813,7 +824,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretActions.Create,
@@ -899,7 +911,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -1021,7 +1034,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretActions.Delete,
@@ -1072,7 +1086,8 @@ export const secretServiceFactory = ({
           await secretQueueService.removeSecretReminder(
             {
               repeatDays: secret.secretReminderRepeatDays,
-              secretId: secret.id
+              secretId: secret.id,
+              projectId
             },
             tx
           );
@@ -1127,6 +1142,8 @@ export const secretServiceFactory = ({
     | "environment"
     | "tagSlugs"
     | "search"
+    | "includeTagsInSearch"
+    | "includeMetadataInSearch"
   >) => {
     const { shouldUseSecretV2Bridge } = await projectBotService.getBotKey(projectId);
 
@@ -1660,8 +1677,6 @@ export const secretServiceFactory = ({
                 secretComment,
                 secretValue,
                 tagIds,
-                reminderNote: secretReminderNote,
-                reminderRepeatDays: secretReminderRepeatDays,
                 secretMetadata
               }
             ]
@@ -1696,9 +1711,28 @@ export const secretServiceFactory = ({
         message: `Project bot for project with ID '${projectId}' not found. Please upgrade your project.`,
         name: "bot_not_found_error"
       });
-    const secretKeyEncrypted = encryptSymmetric128BitHexKeyUTF8(secretName, botKey);
-    const secretValueEncrypted = encryptSymmetric128BitHexKeyUTF8(secretValue || "", botKey);
-    const secretCommentEncrypted = encryptSymmetric128BitHexKeyUTF8(secretComment || "", botKey);
+
+    const secretKeyEncrypted = crypto.encryption().symmetric().encrypt({
+      plaintext: secretName,
+      key: botKey,
+      keySize: SymmetricKeySize.Bits128
+    });
+    const secretValueEncrypted = crypto
+      .encryption()
+      .symmetric()
+      .encrypt({
+        plaintext: secretValue || "",
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
+      });
+    const secretCommentEncrypted = crypto
+      .encryption()
+      .symmetric()
+      .encrypt({
+        plaintext: secretComment || "",
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
+      });
     if (policy) {
       const approval = await secretApprovalRequestService.generateSecretApprovalRequest({
         policy,
@@ -1824,9 +1858,6 @@ export const secretServiceFactory = ({
                 secretComment,
                 secretValue,
                 tagIds,
-                reminderNote: secretReminderNote,
-                reminderRepeatDays: secretReminderRepeatDays,
-                secretReminderRecipients,
                 secretMetadata
               }
             ]
@@ -1835,9 +1866,6 @@ export const secretServiceFactory = ({
         return { type: SecretProtectionType.Approval as const, approval };
       }
       const secret = await secretV2BridgeService.updateSecret({
-        secretReminderRepeatDays,
-        secretReminderNote,
-        secretReminderRecipients,
         skipMultilineEncoding,
         tagIds,
         secretComment,
@@ -1855,6 +1883,21 @@ export const secretServiceFactory = ({
         secretValue,
         secretMetadata
       });
+
+      if (secretReminderRepeatDays) {
+        await reminderService.createReminder({
+          actor,
+          actorId,
+          actorOrgId,
+          actorAuthMethod,
+          reminder: {
+            secretId: secret.id,
+            message: secretReminderNote,
+            repeatDays: secretReminderRepeatDays,
+            recipients: secretReminderRecipients
+          }
+        });
+      }
       return { type: SecretProtectionType.Direct as const, secret };
     }
 
@@ -1864,9 +1907,31 @@ export const secretServiceFactory = ({
         name: "bot_not_found_error"
       });
 
-    const secretValueEncrypted = encryptSymmetric128BitHexKeyUTF8(secretValue || "", botKey);
-    const secretCommentEncrypted = encryptSymmetric128BitHexKeyUTF8(secretComment || "", botKey);
-    const secretKeyEncrypted = encryptSymmetric128BitHexKeyUTF8(newSecretName || secretName, botKey);
+    const secretValueEncrypted = crypto
+      .encryption()
+      .symmetric()
+      .encrypt({
+        plaintext: secretValue || "",
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
+      });
+    const secretCommentEncrypted = crypto
+      .encryption()
+      .symmetric()
+      .encrypt({
+        plaintext: secretComment || "",
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
+      });
+
+    const secretKeyEncrypted = crypto
+      .encryption()
+      .symmetric()
+      .encrypt({
+        plaintext: newSecretName || secretName,
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
+      });
 
     if (policy) {
       const approval = await secretApprovalRequestService.generateSecretApprovalRequest({
@@ -2110,11 +2175,30 @@ export const secretServiceFactory = ({
         message: `Project bot for project with ID '${projectId}' not found. Please upgrade your project.`,
         name: "bot_not_found_error"
       });
+
     const sanitizedSecrets = inputSecrets.map(
       ({ secretComment, secretKey, metadata, tagIds, secretValue, skipMultilineEncoding }) => {
-        const secretKeyEncrypted = encryptSymmetric128BitHexKeyUTF8(secretKey, botKey);
-        const secretValueEncrypted = encryptSymmetric128BitHexKeyUTF8(secretValue || "", botKey);
-        const secretCommentEncrypted = encryptSymmetric128BitHexKeyUTF8(secretComment || "", botKey);
+        const secretKeyEncrypted = crypto.encryption().symmetric().encrypt({
+          plaintext: secretKey,
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
+        });
+        const secretValueEncrypted = crypto
+          .encryption()
+          .symmetric()
+          .encrypt({
+            plaintext: secretValue || "",
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
+        const secretCommentEncrypted = crypto
+          .encryption()
+          .symmetric()
+          .encrypt({
+            plaintext: secretComment || "",
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
         return {
           secretName: secretKey,
           skipMultilineEncoding,
@@ -2246,6 +2330,29 @@ export const secretServiceFactory = ({
         secrets: inputSecrets,
         mode
       });
+
+      await Promise.all(
+        inputSecrets
+          .filter((el) => el.secretReminderRepeatDays)
+          .map(async (secret) => {
+            await reminderService.createReminder({
+              actor,
+              actorId,
+              actorOrgId,
+              actorAuthMethod,
+              reminder: {
+                secretId: secrets.find(
+                  (el) =>
+                    (el.secretKey === secret.secretKey || el.secretKey === secret.newSecretName) &&
+                    el.secretPath === (secret.secretPath || secretPath)
+                )?.id,
+                message: secret.secretReminderNote,
+                repeatDays: secret.secretReminderRepeatDays
+              }
+            });
+          })
+      );
+
       return { type: SecretProtectionType.Direct as const, secrets };
     }
 
@@ -2254,6 +2361,7 @@ export const secretServiceFactory = ({
         message: `Project bot for project with ID '${projectId}' not found. Please upgrade your project.`,
         name: "bot_not_found_error"
       });
+
     const sanitizedSecrets = inputSecrets.map(
       ({
         secretComment,
@@ -2265,9 +2373,30 @@ export const secretServiceFactory = ({
         secretReminderNote,
         secretReminderRepeatDays
       }) => {
-        const secretKeyEncrypted = encryptSymmetric128BitHexKeyUTF8(newSecretName || secretKey, botKey);
-        const secretValueEncrypted = encryptSymmetric128BitHexKeyUTF8(secretValue || "", botKey);
-        const secretCommentEncrypted = encryptSymmetric128BitHexKeyUTF8(secretComment || "", botKey);
+        const secretKeyEncrypted = crypto
+          .encryption()
+          .symmetric()
+          .encrypt({
+            plaintext: newSecretName || secretKey,
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
+        const secretValueEncrypted = crypto
+          .encryption()
+          .symmetric()
+          .encrypt({
+            plaintext: secretValue || "",
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
+        const secretCommentEncrypted = crypto
+          .encryption()
+          .symmetric()
+          .encrypt({
+            plaintext: secretComment || "",
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
+          });
         return {
           secretName: secretKey,
           newSecretName,
@@ -2468,7 +2597,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId: folder.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.SecretRollback);
     const secretVersions = await secretVersionDAL.findBySecretId(secretId, {
@@ -2476,12 +2606,14 @@ export const secretServiceFactory = ({
       limit,
       sort: [["createdAt", "desc"]]
     });
+
     return secretVersions.map((el) => {
-      const secretKey = decryptSymmetric128BitHexKeyUTF8({
+      const secretKey = crypto.encryption().symmetric().decrypt({
         ciphertext: secret.secretKeyCiphertext,
         iv: secret.secretKeyIV,
         tag: secret.secretKeyTag,
-        key: botKey
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
       });
 
       const secretValueHidden = !hasSecretReadValueOrDescribePermission(
@@ -2558,7 +2690,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId: project.id,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -2663,7 +2796,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId: project.id,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     ForbiddenError.from(permission).throwUnlessCan(
@@ -2769,7 +2903,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     if (!hasRole(ProjectMembershipRole.Admin))
@@ -2798,11 +2933,12 @@ export const secretServiceFactory = ({
         secrets.map(({ id, secretValueCiphertext, secretValueIV, secretValueTag }) => ({
           secretId: id,
           references: getAllNestedSecretReferences(
-            decryptSymmetric128BitHexKeyUTF8({
+            crypto.encryption().symmetric().decrypt({
               ciphertext: secretValueCiphertext,
               iv: secretValueIV,
               tag: secretValueTag,
-              key: botKey
+              key: botKey,
+              keySize: SymmetricKeySize.Bits128
             })
           )
         })),
@@ -2853,7 +2989,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId: project.id,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const { botKey } = await projectBotService.getBotKey(project.id);
@@ -2902,11 +3039,12 @@ export const secretServiceFactory = ({
     const destinationActions = [ProjectPermissionSecretActions.Create, ProjectPermissionSecretActions.Edit] as const;
 
     const decryptedSourceSecrets = sourceSecrets.map((secret) => {
-      const secretKey = decryptSymmetric128BitHexKeyUTF8({
+      const secretKey = crypto.encryption().symmetric().decrypt({
         ciphertext: secret.secretKeyCiphertext,
         iv: secret.secretKeyIV,
         tag: secret.secretKeyTag,
-        key: botKey
+        key: botKey,
+        keySize: SymmetricKeySize.Bits128
       });
 
       for (const destinationAction of destinationActions) {
@@ -2942,11 +3080,12 @@ export const secretServiceFactory = ({
       return {
         ...secret,
         secretKey,
-        secretValue: decryptSymmetric128BitHexKeyUTF8({
+        secretValue: crypto.encryption().symmetric().decrypt({
           ciphertext: secret.secretValueCiphertext,
           iv: secret.secretValueIV,
           tag: secret.secretValueTag,
-          key: botKey
+          key: botKey,
+          keySize: SymmetricKeySize.Bits128
         })
       };
     });
@@ -2967,17 +3106,19 @@ export const secretServiceFactory = ({
       const decryptedDestinationSecrets = destinationSecretsFromDB.map((secret) => {
         return {
           ...secret,
-          secretKey: decryptSymmetric128BitHexKeyUTF8({
+          secretKey: crypto.encryption().symmetric().decrypt({
             ciphertext: secret.secretKeyCiphertext,
             iv: secret.secretKeyIV,
             tag: secret.secretKeyTag,
-            key: botKey
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
           }),
-          secretValue: decryptSymmetric128BitHexKeyUTF8({
+          secretValue: crypto.encryption().symmetric().decrypt({
             ciphertext: secret.secretValueCiphertext,
             iv: secret.secretValueIV,
             tag: secret.secretValueTag,
-            key: botKey
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
           })
         };
       });
@@ -3256,7 +3397,8 @@ export const secretServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     if (!hasRole(ProjectMembershipRole.Admin))
@@ -3284,7 +3426,8 @@ export const secretServiceFactory = ({
       actorId: actor.id,
       projectId: params.projectId,
       actorAuthMethod: actor.authMethod,
-      actorOrgId: actor.orgId
+      actorOrgId: actor.orgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     const secrets = secretV2BridgeService.getSecretsByFolderMappings({ ...params, userId: actor.id }, permission);

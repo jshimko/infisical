@@ -1,8 +1,8 @@
 import { ForbiddenError } from "@casl/ability";
-import jwt from "jsonwebtoken";
 
 import { OrgMembershipStatus, TableName, TSamlConfigs, TSamlConfigsUpdate, TUsers } from "@app/db/schemas";
 import { getConfig } from "@app/lib/config/env";
+import { crypto } from "@app/lib/crypto";
 import { BadRequestError, ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
 import { AuthTokenType } from "@app/services/auth/auth-type";
 import { TAuthTokenServiceFactory } from "@app/services/auth-token/auth-token-service";
@@ -311,13 +311,6 @@ export const samlConfigServiceFactory = ({
       });
     } else {
       const plan = await licenseService.getPlan(orgId);
-      if (plan?.slug !== "enterprise" && plan?.memberLimit && plan.membersUsed >= plan.memberLimit) {
-        // limit imposed on number of members allowed / number of members used exceeds the number of members allowed
-        throw new BadRequestError({
-          message: "Failed to create new member via SAML due to member limit reached. Upgrade plan to add more members."
-        });
-      }
-
       if (plan?.slug !== "enterprise" && plan?.identityLimit && plan.identitiesUsed >= plan.identityLimit) {
         // limit imposed on number of identities allowed / number of identities used exceeds the number of identities allowed
         throw new BadRequestError({
@@ -417,9 +410,9 @@ export const samlConfigServiceFactory = ({
     }
     await licenseService.updateSubscriptionOrgMemberCount(organization.id);
 
-    const isUserCompleted = Boolean(user.isAccepted);
+    const isUserCompleted = Boolean(user.isAccepted && user.isEmailVerified);
     const userEnc = await userDAL.findUserEncKeyByUserId(user.id);
-    const providerAuthToken = jwt.sign(
+    const providerAuthToken = crypto.jwt().sign(
       {
         authTokenType: AuthTokenType.PROVIDER_TOKEN,
         userId: user.id,

@@ -1,12 +1,12 @@
 import { OrgMembershipRole } from "@app/db/schemas";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
-import { infisicalSymmetricEncypt } from "@app/lib/crypto/encryption";
-import { ForbiddenRequestError } from "@app/lib/errors";
+import { crypto } from "@app/lib/crypto/cryptography";
+import { BadRequestError, ForbiddenRequestError } from "@app/lib/errors";
 
 import { TUserDALFactory } from "../user/user-dal";
-import { decryptEnvKeyDataFn, parseEnvKeyDataFn } from "./external-migration-fns";
+import { decryptEnvKeyDataFn, importVaultDataFn, parseEnvKeyDataFn } from "./external-migration-fns";
 import { TExternalMigrationQueueFactory } from "./external-migration-queue";
-import { TImportEnvKeyDataCreate } from "./external-migration-types";
+import { ImportType, TImportEnvKeyDataDTO, TImportVaultDataDTO } from "./external-migration-types";
 
 type TExternalMigrationServiceFactoryDep = {
   permissionService: TPermissionServiceFactory;
@@ -28,7 +28,11 @@ export const externalMigrationServiceFactory = ({
     actorId,
     actorOrgId,
     actorAuthMethod
-  }: TImportEnvKeyDataCreate) => {
+  }: TImportEnvKeyDataDTO) => {
+    if (crypto.isFipsModeEnabled()) {
+      throw new BadRequestError({ message: "EnvKey migration is not supported when running in FIPS mode." });
+    }
+
     const { membership } = await permissionService.getOrgPermission(
       actor,
       actorId,
@@ -52,15 +56,69 @@ export const externalMigrationServiceFactory = ({
       actorAuthMethod
     });
 
-    const encrypted = infisicalSymmetricEncypt(stringifiedJson);
+    const encrypted = crypto.encryption().symmetric().encryptWithRootEncryptionKey(stringifiedJson);
 
     await externalMigrationQueue.startImport({
       actorEmail: user.email!,
-      data: encrypted
+      data: {
+        importType: ImportType.EnvKey,
+        ...encrypted
+      }
+    });
+  };
+
+  const importVaultData = async ({
+    vaultAccessToken,
+    vaultNamespace,
+    mappingType,
+    vaultUrl,
+    actor,
+    actorId,
+    actorOrgId,
+    actorAuthMethod
+  }: TImportVaultDataDTO) => {
+    const { membership } = await permissionService.getOrgPermission(
+      actor,
+      actorId,
+      actorOrgId,
+      actorAuthMethod,
+      actorOrgId
+    );
+
+    if (membership.role !== OrgMembershipRole.Admin) {
+      throw new ForbiddenRequestError({ message: "Only admins can import data" });
+    }
+
+    const user = await userDAL.findById(actorId);
+
+    const vaultData = await importVaultDataFn({
+      vaultAccessToken,
+      vaultNamespace,
+      vaultUrl,
+      mappingType
+    });
+
+    const stringifiedJson = JSON.stringify({
+      data: vaultData,
+      actor,
+      actorId,
+      actorOrgId,
+      actorAuthMethod
+    });
+
+    const encrypted = crypto.encryption().symmetric().encryptWithRootEncryptionKey(stringifiedJson);
+
+    await externalMigrationQueue.startImport({
+      actorEmail: user.email!,
+      data: {
+        importType: ImportType.Vault,
+        ...encrypted
+      }
     });
   };
 
   return {
-    importEnvKeyData
+    importEnvKeyData,
+    importVaultData
   };
 };

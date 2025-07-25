@@ -9,8 +9,10 @@ import { TAzureDevOpsConnection } from "./azure-devops-connection";
 import { TAzureKeyVaultConnection } from "./azure-key-vault-connection";
 import { TBitbucketConnection } from "./bitbucket-connection";
 import { TCamundaConnection } from "./camunda-connection";
+import { TChecklyConnection } from "./checkly-connection";
 import { TCloudflareConnection } from "./cloudflare-connection";
 import { TDatabricksConnection } from "./databricks-connection";
+import { TDigitalOceanConnection } from "./digital-ocean";
 import { TFlyioConnection } from "./flyio-connection";
 import { TGcpConnection } from "./gcp-connection";
 import { TGitHubConnection } from "./github-connection";
@@ -23,9 +25,12 @@ import { TLdapConnection } from "./ldap-connection";
 import { TMsSqlConnection } from "./mssql-connection";
 import { TMySqlConnection } from "./mysql-connection";
 import { TOCIConnection } from "./oci-connection";
+import { TOktaConnection } from "./okta-connection";
 import { TOracleDBConnection } from "./oracledb-connection";
 import { TPostgresConnection } from "./postgres-connection";
+import { TRailwayConnection } from "./railway-connection";
 import { TRenderConnection } from "./render-connection";
+import { TSupabaseConnection } from "./supabase-connection";
 import { TTeamCityConnection } from "./teamcity-connection";
 import { TTerraformCloudConnection } from "./terraform-cloud-connection";
 import { TVercelConnection } from "./vercel-connection";
@@ -41,6 +46,7 @@ export * from "./azure-devops-connection";
 export * from "./azure-key-vault-connection";
 export * from "./bitbucket-connection";
 export * from "./camunda-connection";
+export * from "./checkly-connection";
 export * from "./cloudflare-connection";
 export * from "./databricks-connection";
 export * from "./flyio-connection";
@@ -55,9 +61,12 @@ export * from "./ldap-connection";
 export * from "./mssql-connection";
 export * from "./mysql-connection";
 export * from "./oci-connection";
+export * from "./okta-connection";
 export * from "./oracledb-connection";
 export * from "./postgres-connection";
+export * from "./railway-connection";
 export * from "./render-connection";
+export * from "./supabase-connection";
 export * from "./teamcity-connection";
 export * from "./terraform-cloud-connection";
 export * from "./vercel-connection";
@@ -95,7 +104,12 @@ export type TAppConnection =
   | TGitLabConnection
   | TCloudflareConnection
   | TBitbucketConnection
-  | TZabbixConnection;
+  | TZabbixConnection
+  | TRailwayConnection
+  | TChecklyConnection
+  | TSupabaseConnection
+  | TDigitalOceanConnection
+  | TOktaConnection;
 
 export type TAvailableAppConnection = Pick<TAppConnection, "name" | "id">;
 
@@ -107,11 +121,20 @@ export type TAvailableAppConnectionsResponse = { appConnections: TAvailableAppCo
 
 export type TCreateAppConnectionDTO = Pick<
   TAppConnection,
-  "name" | "credentials" | "method" | "app" | "description" | "isPlatformManagedCredentials"
+  | "name"
+  | "credentials"
+  | "method"
+  | "app"
+  | "description"
+  | "isPlatformManagedCredentials"
+  | "gatewayId"
 >;
 
 export type TUpdateAppConnectionDTO = Partial<
-  Pick<TAppConnection, "name" | "credentials" | "description" | "isPlatformManagedCredentials">
+  Pick<
+    TAppConnection,
+    "name" | "credentials" | "description" | "isPlatformManagedCredentials" | "gatewayId"
+  >
 > & {
   connectionId: string;
   app: AppConnection;
@@ -154,4 +177,9 @@ export type TAppConnectionMap = {
   [AppConnection.Cloudflare]: TCloudflareConnection;
   [AppConnection.Bitbucket]: TBitbucketConnection;
   [AppConnection.Zabbix]: TZabbixConnection;
+  [AppConnection.Railway]: TRailwayConnection;
+  [AppConnection.Checkly]: TChecklyConnection;
+  [AppConnection.Supabase]: TSupabaseConnection;
+  [AppConnection.DigitalOcean]: TDigitalOceanConnection;
+  [AppConnection.Okta]: TOktaConnection;
 };

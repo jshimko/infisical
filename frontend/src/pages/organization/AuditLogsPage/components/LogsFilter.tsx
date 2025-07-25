@@ -29,6 +29,7 @@ import {
 } from "@app/hooks/api/auditLogs/constants";
 import { EventType } from "@app/hooks/api/auditLogs/enums";
 import { UserAgentType } from "@app/hooks/api/auth/types";
+import { Workspace } from "@app/hooks/api/workspace/types";
 
 import { LogFilterItem } from "./LogFilterItem";
 import { auditLogFilterFormSchema, Presets, TAuditLogFilterFormData } from "./types";
@@ -43,6 +44,7 @@ type Props = {
   presets?: Presets;
   setFilter: (data: TAuditLogFilterFormData) => void;
   filter: TAuditLogFilterFormData;
+  project?: Workspace;
 };
 
 const getActiveFilterCount = (filter: TAuditLogFilterFormData) => {
@@ -69,7 +71,7 @@ const getActiveFilterCount = (filter: TAuditLogFilterFormData) => {
   return filterCount;
 };
 
-export const LogsFilter = ({ presets, setFilter, filter }: Props) => {
+export const LogsFilter = ({ presets, setFilter, filter, project }: Props) => {
   const { data: workspaces = [] } = useGetUserWorkspaces();
   const { currentOrg } = useOrganization();
 
@@ -90,7 +92,7 @@ export const LogsFilter = ({ presets, setFilter, filter }: Props) => {
       values: filter
     });
   const selectedEventTypes = watch("eventType") as EventType[] | undefined;
-  const selectedProject = watch("project");
+  const selectedProject = project ?? watch("project");
 
   const showSecretsSection =
     selectedEventTypes?.some(
@@ -270,48 +272,50 @@ export const LogsFilter = ({ presets, setFilter, filter }: Props) => {
                   )}
                 />
               </LogFilterItem>
-              <LogFilterItem
-                label="Project"
-                onClear={() => {
-                  resetField("project");
-                  resetField("environment");
-                  setValue("secretPath", "");
-                  setValue("secretKey", "");
-                }}
-              >
-                <Controller
-                  control={control}
-                  name="project"
-                  render={({ field: { onChange, value }, fieldState: { error } }) => (
-                    <FormControl
-                      errorText={error?.message}
-                      isError={Boolean(error)}
-                      className="mb-0 w-full"
-                    >
-                      <FilterableSelect
-                        value={value}
-                        isClearable
-                        onChange={(e) => {
-                          if (e === null) {
-                            setValue("secretPath", "");
-                            setValue("secretKey", "");
-                          }
-                          resetField("environment");
-                          onChange(e);
-                        }}
-                        placeholder="All projects"
-                        options={workspacesInOrg.map(({ name, id, defaultProduct }) => ({
-                          name,
-                          id,
-                          type: defaultProduct
-                        }))}
-                        getOptionValue={(option) => option.id}
-                        getOptionLabel={(option) => option.name}
-                      />
-                    </FormControl>
-                  )}
-                />
-              </LogFilterItem>
+              {!project && (
+                <LogFilterItem
+                  label="Project"
+                  onClear={() => {
+                    resetField("project");
+                    resetField("environment");
+                    setValue("secretPath", "");
+                    setValue("secretKey", "");
+                  }}
+                >
+                  <Controller
+                    control={control}
+                    name="project"
+                    render={({ field: { onChange, value }, fieldState: { error } }) => (
+                      <FormControl
+                        errorText={error?.message}
+                        isError={Boolean(error)}
+                        className="mb-0 w-full"
+                      >
+                        <FilterableSelect
+                          value={value}
+                          isClearable
+                          onChange={(e) => {
+                            if (e === null) {
+                              setValue("secretPath", "");
+                              setValue("secretKey", "");
+                            }
+                            resetField("environment");
+                            onChange(e);
+                          }}
+                          placeholder="All projects"
+                          options={workspacesInOrg.map(({ name, id, type }) => ({
+                            name,
+                            id,
+                            type
+                          }))}
+                          getOptionValue={(option) => option.id}
+                          getOptionLabel={(option) => option.name}
+                        />
+                      </FormControl>
+                    )}
+                  />
+                </LogFilterItem>
+              )}
               <AnimatePresence initial={false}>
                 {showSecretsSection && (
                   <motion.div
@@ -366,6 +370,7 @@ export const LogsFilter = ({ presets, setFilter, filter }: Props) => {
                     </LogFilterItem>
                     <LogFilterItem
                       label="Secret Path"
+                      tooltipText="Enter the exact secret path (wildcards like * are not supported)"
                       hoverTooltip={
                         !selectedProject
                           ? "Select a project before filtering by secret path."
@@ -380,10 +385,7 @@ export const LogsFilter = ({ presets, setFilter, filter }: Props) => {
                         control={control}
                         name="secretPath"
                         render={({ field: { onChange, value, ...field } }) => (
-                          <FormControl
-                            tooltipText="Filter audit logs related to events that occurred on a specific secret path."
-                            className="w-full"
-                          >
+                          <FormControl className="w-full">
                             <Input
                               placeholder="Enter secret path"
                               className="disabled:cursor-not-allowed"
@@ -403,6 +405,7 @@ export const LogsFilter = ({ presets, setFilter, filter }: Props) => {
                           ? "Select a project before filtering by secret key."
                           : undefined
                       }
+                      tooltipText="Enter the exact secret key name (wildcards like * are not supported)"
                       className={twMerge(!selectedProject && "opacity-50")}
                       label="Secret Key"
                       onClear={() => {
@@ -413,10 +416,7 @@ export const LogsFilter = ({ presets, setFilter, filter }: Props) => {
                         control={control}
                         name="secretKey"
                         render={({ field: { onChange, value, ...field } }) => (
-                          <FormControl
-                            tooltipText="Filter audit logs related to a specific secret."
-                            className="w-full"
-                          >
+                          <FormControl className="w-full">
                             <Input
                               isDisabled={!selectedProject}
                               {...field}

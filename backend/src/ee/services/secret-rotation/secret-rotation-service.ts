@@ -1,8 +1,8 @@
 import { ForbiddenError, subject } from "@casl/ability";
 import Ajv from "ajv";
 
-import { ProjectVersion, TableName } from "@app/db/schemas";
-import { decryptSymmetric128BitHexKeyUTF8 } from "@app/lib/crypto/encryption";
+import { ActionProjectType, ProjectVersion, TableName } from "@app/db/schemas";
+import { crypto, SymmetricKeySize } from "@app/lib/crypto/cryptography";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { TProjectPermission } from "@app/lib/types";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
@@ -66,7 +66,8 @@ export const secretRotationServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretRotationActions.Read,
@@ -97,7 +98,8 @@ export const secretRotationServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretRotationActions.Read,
@@ -213,7 +215,8 @@ export const secretRotationServiceFactory = ({
       actorId,
       projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretRotationActions.Read,
@@ -227,6 +230,7 @@ export const secretRotationServiceFactory = ({
 
     if (!botKey) throw new NotFoundError({ message: `Project bot not found for project with ID '${projectId}'` });
     const docs = await secretRotationDAL.find({ projectId });
+
     return docs.map((el) => ({
       ...el,
       outputs: el.outputs.map((output) => ({
@@ -234,11 +238,12 @@ export const secretRotationServiceFactory = ({
         secret: {
           id: output.secret.id,
           version: output.secret.version,
-          secretKey: decryptSymmetric128BitHexKeyUTF8({
+          secretKey: crypto.encryption().symmetric().decrypt({
             ciphertext: output.secret.secretKeyCiphertext,
             iv: output.secret.secretKeyIV,
             tag: output.secret.secretKeyTag,
-            key: botKey
+            key: botKey,
+            keySize: SymmetricKeySize.Bits128
           })
         }
       }))
@@ -261,7 +266,8 @@ export const secretRotationServiceFactory = ({
       actorId,
       projectId: project.id,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretRotationActions.Edit,
@@ -281,7 +287,8 @@ export const secretRotationServiceFactory = ({
       actorId,
       projectId: doc.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionSecretRotationActions.Delete,

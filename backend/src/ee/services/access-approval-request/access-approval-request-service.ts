@@ -1,7 +1,7 @@
 import slugify from "@sindresorhus/slugify";
 import msFn from "ms";
 
-import { ProjectMembershipRole } from "@app/db/schemas";
+import { ActionProjectType, ProjectMembershipRole } from "@app/db/schemas";
 import { getConfig } from "@app/lib/config/env";
 import { BadRequestError, ForbiddenRequestError, NotFoundError } from "@app/lib/errors";
 import { groupBy } from "@app/lib/fn";
@@ -107,7 +107,8 @@ export const accessApprovalRequestServiceFactory = ({
       actorId,
       projectId: project.id,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     if (!membership) {
       throw new ForbiddenRequestError({ message: "You are not a member of this project" });
@@ -216,7 +217,7 @@ export const accessApprovalRequestServiceFactory = ({
       );
 
       const requesterFullName = `${requestedByUser.firstName} ${requestedByUser.lastName}`;
-      const approvalUrl = `${cfg.SITE_URL}/projects/${project.id}/secret-manager/approval`;
+      const approvalUrl = `${cfg.SITE_URL}/projects/secret-management/${project.id}/approval`;
 
       await triggerWorkflowIntegrationNotification({
         input: {
@@ -289,7 +290,8 @@ export const accessApprovalRequestServiceFactory = ({
       actorId,
       projectId: project.id,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     if (!membership) {
       throw new ForbiddenRequestError({ message: "You are not a member of this project" });
@@ -335,7 +337,8 @@ export const accessApprovalRequestServiceFactory = ({
       actorId,
       projectId: accessApprovalRequest.projectId,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
 
     if (!membership) {
@@ -354,11 +357,17 @@ export const accessApprovalRequestServiceFactory = ({
       status === ApprovalStatus.APPROVED;
 
     const isApprover = policy.approvers.find((approver) => approver.userId === actorId);
-    // If user is (not an approver OR cant self approve) AND can't bypass policy
-    if ((!isApprover || (!policy.allowedSelfApprovals && isSelfApproval)) && cannotBypassUnderSoftEnforcement) {
-      throw new BadRequestError({
-        message: "Failed to review access approval request. Users are not authorized to review their own request."
-      });
+
+    const isSelfRejection = isSelfApproval && status === ApprovalStatus.REJECTED;
+
+    // users can always reject (cancel) their own requests
+    if (!isSelfRejection) {
+      // If user is (not an approver OR cant self approve) AND can't bypass policy
+      if ((!isApprover || (!policy.allowedSelfApprovals && isSelfApproval)) && cannotBypassUnderSoftEnforcement) {
+        throw new BadRequestError({
+          message: "Failed to review access approval request. Users are not authorized to review their own request."
+        });
+      }
     }
 
     if (
@@ -414,7 +423,7 @@ export const accessApprovalRequestServiceFactory = ({
       );
 
       // Only throw if actor is not the approver and not bypassing
-      if (!isApproverOfTheSequence && !isBreakGlassApprovalAttempt) {
+      if (!isApproverOfTheSequence && !isBreakGlassApprovalAttempt && !isSelfRejection) {
         throw new BadRequestError({ message: "You are not a reviewer in this step" });
       }
     }
@@ -545,7 +554,7 @@ export const accessApprovalRequestServiceFactory = ({
                   bypassReason: bypassReason || "No reason provided",
                   secretPath: policy.secretPath || "/",
                   environment,
-                  approvalUrl: `${cfg.SITE_URL}/projects/${project.id}/secret-manager/approval`,
+                  approvalUrl: `${cfg.SITE_URL}/projects/secret-management/${project.id}/approval`,
                   requestType: "access"
                 },
                 template: SmtpTemplates.AccessSecretRequestBypassed
@@ -576,7 +585,8 @@ export const accessApprovalRequestServiceFactory = ({
       actorId,
       projectId: project.id,
       actorAuthMethod,
-      actorOrgId
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
     });
     if (!membership) {
       throw new ForbiddenRequestError({ message: "You are not a member of this project" });
