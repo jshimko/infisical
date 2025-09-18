@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiRequest } from "@app/config/request";
 
-import { workspaceKeys } from "../workspace";
+import { projectKeys } from "../projects";
 import { CaType } from "./enums";
 import { caKeys } from "./queries";
 import {
@@ -39,6 +39,10 @@ export const useUpdateCa = () => {
       queryClient.invalidateQueries({
         queryKey: caKeys.getCaByNameAndProjectId(caName, projectId)
       });
+      // Invalidate external CAs list
+      queryClient.invalidateQueries({
+        queryKey: caKeys.listExternalCasByProjectId(projectId)
+      });
     }
   });
 };
@@ -56,6 +60,10 @@ export const useCreateCa = () => {
     onSuccess: (_, { type, projectId }) => {
       queryClient.invalidateQueries({
         queryKey: caKeys.listCasByTypeAndProjectId(type, projectId)
+      });
+      // Invalidate external CAs list
+      queryClient.invalidateQueries({
+        queryKey: caKeys.listExternalCasByProjectId(projectId)
       });
     }
   });
@@ -78,6 +86,10 @@ export const useDeleteCa = () => {
     onSuccess: (_, { type, projectId }) => {
       queryClient.invalidateQueries({
         queryKey: caKeys.listCasByTypeAndProjectId(type, projectId)
+      });
+      // Invalidate external CAs list
+      queryClient.invalidateQueries({
+        queryKey: caKeys.listExternalCasByProjectId(projectId)
       });
     }
   });
@@ -106,8 +118,8 @@ export const useImportCaCertificate = (projectId: string) => {
       );
       return data;
     },
-    onSuccess: (_, { caId, projectSlug }) => {
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.getWorkspaceCas({ projectSlug }) });
+    onSuccess: (_, { caId }) => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.getProjectCas({ projectId }) });
       queryClient.invalidateQueries({ queryKey: caKeys.getCaCerts(caId) });
       queryClient.invalidateQueries({ queryKey: caKeys.getCaCert(caId) });
       queryClient.invalidateQueries({
@@ -130,7 +142,7 @@ export const useCreateCertificate = () => {
     },
     onSuccess: (_, { projectSlug }) => {
       queryClient.invalidateQueries({
-        queryKey: workspaceKeys.forWorkspaceCertificates(projectSlug)
+        queryKey: projectKeys.forProjectCertificates(projectSlug)
       });
     }
   });
@@ -146,8 +158,8 @@ export const useRenewCa = () => {
       );
       return data;
     },
-    onSuccess: (_, { caId, projectSlug }) => {
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.getWorkspaceCas({ projectSlug }) });
+    onSuccess: ({ projectId }, { caId }) => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.getProjectCas({ projectId }) });
       queryClient.invalidateQueries({ queryKey: caKeys.getCaById(caId) });
       queryClient.invalidateQueries({ queryKey: caKeys.getCaCert(caId) });
       queryClient.invalidateQueries({ queryKey: caKeys.getCaCerts(caId) });

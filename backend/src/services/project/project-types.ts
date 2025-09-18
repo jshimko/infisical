@@ -42,12 +42,13 @@ export type TCreateProjectDTO = {
   actorAuthMethod: ActorAuthMethod;
   actorId: string;
   actorOrgId?: string;
-  workspaceName: string;
-  workspaceDescription?: string;
+  projectName: string;
+  projectDescription?: string;
   slug?: string;
   kmsKeyId?: string;
   createDefaultEnvs?: boolean;
   template?: string;
+  pitVersionLimit?: number;
   tx?: Knex;
   type?: ProjectType;
 };
@@ -78,7 +79,7 @@ export type TUpdateProjectVersionLimitDTO = {
 
 export type TUpdateAuditLogsRetentionDTO = {
   auditLogsRetentionDays: number;
-  workspaceSlug: string;
+  filter: Filter;
 } & Omit<TProjectPermission, "projectId">;
 
 export type TUpdateProjectNameDTO = {
@@ -90,12 +91,14 @@ export type TUpdateProjectDTO = {
   update: {
     name?: string;
     description?: string;
+    pitVersionLimit?: number;
     autoCapitalization?: boolean;
     hasDeleteProtection?: boolean;
     defaultProduct?: ProjectType;
     slug?: string;
     secretSharing?: boolean;
     showSnapshotsLegacy?: boolean;
+    secretDetectionIgnoreValues?: string[];
   };
 } & Omit<TProjectPermission, "projectId">;
 
@@ -116,7 +119,7 @@ export type TUpgradeProjectDTO = {
 } & TProjectPermission;
 
 export type AddUserToWsDTO = {
-  decryptKey: TProjectKeys & { sender: { publicKey: string } };
+  decryptKey: TProjectKeys & { sender: { publicKey?: string } };
   userPrivateKey: string;
   members: {
     orgMembershipId: string;
@@ -220,6 +223,7 @@ export type TSearchProjectsDTO = {
   limit?: number;
   offset?: number;
   orderBy?: SearchProjectSortBy;
+  projectIds?: string[];
   orderDirection?: SortDirection;
 };
 

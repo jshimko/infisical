@@ -101,6 +101,9 @@ import {
   TGateways,
   TGatewaysInsert,
   TGatewaysUpdate,
+  TGatewaysV2,
+  TGatewaysV2Insert,
+  TGatewaysV2Update,
   TGitAppInstallSessions,
   TGitAppInstallSessionsInsert,
   TGitAppInstallSessionsUpdate,
@@ -179,6 +182,9 @@ import {
   TIncidentContacts,
   TIncidentContactsInsert,
   TIncidentContactsUpdate,
+  TInstanceRelayConfig,
+  TInstanceRelayConfigInsert,
+  TInstanceRelayConfigUpdate,
   TIntegrationAuths,
   TIntegrationAuthsInsert,
   TIntegrationAuthsUpdate,
@@ -191,6 +197,9 @@ import {
   TInternalKms,
   TInternalKmsInsert,
   TInternalKmsUpdate,
+  TKeyValueStore,
+  TKeyValueStoreInsert,
+  TKeyValueStoreUpdate,
   TKmipClientCertificates,
   TKmipClientCertificatesInsert,
   TKmipClientCertificatesUpdate,
@@ -230,9 +239,15 @@ import {
   TOrgGatewayConfig,
   TOrgGatewayConfigInsert,
   TOrgGatewayConfigUpdate,
+  TOrgGatewayConfigV2,
+  TOrgGatewayConfigV2Insert,
+  TOrgGatewayConfigV2Update,
   TOrgMemberships,
   TOrgMembershipsInsert,
   TOrgMembershipsUpdate,
+  TOrgRelayConfig,
+  TOrgRelayConfigInsert,
+  TOrgRelayConfigUpdate,
   TOrgRoles,
   TOrgRolesInsert,
   TOrgRolesUpdate,
@@ -290,6 +305,9 @@ import {
   TRateLimit,
   TRateLimitInsert,
   TRateLimitUpdate,
+  TRelays,
+  TRelaysInsert,
+  TRelaysUpdate,
   TResourceMetadata,
   TResourceMetadataInsert,
   TResourceMetadataUpdate,
@@ -490,6 +508,16 @@ import {
   TWorkflowIntegrationsUpdate
 } from "@app/db/schemas";
 import {
+  TAccessApprovalPoliciesEnvironments,
+  TAccessApprovalPoliciesEnvironmentsInsert,
+  TAccessApprovalPoliciesEnvironmentsUpdate
+} from "@app/db/schemas/access-approval-policies-environments";
+import {
+  TIdentityAuthTemplates,
+  TIdentityAuthTemplatesInsert,
+  TIdentityAuthTemplatesUpdate
+} from "@app/db/schemas/identity-auth-templates";
+import {
   TIdentityLdapAuths,
   TIdentityLdapAuthsInsert,
   TIdentityLdapAuthsUpdate
@@ -511,10 +539,20 @@ import {
   TRemindersRecipientsUpdate
 } from "@app/db/schemas/reminders-recipients";
 import {
+  TSecretApprovalPoliciesEnvironments,
+  TSecretApprovalPoliciesEnvironmentsInsert,
+  TSecretApprovalPoliciesEnvironmentsUpdate
+} from "@app/db/schemas/secret-approval-policies-environments";
+import {
   TSecretReminderRecipients,
   TSecretReminderRecipientsInsert,
   TSecretReminderRecipientsUpdate
 } from "@app/db/schemas/secret-reminder-recipients";
+import {
+  TUserNotifications,
+  TUserNotificationsInsert,
+  TUserNotificationsUpdate
+} from "@app/db/schemas/user-notifications";
 
 declare module "knex" {
   namespace Knex {
@@ -868,6 +906,11 @@ declare module "knex/types/tables" {
       TIdentityProjectAdditionalPrivilegeInsert,
       TIdentityProjectAdditionalPrivilegeUpdate
     >;
+    [TableName.IdentityAuthTemplate]: KnexOriginal.CompositeTableType<
+      TIdentityAuthTemplates,
+      TIdentityAuthTemplatesInsert,
+      TIdentityAuthTemplatesUpdate
+    >;
 
     [TableName.AccessApprovalPolicy]: KnexOriginal.CompositeTableType<
       TAccessApprovalPolicies,
@@ -885,6 +928,12 @@ declare module "knex/types/tables" {
       TAccessApprovalPoliciesBypassers,
       TAccessApprovalPoliciesBypassersInsert,
       TAccessApprovalPoliciesBypassersUpdate
+    >;
+
+    [TableName.AccessApprovalPolicyEnvironment]: KnexOriginal.CompositeTableType<
+      TAccessApprovalPoliciesEnvironments,
+      TAccessApprovalPoliciesEnvironmentsInsert,
+      TAccessApprovalPoliciesEnvironmentsUpdate
     >;
 
     [TableName.AccessApprovalRequest]: KnexOriginal.CompositeTableType<
@@ -934,6 +983,11 @@ declare module "knex/types/tables" {
       TSecretApprovalRequestSecretTags,
       TSecretApprovalRequestSecretTagsInsert,
       TSecretApprovalRequestSecretTagsUpdate
+    >;
+    [TableName.SecretApprovalPolicyEnvironment]: KnexOriginal.CompositeTableType<
+      TSecretApprovalPoliciesEnvironments,
+      TSecretApprovalPoliciesEnvironmentsInsert,
+      TSecretApprovalPoliciesEnvironmentsUpdate
     >;
     [TableName.SecretRotation]: KnexOriginal.CompositeTableType<
       TSecretRotations,
@@ -1202,6 +1256,17 @@ declare module "knex/types/tables" {
       TSecretScanningResourcesInsert,
       TSecretScanningResourcesUpdate
     >;
+    [TableName.InstanceRelayConfig]: KnexOriginal.CompositeTableType<
+      TInstanceRelayConfig,
+      TInstanceRelayConfigInsert,
+      TInstanceRelayConfigUpdate
+    >;
+    [TableName.OrgRelayConfig]: KnexOriginal.CompositeTableType<
+      TOrgRelayConfig,
+      TOrgRelayConfigInsert,
+      TOrgRelayConfigUpdate
+    >;
+    [TableName.Relay]: KnexOriginal.CompositeTableType<TRelays, TRelaysInsert, TRelaysUpdate>;
     [TableName.SecretScanningScan]: KnexOriginal.CompositeTableType<
       TSecretScanningScans,
       TSecretScanningScansInsert,
@@ -1222,6 +1287,22 @@ declare module "knex/types/tables" {
       TRemindersRecipients,
       TRemindersRecipientsInsert,
       TRemindersRecipientsUpdate
+    >;
+    [TableName.OrgGatewayConfigV2]: KnexOriginal.CompositeTableType<
+      TOrgGatewayConfigV2,
+      TOrgGatewayConfigV2Insert,
+      TOrgGatewayConfigV2Update
+    >;
+    [TableName.GatewayV2]: KnexOriginal.CompositeTableType<TGatewaysV2, TGatewaysV2Insert, TGatewaysV2Update>;
+    [TableName.UserNotifications]: KnexOriginal.CompositeTableType<
+      TUserNotifications,
+      TUserNotificationsInsert,
+      TUserNotificationsUpdate
+    >;
+    [TableName.KeyValueStore]: KnexOriginal.CompositeTableType<
+      TKeyValueStore,
+      TKeyValueStoreInsert,
+      TKeyValueStoreUpdate
     >;
   }
 }

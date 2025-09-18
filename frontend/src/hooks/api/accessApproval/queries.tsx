@@ -16,15 +16,15 @@ import {
 export const accessApprovalKeys = {
   getAccessApprovalPolicies: (projectSlug: string) =>
     [{ projectSlug }, "access-approval-policies"] as const,
-  getAccessApprovalPolicyOfABoard: (workspaceId: string, environment: string) =>
-    [{ workspaceId, environment }, "access-approval-policy"] as const,
+  getAccessApprovalPolicyOfABoard: (projectId: string, environment: string) =>
+    [{ projectId, environment }, "access-approval-policy"] as const,
 
   getAccessApprovalRequests: (
     projectSlug: string,
     envSlug?: string,
     requestedBy?: string,
     bypassReason?: string
-  ) => [{ projectSlug, envSlug, requestedBy, bypassReason }, "access-approvals-requests"] as const,
+  ) => ["access-approvals-requests", projectSlug, envSlug, requestedBy, bypassReason] as const,
   getAccessApprovalRequestCount: (projectSlug: string, policyId?: string) =>
     [{ projectSlug }, "access-approval-request-count", ...(policyId ? [policyId] : [])] as const
 };

@@ -11,16 +11,14 @@ const adminRoute = route("/admin", [
     route("/environment", "admin/EnvironmentPage/route.tsx"),
     route("/integrations", "admin/IntegrationsPage/route.tsx"),
     route("/caching", "admin/CachingPage/route.tsx"),
-    route("/resources/organizations", "admin/OrganizationResourcesPage/route.tsx"),
-    route("/resources/user-identities", "admin/UserIdentitiesResourcesPage/route.tsx"),
-    route("/resources/machine-identities", "admin/MachineIdentitiesResourcesPage/route.tsx")
+    route("/resources/overview", "admin/ResourceOverviewPage/route.tsx"),
+    route("/access-management", "admin/AccessManagementPage/route.tsx")
   ])
 ]);
 
 const organizationRoutes = route("/organization", [
   route("/projects", "organization/ProjectsPage/route.tsx"),
   route("/access-management", "organization/AccessManagementPage/route.tsx"),
-  route("/admin", "organization/AdminPage/route.tsx"),
   route("/audit-logs", "organization/AuditLogsPage/route.tsx"),
   route("/billing", "organization/BillingPage/route.tsx"),
   route("/secret-sharing", [
@@ -65,6 +63,7 @@ const secretManagerRoutes = route("/projects/secret-management/$projectId", [
     ]),
     route("/audit-logs", "project/AuditLogsPage/route-secret-manager.tsx"),
     route("/access-management", "project/AccessControlPage/route-secret-manager.tsx"),
+    route("/app-connections", "project/AppConnectionsPage/route-secret-manager.tsx"),
     route("/roles/$roleSlug", "project/RoleDetailsBySlugPage/route-secret-manager.tsx"),
     route("/identities/$identityId", "project/IdentityDetailsByIDPage/route-secret-manager.tsx"),
     route("/members/$membershipId", "project/MemberDetailsByIDPage/route-secret-manager.tsx"),
@@ -315,6 +314,7 @@ const certManagerRoutes = route("/projects/cert-management/$projectId", [
     route("/settings", "cert-manager/SettingsPage/route.tsx"),
     route("/audit-logs", "project/AuditLogsPage/route-cert-manager.tsx"),
     route("/access-management", "project/AccessControlPage/route-cert-manager.tsx"),
+    route("/app-connections", "project/AppConnectionsPage/route-cert-manager.tsx"),
     route("/roles/$roleSlug", "project/RoleDetailsBySlugPage/route-cert-manager.tsx"),
     route("/identities/$identityId", "project/IdentityDetailsByIDPage/route-cert-manager.tsx"),
     route("/members/$membershipId", "project/MemberDetailsByIDPage/route-cert-manager.tsx"),
@@ -363,6 +363,7 @@ const secretScanningRoutes = route("/projects/secret-scanning/$projectId", [
     route("/settings", "secret-scanning/SettingsPage/route.tsx"),
     route("/audit-logs", "project/AuditLogsPage/route-secret-scanning.tsx"),
     route("/access-management", "project/AccessControlPage/route-secret-scanning.tsx"),
+    route("/app-connections", "project/AppConnectionsPage/route-secret-scanning.tsx"),
     route("/roles/$roleSlug", "project/RoleDetailsBySlugPage/route-secret-scanning.tsx"),
     route("/identities/$identityId", "project/IdentityDetailsByIDPage/route-secret-scanning.tsx"),
     route("/members/$membershipId", "project/MemberDetailsByIDPage/route-secret-scanning.tsx"),

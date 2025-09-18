@@ -16,7 +16,7 @@ import { ProjectPermissionCan } from "@app/components/permissions";
 import { DeleteActionModal, IconButton, Modal, ModalContent } from "@app/components/v2";
 import { Tooltip } from "@app/components/v2/Tooltip/Tooltip";
 import { ROUTE_PATHS } from "@app/const/routes";
-import { ProjectPermissionActions, ProjectPermissionSub } from "@app/context";
+import { ProjectPermissionActions, ProjectPermissionSub, useSubscription } from "@app/context";
 import { usePopUp } from "@app/hooks";
 import { useDeleteFolder, useUpdateFolder } from "@app/hooks/api";
 import { PendingAction, TSecretFolder } from "@app/hooks/api/secretFolders/types";
@@ -33,17 +33,19 @@ import { FolderForm } from "../ActionBar/FolderForm";
 type Props = {
   folders?: TSecretFolder[];
   environment: string;
-  workspaceId: string;
+  projectId: string;
   secretPath?: string;
   onNavigateToFolder: (path: string) => void;
+  canNavigate: boolean;
 };
 
 export const FolderListView = ({
   folders = [],
   environment,
-  workspaceId,
+  projectId,
   secretPath = "/",
-  onNavigateToFolder
+  onNavigateToFolder,
+  canNavigate
 }: Props) => {
   const { popUp, handlePopUpToggle, handlePopUpOpen, handlePopUpClose } = usePopUp([
     "updateFolder",
@@ -54,6 +56,7 @@ export const FolderListView = ({
     from: ROUTE_PATHS.SecretManager.SecretDashboardPage.id,
     select: (el) => el.secretPath
   });
+  const { subscription } = useSubscription();
 
   const { mutateAsync: updateFolder } = useUpdateFolder();
   const { mutateAsync: deleteFolder } = useDeleteFolder();
@@ -86,7 +89,7 @@ export const FolderListView = ({
           };
 
           addPendingChange(updatedCreate, {
-            workspaceId,
+            projectId,
             environment,
             secretPath
           });
@@ -103,7 +106,7 @@ export const FolderListView = ({
           };
 
           addPendingChange(updateChange, {
-            workspaceId,
+            projectId,
             environment,
             secretPath
           });
@@ -118,7 +121,7 @@ export const FolderListView = ({
         name: newFolderName,
         path: secretPath,
         environment,
-        projectId: workspaceId,
+        projectId,
         description: newFolderDescription
       });
       handlePopUpClose("updateFolder");
@@ -137,7 +140,7 @@ export const FolderListView = ({
 
   const handleDeletePending = (id: string) => {
     removePendingChange(id, "folder", {
-      workspaceId,
+      projectId,
       environment,
       secretPath
     });
@@ -158,7 +161,7 @@ export const FolderListView = ({
         };
 
         addPendingChange(pendingFolderDelete, {
-          workspaceId,
+          projectId,
           environment,
           secretPath
         });
@@ -171,7 +174,7 @@ export const FolderListView = ({
         folderId: folderData.id,
         path: secretPath,
         environment,
-        projectId: workspaceId
+        projectId
       });
 
       handlePopUpClose("deleteFolder");
@@ -189,7 +192,7 @@ export const FolderListView = ({
   };
 
   const handleFolderClick = (name: string, isPending?: boolean) => {
-    if (isPending) {
+    if (isPending || !canNavigate) {
       return;
     }
     const path = `${secretPathQueryparam === "/" ? "" : secretPathQueryparam}/${name}`;
@@ -319,6 +322,11 @@ export const FolderListView = ({
         isOpen={popUp.deleteFolder.isOpen}
         deleteKey={(popUp.deleteFolder?.data as TSecretFolder)?.name}
         title="Do you want to delete this folder?"
+        subTitle={`This folder and all its contents will be removed. ${
+          subscription?.pitRecovery
+            ? "You can reverse this action by rolling back to a previous commit."
+            : "Rolling back to a previous commit isn't available on your current plan. Upgrade to enable this feature."
+        }`}
         onChange={(isOpen) => handlePopUpToggle("deleteFolder", isOpen)}
         onDeleteApproved={handleFolderDelete}
       />

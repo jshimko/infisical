@@ -8,10 +8,18 @@ import {
   validatePrivilegeChangeOperation
 } from "@app/ee/services/permission/permission-fns";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
+import { KeyStorePrefixes, TKeyStoreFactory } from "@app/keystore/keystore";
 import { getConfig } from "@app/lib/config/env";
 import { crypto } from "@app/lib/crypto/cryptography";
-import { BadRequestError, NotFoundError, PermissionBoundaryError, UnauthorizedError } from "@app/lib/errors";
+import {
+  BadRequestError,
+  NotFoundError,
+  PermissionBoundaryError,
+  RateLimitError,
+  UnauthorizedError
+} from "@app/lib/errors";
 import { checkIPAgainstBlocklist, extractIPDetails, isValidIpOrCidr, TIp } from "@app/lib/ip";
+import { logger } from "@app/lib/logger";
 
 import { ActorType, AuthTokenType } from "../auth/auth-type";
 import { TIdentityOrgDALFactory } from "../identity/identity-org-dal";
@@ -22,6 +30,7 @@ import { TIdentityUaClientSecretDALFactory } from "./identity-ua-client-secret-d
 import { TIdentityUaDALFactory } from "./identity-ua-dal";
 import {
   TAttachUaDTO,
+  TClearUaLockoutsDTO,
   TCreateUaClientSecretDTO,
   TGetUaClientSecretsDTO,
   TGetUaDTO,
@@ -38,9 +47,18 @@ type TIdentityUaServiceFactoryDep = {
   identityOrgMembershipDAL: TIdentityOrgDALFactory;
   permissionService: Pick<TPermissionServiceFactory, "getOrgPermission">;
   licenseService: Pick<TLicenseServiceFactory, "getPlan">;
+  keyStore: Pick<
+    TKeyStoreFactory,
+    "setItemWithExpiry" | "getItem" | "deleteItem" | "getKeysByPattern" | "deleteItems" | "acquireLock"
+  >;
 };
 
 export type TIdentityUaServiceFactory = ReturnType<typeof identityUaServiceFactory>;
+
+type LockoutObject = {
+  lockedOut: boolean;
+  failedAttempts: number;
+};
 
 export const identityUaServiceFactory = ({
   identityUaDAL,
@@ -48,31 +66,53 @@ export const identityUaServiceFactory = ({
   identityAccessTokenDAL,
   identityOrgMembershipDAL,
   permissionService,
-  licenseService
+  licenseService,
+  keyStore
 }: TIdentityUaServiceFactoryDep) => {
   const login = async (clientId: string, clientSecret: string, ip: string) => {
     const identityUa = await identityUaDAL.findOne({ clientId });
     if (!identityUa) {
-      throw new NotFoundError({
-        message: "No identity with specified client ID was found"
+      throw new UnauthorizedError({
+        message: "Invalid credentials"
       });
     }
-
-    const identityMembershipOrg = await identityOrgMembershipDAL.findOne({ identityId: identityUa.identityId });
 
     checkIPAgainstBlocklist({
       ipAddress: ip,
       trustedIps: identityUa.clientSecretTrustedIps as TIp[]
     });
+
+    const LOCKOUT_KEY = `lockout:identity:${identityUa.identityId}:${IdentityAuthMethod.UNIVERSAL_AUTH}:${clientId}`;
+
+    const lockoutRaw = await keyStore.getItem(LOCKOUT_KEY);
+
+    let lockout: LockoutObject | undefined;
+    if (lockoutRaw) {
+      lockout = JSON.parse(lockoutRaw) as LockoutObject;
+    }
+
+    if (lockout && lockout.lockedOut) {
+      throw new UnauthorizedError({
+        message: "This identity auth method is temporarily locked, please try again later"
+      });
+    }
+
+    const identityMembershipOrg = await identityOrgMembershipDAL.findOne({ identityId: identityUa.identityId });
+    if (!identityMembershipOrg) {
+      throw new UnauthorizedError({
+        message: "Invalid credentials"
+      });
+    }
+
     const clientSecretPrefix = clientSecret.slice(0, 4);
-    const clientSecrtInfo = await identityUaClientSecretDAL.find({
+    const clientSecretInfo = await identityUaClientSecretDAL.find({
       identityUAId: identityUa.id,
       isClientSecretRevoked: false,
       clientSecretPrefix
     });
 
-    let validClientSecretInfo: (typeof clientSecrtInfo)[0] | null = null;
-    for await (const info of clientSecrtInfo) {
+    let validClientSecretInfo: (typeof clientSecretInfo)[0] | null = null;
+    for await (const info of clientSecretInfo) {
       const isMatch = await crypto.hashing().compareHash(clientSecret, info.clientSecretHash);
 
       if (isMatch) {
@@ -81,7 +121,63 @@ export const identityUaServiceFactory = ({
       }
     }
 
-    if (!validClientSecretInfo) throw new UnauthorizedError({ message: "Invalid credentials" });
+    if (!validClientSecretInfo) {
+      if (identityUa.lockoutEnabled) {
+        let lock: Awaited<ReturnType<typeof keyStore.acquireLock>> | undefined;
+        try {
+          lock = await keyStore.acquireLock([KeyStorePrefixes.IdentityLockoutLock(LOCKOUT_KEY)], 300, {
+            retryCount: 3,
+            retryDelay: 300,
+            retryJitter: 100
+          });
+
+          // Re-fetch the latest lockout data while holding the lock
+          const lockoutRawNew = await keyStore.getItem(LOCKOUT_KEY);
+          if (lockoutRawNew) {
+            lockout = JSON.parse(lockoutRawNew) as LockoutObject;
+          } else {
+            lockout = {
+              lockedOut: false,
+              failedAttempts: 0
+            };
+          }
+
+          if (lockout.lockedOut) {
+            throw new UnauthorizedError({
+              message: "This identity auth method is temporarily locked, please try again later"
+            });
+          }
+
+          lockout.failedAttempts += 1;
+          if (lockout.failedAttempts >= identityUa.lockoutThreshold) {
+            lockout.lockedOut = true;
+          }
+
+          await keyStore.setItemWithExpiry(
+            LOCKOUT_KEY,
+            lockout.lockedOut ? identityUa.lockoutDurationSeconds : identityUa.lockoutCounterResetSeconds,
+            JSON.stringify(lockout)
+          );
+        } catch (e) {
+          if (lock === undefined) {
+            logger.info(
+              `identity login failed to acquire lock [identityId=${identityUa.identityId}] [authMethod=${IdentityAuthMethod.UNIVERSAL_AUTH}]`
+            );
+            throw new RateLimitError({ message: "Failed to acquire lock: rate limit exceeded" });
+          }
+          throw e;
+        } finally {
+          if (lock) {
+            await lock.release();
+          }
+        }
+      }
+
+      throw new UnauthorizedError({ message: "Invalid credentials" });
+    } else if (lockout) {
+      // If credentials are valid, clear any existing lockout record
+      await keyStore.deleteItem(LOCKOUT_KEY);
+    }
 
     const { clientSecretTTL, clientSecretNumUses, clientSecretNumUsesLimit } = validClientSecretInfo;
     if (Number(clientSecretTTL) > 0) {
@@ -101,7 +197,7 @@ export const identityUaServiceFactory = ({
       }
     }
 
-    if (clientSecretNumUsesLimit > 0 && clientSecretNumUses === clientSecretNumUsesLimit) {
+    if (clientSecretNumUsesLimit > 0 && clientSecretNumUses >= clientSecretNumUsesLimit) {
       // number of times client secret can be used for
       // a login operation reached
       await identityUaClientSecretDAL.updateById(validClientSecretInfo.id, {
@@ -127,7 +223,14 @@ export const identityUaServiceFactory = ({
 
     const identityAccessToken = await identityUaDAL.transaction(async (tx) => {
       const uaClientSecretDoc = await identityUaClientSecretDAL.incrementUsage(validClientSecretInfo!.id, tx);
-
+      await identityOrgMembershipDAL.updateById(
+        identityMembershipOrg.id,
+        {
+          lastLoginAuthMethod: IdentityAuthMethod.UNIVERSAL_AUTH,
+          lastLoginTime: new Date()
+        },
+        tx
+      );
       const newToken = await identityAccessTokenDAL.create(
         {
           identityId: identityUa.identityId,
@@ -184,7 +287,11 @@ export const identityUaServiceFactory = ({
     actor,
     actorOrgId,
     isActorSuperAdmin,
-    accessTokenPeriod
+    accessTokenPeriod,
+    lockoutEnabled,
+    lockoutThreshold,
+    lockoutDurationSeconds,
+    lockoutCounterResetSeconds
   }: TAttachUaDTO) => {
     await validateIdentityUpdateForSuperAdminPrivileges(identityId, isActorSuperAdmin);
 
@@ -254,7 +361,11 @@ export const identityUaServiceFactory = ({
           accessTokenTTL,
           accessTokenNumUsesLimit,
           accessTokenTrustedIps: JSON.stringify(reformattedAccessTokenTrustedIps),
-          accessTokenPeriod
+          accessTokenPeriod,
+          lockoutEnabled,
+          lockoutThreshold,
+          lockoutDurationSeconds,
+          lockoutCounterResetSeconds
         },
         tx
       );
@@ -274,7 +385,11 @@ export const identityUaServiceFactory = ({
     actorId,
     actorAuthMethod,
     actor,
-    actorOrgId
+    actorOrgId,
+    lockoutEnabled,
+    lockoutThreshold,
+    lockoutDurationSeconds,
+    lockoutCounterResetSeconds
   }: TUpdateUaDTO) => {
     const identityMembershipOrg = await identityOrgMembershipDAL.findOne({ identityId });
     if (!identityMembershipOrg) throw new NotFoundError({ message: `Failed to find identity with ID ${identityId}` });
@@ -350,7 +465,11 @@ export const identityUaServiceFactory = ({
       accessTokenPeriod,
       accessTokenTrustedIps: reformattedAccessTokenTrustedIps
         ? JSON.stringify(reformattedAccessTokenTrustedIps)
-        : undefined
+        : undefined,
+      lockoutEnabled,
+      lockoutThreshold,
+      lockoutDurationSeconds,
+      lockoutCounterResetSeconds
     });
     return { ...updatedUaAuth, orgId: identityMembershipOrg.orgId };
   };
@@ -701,6 +820,38 @@ export const identityUaServiceFactory = ({
     return { ...updatedClientSecret, identityId, orgId: identityMembershipOrg.orgId };
   };
 
+  const clearUniversalAuthLockouts = async ({
+    identityId,
+    actorId,
+    actor,
+    actorOrgId,
+    actorAuthMethod
+  }: TClearUaLockoutsDTO) => {
+    const identityMembershipOrg = await identityOrgMembershipDAL.findOne({ identityId });
+    if (!identityMembershipOrg) throw new NotFoundError({ message: `Failed to find identity with ID ${identityId}` });
+
+    if (!identityMembershipOrg.identity.authMethods.includes(IdentityAuthMethod.UNIVERSAL_AUTH)) {
+      throw new BadRequestError({
+        message: "The identity does not have universal auth"
+      });
+    }
+
+    const { permission } = await permissionService.getOrgPermission(
+      actor,
+      actorId,
+      identityMembershipOrg.orgId,
+      actorAuthMethod,
+      actorOrgId
+    );
+    ForbiddenError.from(permission).throwUnlessCan(OrgPermissionIdentityActions.Edit, OrgPermissionSubjects.Identity);
+
+    const deleted = await keyStore.deleteItems({
+      pattern: `lockout:identity:${identityId}:${IdentityAuthMethod.UNIVERSAL_AUTH}:*`
+    });
+
+    return { deleted, identityId, orgId: identityMembershipOrg.orgId };
+  };
+
   return {
     login,
     attachUniversalAuth,
@@ -710,6 +861,7 @@ export const identityUaServiceFactory = ({
     createUniversalAuthClientSecret,
     getUniversalAuthClientSecrets,
     revokeUniversalAuthClientSecret,
-    getUniversalAuthClientSecretById
+    getUniversalAuthClientSecretById,
+    clearUniversalAuthLockouts
   };
 };

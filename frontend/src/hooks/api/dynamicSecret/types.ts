@@ -37,7 +37,8 @@ export enum DynamicSecretProviders {
   Kubernetes = "kubernetes",
   Vertica = "vertica",
   GcpIam = "gcp-iam",
-  Github = "github"
+  Github = "github",
+  Couchbase = "couchbase"
 }
 
 export enum KubernetesDynamicSecretCredentialType {
@@ -56,6 +57,11 @@ export enum DynamicSecretAwsIamAuth {
   AssumeRole = "assume-role",
   AccessKey = "access-key",
   IRSA = "irsa"
+}
+
+export enum DynamicSecretAwsIamCredentialType {
+  IamUser = "iam-user",
+  TemporaryCredentials = "temporary-credentials"
 }
 
 export type TDynamicSecretProvider =
@@ -96,6 +102,7 @@ export type TDynamicSecretProvider =
       inputs:
         | {
             method: DynamicSecretAwsIamAuth.AccessKey;
+            credentialType: DynamicSecretAwsIamCredentialType;
             accessKey: string;
             secretAccessKey: string;
             region: string;
@@ -106,6 +113,7 @@ export type TDynamicSecretProvider =
           }
         | {
             method: DynamicSecretAwsIamAuth.AssumeRole;
+            credentialType: DynamicSecretAwsIamCredentialType;
             roleArn: string;
             region: string;
             awsPath?: string;
@@ -115,6 +123,7 @@ export type TDynamicSecretProvider =
           }
         | {
             method: DynamicSecretAwsIamAuth.IRSA;
+            credentialType: DynamicSecretAwsIamCredentialType;
             region: string;
             awsPath?: string;
             policyDocument?: string;
@@ -352,6 +361,38 @@ export type TDynamicSecretProvider =
         appId: number;
         installationId: number;
         privateKey: string;
+      };
+    }
+  | {
+      type: DynamicSecretProviders.Couchbase;
+      inputs: {
+        url: string;
+        orgId: string;
+        projectId: string;
+        clusterId: string;
+        roles: string[];
+        buckets:
+          | string
+          | Array<{
+              name: string;
+              scopes?: Array<{
+                name: string;
+                collections?: string[];
+              }>;
+            }>;
+        passwordRequirements?: {
+          length: number;
+          required: {
+            lowercase: number;
+            uppercase: number;
+            digits: number;
+            symbols: number;
+          };
+          allowedSymbols?: string;
+        };
+        auth: {
+          apiKey: string;
+        };
       };
     };
 

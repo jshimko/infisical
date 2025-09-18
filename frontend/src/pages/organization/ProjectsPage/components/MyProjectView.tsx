@@ -39,16 +39,22 @@ import {
   setUserTablePreference
 } from "@app/helpers/userTablePreferences";
 import { usePagination, useResetPageHelper } from "@app/hooks";
-import { useGetUserWorkspaces } from "@app/hooks/api";
+import { useGetUserProjects } from "@app/hooks/api";
 import { OrderByDirection } from "@app/hooks/api/generic/types";
+import { Project, ProjectType } from "@app/hooks/api/projects/types";
 import { useUpdateUserProjectFavorites } from "@app/hooks/api/users/mutation";
 import { useGetUserProjectFavorites } from "@app/hooks/api/users/queries";
-import { ProjectType, Workspace } from "@app/hooks/api/workspace/types";
+import {
+  ProjectListToggle,
+  ProjectListView
+} from "@app/pages/organization/ProjectsPage/components/ProjectListToggle";
 
 type Props = {
   onAddNewProject: () => void;
   onUpgradePlan: () => void;
   isAddingProjectsAllowed: boolean;
+  projectListView: ProjectListView;
+  onProjectListViewChange: (value: ProjectListView) => void;
 };
 
 enum ProjectOrderBy {
@@ -63,7 +69,9 @@ enum ProjectsViewMode {
 export const MyProjectView = ({
   onAddNewProject,
   onUpgradePlan,
-  isAddingProjectsAllowed
+  isAddingProjectsAllowed,
+  projectListView,
+  onProjectListViewChange
 }: Props) => {
   const navigate = useNavigate();
   const { currentOrg } = useOrganization();
@@ -71,7 +79,7 @@ export const MyProjectView = ({
     {}
   );
 
-  const { data: workspaces = [], isPending: isWorkspaceLoading } = useGetUserWorkspaces();
+  const { data: workspaces = [], isPending: isWorkspaceLoading } = useGetUserProjects();
   const {
     setPage,
     perPage,
@@ -128,7 +136,7 @@ export const MyProjectView = ({
 
   const { workspacesWithFaveProp } = useMemo(() => {
     const workspacesWithFav = filteredWorkspaces
-      .map((w): Workspace & { isFavorite: boolean } => ({
+      .map((w): Project & { isFavorite: boolean } => ({
         ...w,
         isFavorite: Boolean(projectFavorites?.includes(w.id))
       }))
@@ -180,12 +188,12 @@ export const MyProjectView = ({
     }
   };
 
-  const renderProjectGridItem = (workspace: Workspace, isFavorite: boolean) => (
+  const renderProjectGridItem = (workspace: Project, isFavorite: boolean) => (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
     <div
       onClick={() => {
         navigate({
-          to: getProjectHomePage(workspace.type),
+          to: getProjectHomePage(workspace.type, workspace.environments),
           params: {
             projectId: workspace.id
           }
@@ -234,12 +242,12 @@ export const MyProjectView = ({
       </p>
     </div>
   );
-  const renderProjectListItem = (workspace: Workspace, isFavorite: boolean, index: number) => (
+  const renderProjectListItem = (workspace: Project, isFavorite: boolean, index: number) => (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
     <div
       onClick={() => {
         navigate({
-          to: getProjectHomePage(workspace.type),
+          to: getProjectHomePage(workspace.type, workspace.environments),
           params: {
             projectId: workspace.id
           }
@@ -371,10 +379,10 @@ export const MyProjectView = ({
   return (
     <div>
       <div className="flex w-full flex-row">
-        <div className="flex-grow" />
+        <ProjectListToggle value={projectListView} onChange={onProjectListViewChange} />
         <Input
           className="h-[2.3rem] bg-mineshaft-800 text-sm placeholder-mineshaft-50 duration-200 focus:bg-mineshaft-700/80"
-          containerClassName="w-full"
+          containerClassName="w-full ml-2"
           placeholder="Search by project name..."
           value={searchFilter}
           onChange={(e) => setSearchFilter(e.target.value)}
@@ -441,7 +449,7 @@ export const MyProjectView = ({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="ml-2 flex rounded-md border border-mineshaft-600 bg-mineshaft-800 p-1">
+        <div className="ml-2 flex gap-x-0.5 rounded-md border border-mineshaft-600 bg-mineshaft-800 p-1">
           <IconButton
             variant="outline_bg"
             onClick={() => {
@@ -472,22 +480,26 @@ export const MyProjectView = ({
           </IconButton>
         </div>
         <OrgPermissionCan I={OrgPermissionActions.Create} an={OrgPermissionSubjects.Workspace}>
-          {(isAllowed) => (
-            <Button
-              isDisabled={!isAllowed}
-              colorSchema="secondary"
-              leftIcon={<FontAwesomeIcon icon={faPlus} />}
-              onClick={() => {
-                if (isAddingProjectsAllowed) {
-                  onAddNewProject();
-                } else {
-                  onUpgradePlan();
-                }
-              }}
-              className="ml-2"
-            >
-              Add New Project
-            </Button>
+          {(isOldProjectV1Allowed) => (
+            <OrgPermissionCan I={OrgPermissionActions.Create} an={OrgPermissionSubjects.Project}>
+              {(isAllowed) => (
+                <Button
+                  isDisabled={!isAllowed && !isOldProjectV1Allowed}
+                  colorSchema="secondary"
+                  leftIcon={<FontAwesomeIcon icon={faPlus} />}
+                  onClick={() => {
+                    if (isAddingProjectsAllowed) {
+                      onAddNewProject();
+                    } else {
+                      onUpgradePlan();
+                    }
+                  }}
+                  className="ml-2"
+                >
+                  Add New Project
+                </Button>
+              )}
+            </OrgPermissionCan>
           )}
         </OrgPermissionCan>
       </div>

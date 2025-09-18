@@ -1,9 +1,12 @@
+import { v4 as uuidv4 } from "uuid";
+
 import { ProjectMembershipRole } from "@app/db/schemas";
 import { TSecretRotationV2DALFactory } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-dal";
 import { SecretRotation } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-enums";
 import {
   getNextUtcRotationInterval,
-  getSecretRotationRotateSecretJobOptions
+  getSecretRotationRotateSecretJobOptions,
+  rotateSecretsFns
 } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-fns";
 import { SECRET_ROTATION_NAME_MAP } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-maps";
 import { TSecretRotationV2ServiceFactory } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-service";
@@ -14,6 +17,8 @@ import {
 import { getConfig } from "@app/lib/config/env";
 import { logger } from "@app/lib/logger";
 import { QueueJobs, QueueName, TQueueServiceFactory } from "@app/queue";
+import { TNotificationServiceFactory } from "@app/services/notification/notification-service";
+import { NotificationType } from "@app/services/notification/notification-types";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
 import { TProjectMembershipDALFactory } from "@app/services/project-membership/project-membership-dal";
 import { SmtpTemplates, TSmtpService } from "@app/services/smtp/smtp-service";
@@ -25,6 +30,7 @@ type TSecretRotationV2QueueServiceFactoryDep = {
   smtpService: Pick<TSmtpService, "sendMail">;
   projectMembershipDAL: Pick<TProjectMembershipDALFactory, "findAllProjectMembers">;
   projectDAL: Pick<TProjectDALFactory, "findById">;
+  notificationService: Pick<TNotificationServiceFactory, "createUserNotifications">;
 };
 
 export const secretRotationV2QueueServiceFactory = async ({
@@ -33,7 +39,8 @@ export const secretRotationV2QueueServiceFactory = async ({
   secretRotationV2Service,
   projectMembershipDAL,
   projectDAL,
-  smtpService
+  smtpService,
+  notificationService
 }: TSecretRotationV2QueueServiceFactoryDep) => {
   const appCfg = getConfig();
 
@@ -63,14 +70,34 @@ export const secretRotationV2QueueServiceFactory = async ({
               rotation.lastRotatedAt
             ).toISOString()}] [rotateAt=${new Date(rotation.nextRotationAt!).toISOString()}]`
           );
-          await queueService.queuePg(
-            QueueJobs.SecretRotationV2RotateSecrets,
-            {
-              rotationId: rotation.id,
-              queuedAt: currentTime
-            },
-            getSecretRotationRotateSecretJobOptions(rotation)
-          );
+
+          const data = {
+            rotationId: rotation.id,
+            queuedAt: currentTime
+          } as TSecretRotationRotateSecretsJobPayload;
+
+          if (appCfg.isTestMode) {
+            logger.warn("secretRotationV2Queue: Manually rotating secrets for test mode");
+            await rotateSecretsFns({
+              job: {
+                id: uuidv4(),
+                data,
+                retryCount: 0,
+                retryLimit: 0
+              },
+              secretRotationV2DAL,
+              secretRotationV2Service
+            });
+          } else {
+            await queueService.queuePg(
+              QueueJobs.SecretRotationV2RotateSecrets,
+              {
+                rotationId: rotation.id,
+                queuedAt: currentTime
+              },
+              getSecretRotationRotateSecretJobOptions(rotation)
+            );
+          }
         }
       } catch (error) {
         logger.error(error, "secretRotationV2Queue: Queue Rotations Error:");
@@ -87,38 +114,14 @@ export const secretRotationV2QueueServiceFactory = async ({
   await queueService.startPg<QueueName.SecretRotationV2>(
     QueueJobs.SecretRotationV2RotateSecrets,
     async ([job]) => {
-      const { rotationId, queuedAt, isManualRotation } = job.data as TSecretRotationRotateSecretsJobPayload;
-      const { retryCount, retryLimit } = job;
-
-      const logDetails = `[rotationId=${rotationId}] [jobId=${job.id}] retryCount=[${retryCount}/${retryLimit}]`;
-
-      try {
-        const secretRotation = await secretRotationV2DAL.findById(rotationId);
-
-        if (!secretRotation) throw new Error(`Secret rotation ${rotationId} not found`);
-
-        if (!secretRotation.isAutoRotationEnabled) {
-          logger.info(`secretRotationV2Queue: Skipping Rotation - Auto-Rotation Disabled Since Queue ${logDetails}`);
-        }
-
-        if (new Date(secretRotation.lastRotatedAt).getTime() >= new Date(queuedAt).getTime()) {
-          // rotated since being queued, skip rotation
-          logger.info(`secretRotationV2Queue: Skipping Rotation - Rotated Since Queue ${logDetails}`);
-          return;
-        }
-
-        await secretRotationV2Service.rotateGeneratedCredentials(secretRotation, {
-          jobId: job.id,
-          shouldSendNotification: true,
-          isFinalAttempt: retryCount === retryLimit,
-          isManualRotation
-        });
-
-        logger.info(`secretRotationV2Queue: Secrets Rotated ${logDetails}`);
-      } catch (error) {
-        logger.error(error, `secretRotationV2Queue: Failed to Rotate Secrets ${logDetails}`);
-        throw error;
-      }
+      await rotateSecretsFns({
+        job: {
+          ...job,
+          data: job.data as TSecretRotationRotateSecretsJobPayload
+        },
+        secretRotationV2DAL,
+        secretRotationV2Service
+      });
     },
     {
       batchSize: 1,
@@ -153,6 +156,19 @@ export const secretRotationV2QueueServiceFactory = async ({
 
         const rotationType = SECRET_ROTATION_NAME_MAP[type as SecretRotation];
 
+        const rotationPath = `/projects/secret-management/${projectId}/secrets/${environment.slug}`;
+
+        await notificationService.createUserNotifications(
+          projectAdmins.map((admin) => ({
+            userId: admin.userId,
+            orgId: project.orgId,
+            type: NotificationType.SECRET_ROTATION_FAILED,
+            title: "Secret Rotation Failed",
+            body: `Your **${rotationType}** rotation **${rotationName}** failed to rotate.`,
+            link: rotationPath
+          }))
+        );
+
         await smtpService.sendMail({
           recipients: projectAdmins.map((member) => member.user.email!).filter(Boolean),
           template: SmtpTemplates.SecretRotationFailed,
@@ -166,9 +182,7 @@ export const secretRotationV2QueueServiceFactory = async ({
             secretPath: folder.path,
             environment: environment.name,
             projectName: project.name,
-            rotationUrl: encodeURI(
-              `${appCfg.SITE_URL}/projects/secret-management/${projectId}/secrets/${environment.slug}`
-            )
+            rotationUrl: encodeURI(`${appCfg.SITE_URL}${rotationPath}`)
           }
         });
       } catch (error) {

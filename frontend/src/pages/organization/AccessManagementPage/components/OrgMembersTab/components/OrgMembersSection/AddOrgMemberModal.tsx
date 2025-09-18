@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { createNotification } from "@app/components/notifications";
+import { RoleOption } from "@app/components/roles";
 import {
   Button,
   FilterableSelect,
@@ -20,10 +21,10 @@ import {
   useAddUsersToOrg,
   useFetchServerStatus,
   useGetOrgRoles,
-  useGetUserWorkspaces
+  useGetUserProjects
 } from "@app/hooks/api";
+import { ProjectType, ProjectVersion } from "@app/hooks/api/projects/types";
 import { ProjectMembershipRole } from "@app/hooks/api/roles/types";
-import { ProjectType, ProjectVersion } from "@app/hooks/api/workspace/types";
 import { UsePopUpState } from "@app/hooks/usePopUp";
 
 import { OrgInviteLink } from "./OrgInviteLink";
@@ -45,7 +46,11 @@ const addMemberFormSchema = z.object({
     )
     .default([]),
   projectRoleSlug: z.string().min(1).default(DEFAULT_ORG_AND_PROJECT_MEMBER_ROLE_SLUG),
-  organizationRole: z.object({ name: z.string(), slug: z.string() })
+  organizationRole: z.object({
+    name: z.string(),
+    slug: z.string(),
+    description: z.string().optional()
+  })
 });
 
 type TAddMemberForm = z.infer<typeof addMemberFormSchema>;
@@ -71,7 +76,7 @@ export const AddOrgMemberModal = ({
   const { data: organizationRoles } = useGetOrgRoles(currentOrg?.id ?? "");
   const { data: serverDetails } = useFetchServerStatus();
   const { mutateAsync: addUsersMutateAsync } = useAddUsersToOrg();
-  const { data: projects, isPending: isProjectsLoading } = useGetUserWorkspaces({
+  const { data: projects, isPending: isProjectsLoading } = useGetUserProjects({
     includeRoles: true
   });
 
@@ -238,6 +243,7 @@ export const AddOrgMemberModal = ({
                     getOptionLabel={(option) => option.name}
                     value={value}
                     onChange={onChange}
+                    components={{ Option: RoleOption }}
                   />
                 </FormControl>
               )}

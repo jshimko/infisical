@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -37,7 +37,7 @@ import { FontAwesomeSpriteSymbols } from "./SecretListView.utils";
 type Props = {
   secrets?: SecretV3RawSanitized[];
   environment: string;
-  workspaceId: string;
+  projectId: string;
   secretPath?: string;
   tags?: WsTag[];
   isVisible?: boolean;
@@ -57,7 +57,7 @@ type Props = {
 export const SecretListView = ({
   secrets = [],
   environment,
-  workspaceId,
+  projectId,
   secretPath = "/",
   tags: wsTags = [],
   isVisible,
@@ -93,12 +93,17 @@ export const SecretListView = ({
     message:
       "You have unsaved changes. If you leave now, your work will be lost. Do you want to continue?",
     context: {
-      workspaceId,
+      projectId,
       environment,
       secretPath
     }
   });
   const { addPendingChange } = useBatchModeActions();
+
+  const pendingChangesRef = useRef(pendingChanges);
+  useEffect(() => {
+    pendingChangesRef.current = pendingChanges;
+  }, [pendingChanges]);
 
   const handleSecretOperation = async (
     operation: "create" | "update" | "delete",
@@ -135,7 +140,7 @@ export const SecretListView = ({
     if (operation === "delete") {
       await deleteSecretV3({
         environment,
-        workspaceId,
+        projectId,
         secretPath,
         secretKey: key,
         type,
@@ -156,7 +161,7 @@ export const SecretListView = ({
 
       await updateSecretV3({
         environment,
-        workspaceId,
+        projectId,
         secretPath,
         secretKey: key,
         ...(!isRotatedSecret && {
@@ -178,7 +183,7 @@ export const SecretListView = ({
     await createSecretV3(
       {
         environment,
-        workspaceId,
+        projectId,
         secretPath,
         secretKey: key,
         secretValue: value || "",
@@ -332,49 +337,39 @@ export const SecretListView = ({
               };
 
               addPendingChange(updatedCreate, {
-                workspaceId,
+                projectId,
                 environment,
                 secretPath
               });
             } else {
-              const trueOriginalSecret = getTrueOriginalSecret(orgSecret, pendingChanges.secrets);
+              const trueOriginalSecret = getTrueOriginalSecret(
+                orgSecret,
+                pendingChangesRef.current.secrets
+              );
 
               const updateChange: PendingSecretUpdate = {
                 id: orgSecret.id,
                 type: PendingAction.Update,
                 secretKey: trueOriginalSecret.key,
-                ...(key !== trueOriginalSecret.key && { newSecretName: key }),
-                ...(value !== trueOriginalSecret.value && {
-                  originalValue: trueOriginalSecret.value,
-                  secretValue: value
-                }),
-                ...(comment !== trueOriginalSecret.comment && {
-                  originalComment: trueOriginalSecret.comment,
-                  secretComment: comment
-                }),
-                ...(modSecret.skipMultilineEncoding !==
-                  trueOriginalSecret.skipMultilineEncoding && {
-                  originalSkipMultilineEncoding: trueOriginalSecret.skipMultilineEncoding,
-                  skipMultilineEncoding: modSecret.skipMultilineEncoding
-                }),
-                ...(!isSameTags && {
-                  originalTags:
-                    trueOriginalSecret.tags?.map((tag) => ({ id: tag.id, slug: tag.slug })) || [],
-                  tags: tags?.map((tag) => ({ id: tag.id, slug: tag.name || tag.slug || "" })) || []
-                }),
-                ...(JSON.stringify(secretMetadata) !==
-                  JSON.stringify(trueOriginalSecret.secretMetadata) && {
-                  originalSecretMetadata: trueOriginalSecret.secretMetadata || [],
-                  secretMetadata: secretMetadata || []
-                }),
-
+                newSecretName: key,
+                originalValue: trueOriginalSecret.value,
+                secretValue: value,
+                originalComment: trueOriginalSecret.comment,
+                secretComment: comment,
+                originalSkipMultilineEncoding: trueOriginalSecret.skipMultilineEncoding,
+                skipMultilineEncoding: modSecret.skipMultilineEncoding,
+                originalTags:
+                  trueOriginalSecret.tags?.map((tag) => ({ id: tag.id, slug: tag.slug })) || [],
+                tags: tags?.map((tag) => ({ id: tag.id, slug: tag.name || tag.slug || "" })) || [],
+                originalSecretMetadata: trueOriginalSecret.secretMetadata || [],
+                secretMetadata: secretMetadata || [],
                 timestamp: Date.now(),
                 resourceType: "secret",
                 existingSecret: orgSecret
               };
 
               addPendingChange(updateChange, {
-                workspaceId,
+                projectId,
                 environment,
                 secretPath
               });
@@ -405,27 +400,39 @@ export const SecretListView = ({
         }
         queryClient.invalidateQueries({
           queryKey: dashboardKeys.getDashboardSecrets({
-            projectId: workspaceId,
+            projectId,
             secretPath
           })
         });
         queryClient.invalidateQueries({
-          queryKey: secretKeys.getProjectSecret({ workspaceId, environment, secretPath })
+          queryKey: secretKeys.getProjectSecret({ projectId, environment, secretPath })
         });
         queryClient.invalidateQueries({
-          queryKey: secretSnapshotKeys.list({ workspaceId, environment, directory: secretPath })
+          queryKey: secretSnapshotKeys.list({
+            projectId,
+            environment,
+            directory: secretPath
+          })
         });
         queryClient.invalidateQueries({
-          queryKey: secretSnapshotKeys.count({ workspaceId, environment, directory: secretPath })
+          queryKey: secretSnapshotKeys.count({
+            projectId,
+            environment,
+            directory: secretPath
+          })
         });
         queryClient.invalidateQueries({
-          queryKey: commitKeys.count({ workspaceId, environment, directory: secretPath })
+          queryKey: commitKeys.count({ projectId, environment, directory: secretPath })
         });
         queryClient.invalidateQueries({
-          queryKey: commitKeys.history({ workspaceId, environment, directory: secretPath })
+          queryKey: commitKeys.history({
+            projectId,
+            environment,
+            directory: secretPath
+          })
         });
         queryClient.invalidateQueries({
-          queryKey: secretApprovalRequestKeys.count({ workspaceId })
+          queryKey: secretApprovalRequestKeys.count({ projectId })
         });
         if (!isReminderEvent) {
           handlePopUpClose("secretDetail");
@@ -455,15 +462,7 @@ export const SecretListView = ({
         });
       }
     },
-    [
-      environment,
-      secretPath,
-      isProtectedBranch,
-      isBatchMode,
-      workspaceId,
-      addPendingChange,
-      pendingChanges.secrets
-    ]
+    [environment, secretPath, isProtectedBranch, isBatchMode, projectId, addPendingChange]
   );
 
   const handleSecretDelete = useCallback(async () => {
@@ -480,7 +479,7 @@ export const SecretListView = ({
         };
 
         addPendingChange(deleteChange, {
-          workspaceId,
+          projectId,
           environment,
           secretPath
         });
@@ -493,25 +492,33 @@ export const SecretListView = ({
       await handleSecretOperation("delete", SecretType.Shared, key, { secretId });
       // wrap this in another function and then reuse
       queryClient.invalidateQueries({
-        queryKey: dashboardKeys.getDashboardSecrets({ projectId: workspaceId, secretPath })
+        queryKey: dashboardKeys.getDashboardSecrets({ projectId, secretPath })
       });
       queryClient.invalidateQueries({
-        queryKey: secretKeys.getProjectSecret({ workspaceId, environment, secretPath })
+        queryKey: secretKeys.getProjectSecret({ projectId, environment, secretPath })
       });
       queryClient.invalidateQueries({
-        queryKey: secretSnapshotKeys.list({ workspaceId, environment, directory: secretPath })
+        queryKey: secretSnapshotKeys.list({
+          projectId,
+          environment,
+          directory: secretPath
+        })
       });
       queryClient.invalidateQueries({
-        queryKey: secretSnapshotKeys.count({ workspaceId, environment, directory: secretPath })
+        queryKey: secretSnapshotKeys.count({
+          projectId,
+          environment,
+          directory: secretPath
+        })
       });
       queryClient.invalidateQueries({
-        queryKey: commitKeys.count({ workspaceId, environment, directory: secretPath })
+        queryKey: commitKeys.count({ projectId, environment, directory: secretPath })
       });
       queryClient.invalidateQueries({
-        queryKey: commitKeys.history({ workspaceId, environment, directory: secretPath })
+        queryKey: commitKeys.history({ projectId, environment, directory: secretPath })
       });
       queryClient.invalidateQueries({
-        queryKey: secretApprovalRequestKeys.count({ workspaceId })
+        queryKey: secretApprovalRequestKeys.count({ projectId })
       });
       handlePopUpClose("deleteSecret");
       handlePopUpClose("secretDetail");
@@ -534,7 +541,7 @@ export const SecretListView = ({
     secretPath,
     isProtectedBranch,
     isBatchMode,
-    workspaceId,
+    projectId,
     addPendingChange
   ]);
 
@@ -546,6 +553,13 @@ export const SecretListView = ({
   );
   const onDetailViewSecret = useCallback(
     (sec: SecretV3RawSanitized) => handlePopUpOpen("secretDetail", sec),
+    []
+  );
+  const onShareSecret = useCallback(
+    (sec: SecretV3RawSanitized) =>
+      handlePopUpOpen("createSharedSecret", {
+        value: sec.valueOverride ?? sec.value
+      }),
     []
   );
 
@@ -570,11 +584,7 @@ export const SecretListView = ({
           onDetailViewSecret={onDetailViewSecret}
           importedBy={importedBy}
           onCreateTag={onCreateTag}
-          handleSecretShare={() =>
-            handlePopUpOpen("createSharedSecret", {
-              value: secret.valueOverride ?? secret.value
-            })
-          }
+          onShareSecret={onShareSecret}
           isPending={secret.isPending}
           pendingAction={secret.pendingAction}
         />

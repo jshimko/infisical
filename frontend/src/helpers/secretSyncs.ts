@@ -4,9 +4,9 @@ import {
   SecretSyncImportBehavior,
   SecretSyncInitialSyncBehavior
 } from "@app/hooks/api/secretSyncs";
-import { RenderSyncScope } from "@app/hooks/api/secretSyncs/render-sync";
 import { GcpSyncScope } from "@app/hooks/api/secretSyncs/types/gcp-sync";
 import { HumanitecSyncScope } from "@app/hooks/api/secretSyncs/types/humanitec-sync";
+import { RenderSyncScope } from "@app/hooks/api/secretSyncs/types/render-sync";
 
 export const SECRET_SYNC_MAP: Record<SecretSync, { name: string; image: string }> = {
   [SecretSync.AWSParameterStore]: { name: "AWS Parameter Store", image: "Amazon Web Services.png" },
@@ -106,6 +106,10 @@ export const SECRET_SYNC_MAP: Record<SecretSync, { name: string; image: string }
     name: "Digital Ocean App Platform",
     image: "Digital Ocean.png"
   },
+  [SecretSync.Netlify]: {
+    name: "Netlify",
+    image: "Netlify.png"
+  },
   [SecretSync.Bitbucket]: {
     name: "Bitbucket",
     image: "Bitbucket.png"
@@ -133,7 +137,7 @@ export const SECRET_SYNC_CONNECTION_MAP: Record<SecretSync, AppConnection> = {
   [SecretSync.Heroku]: AppConnection.Heroku,
   [SecretSync.Render]: AppConnection.Render,
   [SecretSync.Flyio]: AppConnection.Flyio,
-  [SecretSync.GitLab]: AppConnection.Gitlab,
+  [SecretSync.GitLab]: AppConnection.GitLab,
   [SecretSync.CloudflarePages]: AppConnection.Cloudflare,
   [SecretSync.CloudflareWorkers]: AppConnection.Cloudflare,
   [SecretSync.Supabase]: AppConnection.Supabase,
@@ -141,6 +145,7 @@ export const SECRET_SYNC_CONNECTION_MAP: Record<SecretSync, AppConnection> = {
   [SecretSync.Railway]: AppConnection.Railway,
   [SecretSync.Checkly]: AppConnection.Checkly,
   [SecretSync.DigitalOceanAppPlatform]: AppConnection.DigitalOcean,
+  [SecretSync.Netlify]: AppConnection.Netlify,
   [SecretSync.Bitbucket]: AppConnection.Bitbucket
 };
 
@@ -207,5 +212,9 @@ export const RENDER_SYNC_SCOPES: Record<RenderSyncScope, { name: string; descrip
   [RenderSyncScope.Service]: {
     name: "Service",
     description: "Infisical will sync secrets to the specified Render service."
+  },
+  [RenderSyncScope.EnvironmentGroup]: {
+    name: "EnvironmentGroup",
+    description: "Infisical will sync secrets to the specified Render environment group."
   }
 };

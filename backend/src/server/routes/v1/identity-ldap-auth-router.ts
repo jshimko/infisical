@@ -8,7 +8,7 @@
 
 import { Authenticator } from "@fastify/passport";
 import fastifySession from "@fastify/session";
-import { FastifyRequest } from "fastify";
+import { FastifyReply, FastifyRequest } from "fastify";
 import { IncomingMessage } from "http";
 import LdapStrategy from "passport-ldapauth";
 import { z } from "zod";
@@ -135,19 +135,26 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
         })
       }
     },
-    preValidation: passport.authenticate("ldapauth", {
-      failWithError: true,
-      session: false
-    }) as any,
+    preValidation: [
+      (req, res) => {
+        const passportAuth = (request: FastifyRequest, reply: FastifyReply) =>
+          (
+            passport.authenticate("ldapauth", {
+              failWithError: true,
+              session: false
+            }) as any
+          )(request, reply);
 
-    errorHandler: (error) => {
-      if (error.name === "AuthenticationError") {
-        throw new UnauthorizedError({ message: "Invalid credentials" });
+        const { identityId, username } = req.body;
+        return server.services.identityLdapAuth.withLdapLockout(
+          {
+            identityId,
+            username
+          },
+          () => passportAuth(req, res)
+        );
       }
-
-      throw error;
-    },
-
+    ],
     handler: async (req) => {
       if (!req.passportMachineIdentity?.identityId) {
         throw new UnauthorizedError({ message: "Invalid request. Missing identity ID or LDAP entry details." });
@@ -200,49 +207,132 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
       params: z.object({
         identityId: z.string().trim().describe(LDAP_AUTH.ATTACH.identityId)
       }),
-      body: z
-        .object({
-          url: z.string().trim().min(1).describe(LDAP_AUTH.ATTACH.url),
-          bindDN: z.string().trim().min(1).describe(LDAP_AUTH.ATTACH.bindDN),
-          bindPass: z.string().trim().min(1).describe(LDAP_AUTH.ATTACH.bindPass),
-          searchBase: z.string().trim().min(1).describe(LDAP_AUTH.ATTACH.searchBase),
-          searchFilter: z
-            .string()
-            .trim()
-            .min(1)
-            .default("(uid={{username}})")
-            .refine(isValidLdapFilter, "Invalid LDAP search filter")
-            .describe(LDAP_AUTH.ATTACH.searchFilter),
-          allowedFields: AllowedFieldsSchema.array().optional().describe(LDAP_AUTH.ATTACH.allowedFields),
-          ldapCaCertificate: z.string().trim().optional().describe(LDAP_AUTH.ATTACH.ldapCaCertificate),
-          accessTokenTrustedIps: z
-            .object({
-              ipAddress: z.string().trim()
-            })
-            .array()
-            .min(1)
-            .default([{ ipAddress: "0.0.0.0/0" }, { ipAddress: "::/0" }])
-            .describe(LDAP_AUTH.ATTACH.accessTokenTrustedIps),
-          accessTokenTTL: z
-            .number()
-            .int()
-            .min(0)
-            .max(315360000)
-            .default(2592000)
-            .describe(LDAP_AUTH.ATTACH.accessTokenTTL),
-          accessTokenMaxTTL: z
-            .number()
-            .int()
-            .min(1)
-            .max(315360000)
-            .default(2592000)
-            .describe(LDAP_AUTH.ATTACH.accessTokenMaxTTL),
-          accessTokenNumUsesLimit: z.number().int().min(0).default(0).describe(LDAP_AUTH.ATTACH.accessTokenNumUsesLimit)
-        })
-        .refine(
-          (val) => val.accessTokenTTL <= val.accessTokenMaxTTL,
-          "Access Token TTL cannot be greater than Access Token Max TTL."
-        ),
+      body: z.union([
+        // Template-based configuration
+        z
+          .object({
+            templateId: z.string().trim().describe(LDAP_AUTH.ATTACH.templateId),
+            searchFilter: z
+              .string()
+              .trim()
+              .min(1)
+              .default("(uid={{username}})")
+              .refine(isValidLdapFilter, "Invalid LDAP search filter")
+              .describe(LDAP_AUTH.ATTACH.searchFilter),
+            allowedFields: AllowedFieldsSchema.array().optional().describe(LDAP_AUTH.ATTACH.allowedFields),
+            ldapCaCertificate: z.string().trim().optional().describe(LDAP_AUTH.ATTACH.ldapCaCertificate),
+            accessTokenTrustedIps: z
+              .object({
+                ipAddress: z.string().trim()
+              })
+              .array()
+              .min(1)
+              .default([{ ipAddress: "0.0.0.0/0" }, { ipAddress: "::/0" }])
+              .describe(LDAP_AUTH.ATTACH.accessTokenTrustedIps),
+            accessTokenTTL: z
+              .number()
+              .int()
+              .min(0)
+              .max(315360000)
+              .default(2592000)
+              .describe(LDAP_AUTH.ATTACH.accessTokenTTL),
+            accessTokenMaxTTL: z
+              .number()
+              .int()
+              .min(1)
+              .max(315360000)
+              .default(2592000)
+              .describe(LDAP_AUTH.ATTACH.accessTokenMaxTTL),
+            accessTokenNumUsesLimit: z
+              .number()
+              .int()
+              .min(0)
+              .default(0)
+              .describe(LDAP_AUTH.ATTACH.accessTokenNumUsesLimit),
+            lockoutEnabled: z.boolean().default(true).describe(LDAP_AUTH.ATTACH.lockoutEnabled),
+            lockoutThreshold: z.number().min(1).max(30).default(3).describe(LDAP_AUTH.ATTACH.lockoutThreshold),
+            lockoutDurationSeconds: z
+              .number()
+              .min(30)
+              .max(86400)
+              .default(300)
+              .describe(LDAP_AUTH.ATTACH.lockoutDurationSeconds),
+            lockoutCounterResetSeconds: z
+              .number()
+              .min(5)
+              .max(3600)
+              .default(30)
+              .describe(LDAP_AUTH.ATTACH.lockoutCounterResetSeconds)
+          })
+          .refine(
+            (val) => val.accessTokenTTL <= val.accessTokenMaxTTL,
+            "Access Token TTL cannot be greater than Access Token Max TTL."
+          ),
+
+        // Manual configuration
+        z
+          .object({
+            url: z.string().trim().describe(LDAP_AUTH.ATTACH.url),
+            bindDN: z.string().trim().describe(LDAP_AUTH.ATTACH.bindDN),
+            bindPass: z.string().trim().describe(LDAP_AUTH.ATTACH.bindPass),
+            searchBase: z.string().trim().describe(LDAP_AUTH.ATTACH.searchBase),
+            searchFilter: z
+              .string()
+              .trim()
+              .min(1)
+              .default("(uid={{username}})")
+              .refine(isValidLdapFilter, "Invalid LDAP search filter")
+              .describe(LDAP_AUTH.ATTACH.searchFilter),
+            allowedFields: AllowedFieldsSchema.array().optional().describe(LDAP_AUTH.ATTACH.allowedFields),
+            ldapCaCertificate: z.string().trim().optional().describe(LDAP_AUTH.ATTACH.ldapCaCertificate),
+            accessTokenTrustedIps: z
+              .object({
+                ipAddress: z.string().trim()
+              })
+              .array()
+              .min(1)
+              .default([{ ipAddress: "0.0.0.0/0" }, { ipAddress: "::/0" }])
+              .describe(LDAP_AUTH.ATTACH.accessTokenTrustedIps),
+            accessTokenTTL: z
+              .number()
+              .int()
+              .min(0)
+              .max(315360000)
+              .default(2592000)
+              .describe(LDAP_AUTH.ATTACH.accessTokenTTL),
+            accessTokenMaxTTL: z
+              .number()
+              .int()
+              .min(1)
+              .max(315360000)
+              .default(2592000)
+              .describe(LDAP_AUTH.ATTACH.accessTokenMaxTTL),
+            accessTokenNumUsesLimit: z
+              .number()
+              .int()
+              .min(0)
+              .default(0)
+              .describe(LDAP_AUTH.ATTACH.accessTokenNumUsesLimit),
+            lockoutEnabled: z.boolean().default(true).describe(LDAP_AUTH.ATTACH.lockoutEnabled),
+            lockoutThreshold: z.number().min(1).max(30).default(3).describe(LDAP_AUTH.ATTACH.lockoutThreshold),
+            lockoutDurationSeconds: z
+              .number()
+              .min(30)
+              .max(86400)
+              .default(300)
+              .describe(LDAP_AUTH.ATTACH.lockoutDurationSeconds),
+            lockoutCounterResetSeconds: z
+              .number()
+              .min(5)
+              .max(3600)
+              .default(30)
+              .describe(LDAP_AUTH.ATTACH.lockoutCounterResetSeconds)
+          })
+          .refine(
+            (val) => val.accessTokenTTL <= val.accessTokenMaxTTL,
+            "Access Token TTL cannot be greater than Access Token Max TTL."
+          )
+      ]),
       response: {
         200: z.object({
           identityLdapAuth: IdentityLdapAuthsSchema.omit({
@@ -275,7 +365,12 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
             accessTokenMaxTTL: identityLdapAuth.accessTokenMaxTTL,
             accessTokenTTL: identityLdapAuth.accessTokenTTL,
             accessTokenNumUsesLimit: identityLdapAuth.accessTokenNumUsesLimit,
-            allowedFields: req.body.allowedFields
+            allowedFields: req.body.allowedFields,
+            templateId: identityLdapAuth.templateId,
+            lockoutEnabled: identityLdapAuth.lockoutEnabled,
+            lockoutThreshold: identityLdapAuth.lockoutThreshold,
+            lockoutDurationSeconds: identityLdapAuth.lockoutDurationSeconds,
+            lockoutCounterResetSeconds: identityLdapAuth.lockoutCounterResetSeconds
           }
         }
       });
@@ -309,6 +404,7 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
           bindDN: z.string().trim().min(1).optional().describe(LDAP_AUTH.UPDATE.bindDN),
           bindPass: z.string().trim().min(1).optional().describe(LDAP_AUTH.UPDATE.bindPass),
           searchBase: z.string().trim().min(1).optional().describe(LDAP_AUTH.UPDATE.searchBase),
+          templateId: z.string().trim().optional().describe(LDAP_AUTH.UPDATE.templateId),
           searchFilter: z
             .string()
             .trim()
@@ -338,7 +434,21 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
             .max(315360000)
             .min(0)
             .optional()
-            .describe(LDAP_AUTH.UPDATE.accessTokenMaxTTL)
+            .describe(LDAP_AUTH.UPDATE.accessTokenMaxTTL),
+          lockoutEnabled: z.boolean().optional().describe(LDAP_AUTH.UPDATE.lockoutEnabled),
+          lockoutThreshold: z.number().min(1).max(30).optional().describe(LDAP_AUTH.UPDATE.lockoutThreshold),
+          lockoutDurationSeconds: z
+            .number()
+            .min(30)
+            .max(86400)
+            .optional()
+            .describe(LDAP_AUTH.UPDATE.lockoutDurationSeconds),
+          lockoutCounterResetSeconds: z
+            .number()
+            .min(5)
+            .max(3600)
+            .optional()
+            .describe(LDAP_AUTH.UPDATE.lockoutCounterResetSeconds)
         })
         .refine(
           (val) => (val.accessTokenMaxTTL && val.accessTokenTTL ? val.accessTokenTTL <= val.accessTokenMaxTTL : true),
@@ -376,7 +486,12 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
             accessTokenTTL: identityLdapAuth.accessTokenTTL,
             accessTokenNumUsesLimit: identityLdapAuth.accessTokenNumUsesLimit,
             accessTokenTrustedIps: identityLdapAuth.accessTokenTrustedIps as TIdentityTrustedIp[],
-            allowedFields: req.body.allowedFields
+            allowedFields: req.body.allowedFields,
+            templateId: identityLdapAuth.templateId,
+            lockoutEnabled: identityLdapAuth.lockoutEnabled,
+            lockoutThreshold: identityLdapAuth.lockoutThreshold,
+            lockoutDurationSeconds: identityLdapAuth.lockoutDurationSeconds,
+            lockoutCounterResetSeconds: identityLdapAuth.lockoutCounterResetSeconds
           }
         }
       });
@@ -413,7 +528,8 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
           }).extend({
             bindDN: z.string(),
             bindPass: z.string(),
-            ldapCaCertificate: z.string().optional()
+            ldapCaCertificate: z.string().optional(),
+            templateId: z.string().optional().nullable()
           })
         })
       }
@@ -492,6 +608,55 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
       });
 
       return { identityLdapAuth };
+    }
+  });
+
+  server.route({
+    method: "POST",
+    url: "/ldap-auth/identities/:identityId/clear-lockouts",
+    config: {
+      rateLimit: writeLimit
+    },
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
+    schema: {
+      hide: false,
+      tags: [ApiDocsTags.LdapAuth],
+      description: "Clear LDAP Auth Lockouts for identity",
+      security: [
+        {
+          bearerAuth: []
+        }
+      ],
+      params: z.object({
+        identityId: z.string().describe(LDAP_AUTH.CLEAR_CLIENT_LOCKOUTS.identityId)
+      }),
+      response: {
+        200: z.object({
+          deleted: z.number()
+        })
+      }
+    },
+    handler: async (req) => {
+      const clearLockoutsData = await server.services.identityLdapAuth.clearLdapAuthLockouts({
+        actor: req.permission.type,
+        actorId: req.permission.id,
+        actorAuthMethod: req.permission.authMethod,
+        actorOrgId: req.permission.orgId,
+        identityId: req.params.identityId
+      });
+
+      await server.services.auditLog.createAuditLog({
+        ...req.auditLogInfo,
+        orgId: clearLockoutsData.orgId,
+        event: {
+          type: EventType.CLEAR_IDENTITY_LDAP_AUTH_LOCKOUTS,
+          metadata: {
+            identityId: clearLockoutsData.identityId
+          }
+        }
+      });
+
+      return clearLockoutsData;
     }
   });
 };

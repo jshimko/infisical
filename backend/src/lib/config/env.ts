@@ -37,6 +37,8 @@ const envSchema = z
       .default("false")
       .transform((el) => el === "true"),
     REDIS_URL: zpStr(z.string().optional()),
+    REDIS_USERNAME: zpStr(z.string().optional()),
+    REDIS_PASSWORD: zpStr(z.string().optional()),
     REDIS_SENTINEL_HOSTS: zpStr(
       z
         .string()
@@ -49,6 +51,28 @@ const envSchema = z
     REDIS_SENTINEL_ENABLE_TLS: zodStrBool.optional().describe("Whether to use TLS/SSL for Redis Sentinel connection"),
     REDIS_SENTINEL_USERNAME: zpStr(z.string().optional().describe("Authentication username for Redis Sentinel")),
     REDIS_SENTINEL_PASSWORD: zpStr(z.string().optional().describe("Authentication password for Redis Sentinel")),
+    REDIS_CLUSTER_HOSTS: zpStr(
+      z
+        .string()
+        .optional()
+        .describe("Comma-separated list of Redis Cluster host:port pairs. Eg: 192.168.65.254:6379,192.168.65.254:6380")
+    ),
+    REDIS_READ_REPLICAS: zpStr(
+      z
+        .string()
+        .optional()
+        .describe(
+          "Comma-separated list of Redis read replicas host:port pairs. Eg: 192.168.65.254:6379,192.168.65.254:6380"
+        )
+    ),
+    REDIS_CLUSTER_ENABLE_TLS: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((el) => el === "true"),
+    REDIS_CLUSTER_AWS_ELASTICACHE_DNS_LOOKUP_MODE: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((el) => el === "true"),
     HOST: zpStr(z.string().default("localhost")),
     DB_CONNECTION_URI: zpStr(z.string().describe("Postgres database connection string")).default(
       `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`
@@ -59,6 +83,7 @@ const envSchema = z
     AUDIT_LOGS_DB_ROOT_CERT: zpStr(
       z.string().describe("Postgres database base64-encoded CA cert for Audit logs").optional()
     ),
+    DISABLE_AUDIT_LOG_STORAGE: zodStrBool.default("false").optional().describe("Disable audit log storage"),
     MAX_LEASE_LIMIT: z.coerce.number().default(10000),
     DB_ROOT_CERT: zpStr(z.string().describe("Postgres database base64-encoded CA cert").optional()),
     DB_HOST: zpStr(z.string().describe("Postgres database host").optional()),
@@ -78,6 +103,7 @@ const envSchema = z
     QUEUE_WORKER_PROFILE: z.nativeEnum(QueueWorkerProfile).default(QueueWorkerProfile.All),
     HTTPS_ENABLED: zodStrBool,
     ROTATION_DEVELOPMENT_MODE: zodStrBool.default("false").optional(),
+    DAILY_RESOURCE_CLEAN_UP_DEVELOPMENT_MODE: zodStrBool.default("false").optional(),
     // smtp options
     SMTP_HOST: zpStr(z.string().optional()),
     SMTP_IGNORE_TLS: zodStrBool.default("false"),
@@ -204,6 +230,20 @@ const envSchema = z
     WORKFLOW_SLACK_CLIENT_SECRET: zpStr(z.string().optional()),
     ENABLE_MSSQL_SECRET_ROTATION_ENCRYPT: zodStrBool.default("true"),
 
+    // Special Detection Feature
+    PARAMS_FOLDER_SECRET_DETECTION_PATHS: zpStr(
+      z
+        .string()
+        .optional()
+        .transform((val) => {
+          if (!val) return undefined;
+          return JSON.parse(val) as { secretPath: string; projectId: string }[];
+        })
+    ),
+    PARAMS_FOLDER_SECRET_DETECTION_ENTROPY: z.coerce.number().optional().default(3.7),
+
+    INFISICAL_PRIMARY_INSTANCE_URL: zpStr(z.string().optional()),
+
     // HSM
     HSM_LIB_PATH: zpStr(z.string().optional()),
     HSM_PIN: zpStr(z.string().optional()),
@@ -218,6 +258,8 @@ const envSchema = z
     GATEWAY_RELAY_ADDRESS: zpStr(z.string().optional()),
     GATEWAY_RELAY_REALM: zpStr(z.string().optional()),
     GATEWAY_RELAY_AUTH_SECRET: zpStr(z.string().optional()),
+
+    RELAY_AUTH_SECRET: zpStr(z.string().optional()),
 
     DYNAMIC_SECRET_ALLOW_INTERNAL_IP: zodStrBool.default("false"),
     DYNAMIC_SECRET_AWS_ACCESS_KEY_ID: zpStr(z.string().optional()).default(
@@ -261,9 +303,25 @@ const envSchema = z
     // gcp app
     INF_APP_CONNECTION_GCP_SERVICE_ACCOUNT_CREDENTIAL: zpStr(z.string().optional()),
 
-    // azure app
+    // Legacy Single Multi Purpose Azure App Connection
     INF_APP_CONNECTION_AZURE_CLIENT_ID: zpStr(z.string().optional()),
     INF_APP_CONNECTION_AZURE_CLIENT_SECRET: zpStr(z.string().optional()),
+
+    // Azure App Configuration App Connection
+    INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_ID: zpStr(z.string().optional()),
+    INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_SECRET: zpStr(z.string().optional()),
+
+    // Azure Key Vault App Connection
+    INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_ID: zpStr(z.string().optional()),
+    INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_SECRET: zpStr(z.string().optional()),
+
+    // Azure Client Secrets App Connection
+    INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_ID: zpStr(z.string().optional()),
+    INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_SECRET: zpStr(z.string().optional()),
+
+    // Azure DevOps App Connection
+    INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_ID: zpStr(z.string().optional()),
+    INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_SECRET: zpStr(z.string().optional()),
 
     // datadog
     SHOULD_USE_DATADOG_TRACER: zodStrBool.default("false"),
@@ -305,8 +363,8 @@ const envSchema = z
     "Either ENCRYPTION_KEY or ROOT_ENCRYPTION_KEY must be defined."
   )
   .refine(
-    (data) => Boolean(data.REDIS_URL) || Boolean(data.REDIS_SENTINEL_HOSTS),
-    "Either REDIS_URL or REDIS_SENTINEL_HOSTS must be defined."
+    (data) => Boolean(data.REDIS_URL) || Boolean(data.REDIS_SENTINEL_HOSTS) || Boolean(data.REDIS_CLUSTER_HOSTS),
+    "Either REDIS_URL, REDIS_SENTINEL_HOSTS or REDIS_CLUSTER_HOSTS  must be defined."
   )
   .transform((data) => ({
     ...data,
@@ -316,12 +374,28 @@ const envSchema = z
       : undefined,
     isCloud: Boolean(data.LICENSE_SERVER_KEY),
     isSmtpConfigured: Boolean(data.SMTP_HOST),
-    isRedisConfigured: Boolean(data.REDIS_URL || data.REDIS_SENTINEL_HOSTS),
+    isRedisConfigured: Boolean(data.REDIS_URL || data.REDIS_SENTINEL_HOSTS || data.REDIS_CLUSTER_HOSTS),
     isDevelopmentMode: data.NODE_ENV === "development",
-    isRotationDevelopmentMode: data.NODE_ENV === "development" && data.ROTATION_DEVELOPMENT_MODE,
+    isTestMode: data.NODE_ENV === "test",
+    isRotationDevelopmentMode:
+      (data.NODE_ENV === "development" && data.ROTATION_DEVELOPMENT_MODE) || data.NODE_ENV === "test",
+    isDailyResourceCleanUpDevelopmentMode:
+      data.NODE_ENV === "development" && data.DAILY_RESOURCE_CLEAN_UP_DEVELOPMENT_MODE,
     isProductionMode: data.NODE_ENV === "production" || IS_PACKAGED,
     isRedisSentinelMode: Boolean(data.REDIS_SENTINEL_HOSTS),
     REDIS_SENTINEL_HOSTS: data.REDIS_SENTINEL_HOSTS?.trim()
+      ?.split(",")
+      .map((el) => {
+        const [host, port] = el.trim().split(":");
+        return { host: host.trim(), port: Number(port.trim()) };
+      }),
+    REDIS_CLUSTER_HOSTS: data.REDIS_CLUSTER_HOSTS?.trim()
+      ?.split(",")
+      .map((el) => {
+        const [host, port] = el.trim().split(":");
+        return { host: host.trim(), port: Number(port.trim()) };
+      }),
+    REDIS_READ_REPLICAS: data.REDIS_READ_REPLICAS?.trim()
       ?.split(",")
       .map((el) => {
         const [host, port] = el.trim().split(":");
@@ -338,10 +412,28 @@ const envSchema = z
       Boolean(data.INF_APP_CONNECTION_GITHUB_RADAR_APP_CLIENT_ID) &&
       Boolean(data.INF_APP_CONNECTION_GITHUB_RADAR_APP_CLIENT_SECRET) &&
       Boolean(data.INF_APP_CONNECTION_GITHUB_RADAR_APP_WEBHOOK_SECRET),
+    isSecondaryInstance: Boolean(data.INFISICAL_PRIMARY_INSTANCE_URL),
     isHsmConfigured:
       Boolean(data.HSM_LIB_PATH) && Boolean(data.HSM_PIN) && Boolean(data.HSM_KEY_LABEL) && data.HSM_SLOT !== undefined,
     samlDefaultOrgSlug: data.DEFAULT_SAML_ORG_SLUG,
-    SECRET_SCANNING_ORG_WHITELIST: data.SECRET_SCANNING_ORG_WHITELIST?.split(",")
+    SECRET_SCANNING_ORG_WHITELIST: data.SECRET_SCANNING_ORG_WHITELIST?.split(","),
+    PARAMS_FOLDER_SECRET_DETECTION_ENABLED: (data.PARAMS_FOLDER_SECRET_DETECTION_PATHS?.length ?? 0) > 0,
+    INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_ID:
+      data.INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_ID || data.INF_APP_CONNECTION_AZURE_CLIENT_ID,
+    INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_SECRET:
+      data.INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_SECRET || data.INF_APP_CONNECTION_AZURE_CLIENT_SECRET,
+    INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_ID:
+      data.INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_ID || data.INF_APP_CONNECTION_AZURE_CLIENT_ID,
+    INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_SECRET:
+      data.INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_SECRET || data.INF_APP_CONNECTION_AZURE_CLIENT_SECRET,
+    INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_ID:
+      data.INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_ID || data.INF_APP_CONNECTION_AZURE_CLIENT_ID,
+    INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_SECRET:
+      data.INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_SECRET || data.INF_APP_CONNECTION_AZURE_CLIENT_SECRET,
+    INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_ID:
+      data.INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_ID || data.INF_APP_CONNECTION_AZURE_CLIENT_ID,
+    INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_SECRET:
+      data.INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_SECRET || data.INF_APP_CONNECTION_AZURE_CLIENT_SECRET
   }));
 
 export type TEnvConfig = Readonly<z.infer<typeof envSchema>>;
@@ -438,6 +530,15 @@ export const overwriteSchema: {
     fields: { key: keyof TEnvConfig; description?: string }[];
   };
 } = {
+  auditLogs: {
+    name: "Audit Logs",
+    fields: [
+      {
+        key: "DISABLE_AUDIT_LOG_STORAGE",
+        description: "Disable audit log storage"
+      }
+    ]
+  },
   aws: {
     name: "AWS",
     fields: [
@@ -451,15 +552,54 @@ export const overwriteSchema: {
       }
     ]
   },
-  azure: {
-    name: "Azure",
+  azureAppConfiguration: {
+    name: "Azure App Connection: App Configuration",
     fields: [
       {
-        key: "INF_APP_CONNECTION_AZURE_CLIENT_ID",
+        key: "INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_ID",
         description: "The Application (Client) ID of your Azure application."
       },
       {
-        key: "INF_APP_CONNECTION_AZURE_CLIENT_SECRET",
+        key: "INF_APP_CONNECTION_AZURE_APP_CONFIGURATION_CLIENT_SECRET",
+        description: "The Client Secret of your Azure application."
+      }
+    ]
+  },
+  azureKeyVault: {
+    name: "Azure App Connection: Key Vault",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_ID",
+        description: "The Application (Client) ID of your Azure application."
+      },
+      {
+        key: "INF_APP_CONNECTION_AZURE_KEY_VAULT_CLIENT_SECRET",
+        description: "The Client Secret of your Azure application."
+      }
+    ]
+  },
+  azureClientSecrets: {
+    name: "Azure App Connection: Client Secrets",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_ID",
+        description: "The Application (Client) ID of your Azure application."
+      },
+      {
+        key: "INF_APP_CONNECTION_AZURE_CLIENT_SECRETS_CLIENT_SECRET",
+        description: "The Client Secret of your Azure application."
+      }
+    ]
+  },
+  azureDevOps: {
+    name: "Azure App Connection: DevOps",
+    fields: [
+      {
+        key: "INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_ID",
+        description: "The Application (Client) ID of your Azure application."
+      },
+      {
+        key: "INF_APP_CONNECTION_AZURE_DEVOPS_CLIENT_SECRET",
         description: "The Client Secret of your Azure application."
       }
     ]

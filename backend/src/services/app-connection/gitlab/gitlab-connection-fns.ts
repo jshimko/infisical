@@ -64,6 +64,7 @@ export const refreshGitLabToken = async (
   refreshToken: string,
   appId: string,
   orgId: string,
+  projectId: string | undefined | null,
   appConnectionDAL: Pick<TAppConnectionDALFactory, "updateById">,
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">,
   instanceUrl?: string
@@ -105,7 +106,8 @@ export const refreshGitLabToken = async (
         expiresAt
       },
       orgId,
-      kmsService
+      kmsService,
+      projectId
     });
 
     await appConnectionDAL.updateById(appId, { encryptedCredentials });
@@ -222,6 +224,38 @@ export const validateGitLabConnectionCredentials = async (config: TGitLabConnect
   return inputCredentials;
 };
 
+export const getGitLabConnectionClient = async (
+  appConnection: TGitLabConnection,
+  appConnectionDAL: Pick<TAppConnectionDALFactory, "updateById">,
+  kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">
+) => {
+  let { accessToken } = appConnection.credentials;
+
+  if (
+    appConnection.method === GitLabConnectionMethod.OAuth &&
+    appConnection.credentials.refreshToken &&
+    new Date(appConnection.credentials.expiresAt) < new Date()
+  ) {
+    accessToken = await refreshGitLabToken(
+      appConnection.credentials.refreshToken,
+      appConnection.id,
+      appConnection.orgId,
+      appConnection.projectId,
+      appConnectionDAL,
+      kmsService,
+      appConnection.credentials.instanceUrl
+    );
+  }
+
+  const client = await getGitLabClient(
+    accessToken,
+    appConnection.credentials.instanceUrl,
+    appConnection.method === GitLabConnectionMethod.OAuth
+  );
+
+  return client;
+};
+
 export const listGitLabProjects = async ({
   appConnection,
   appConnectionDAL,
@@ -242,6 +276,7 @@ export const listGitLabProjects = async ({
       appConnection.credentials.refreshToken,
       appConnection.id,
       appConnection.orgId,
+      appConnection.projectId,
       appConnectionDAL,
       kmsService,
       appConnection.credentials.instanceUrl
@@ -310,6 +345,7 @@ export const listGitLabGroups = async ({
       appConnection.credentials.refreshToken,
       appConnection.id,
       appConnection.orgId,
+      appConnection.projectId,
       appConnectionDAL,
       kmsService,
       appConnection.credentials.instanceUrl

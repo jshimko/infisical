@@ -1,17 +1,16 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { AxiosError } from "axios";
 
-import { createNotification } from "@app/components/notifications";
 import { apiRequest } from "@app/config/request";
+import { onRequestError } from "@app/hooks/api/reactQuery";
 import { TReactQueryOptions } from "@app/types/reactQuery";
 
 import { Actor, AuditLog, TGetAuditLogsFilter } from "./types";
 
 export const auditLogKeys = {
-  getAuditLogs: (workspaceId: string | null, filters: TGetAuditLogsFilter) =>
-    [{ workspaceId, filters }, "audit-logs"] as const,
-  getAuditLogActorFilterOpts: (workspaceId: string) =>
-    [{ workspaceId }, "audit-log-actor-filters"] as const
+  getAuditLogs: (projectId: string | null, filters: TGetAuditLogsFilter) =>
+    [{ projectId, filters }, "audit-logs"] as const,
+  getAuditLogActorFilterOpts: (projectId: string) =>
+    [{ projectId }, "audit-log-actor-filters"] as const
 };
 
 export const useGetAuditLogs = (
@@ -46,12 +45,7 @@ export const useGetAuditLogs = (
         );
         return data.auditLogs;
       } catch (error) {
-        if (error instanceof AxiosError) {
-          createNotification({
-            type: "error",
-            text: error.response?.data.message
-          });
-        }
+        onRequestError(error);
         return [];
       }
     },
@@ -62,12 +56,12 @@ export const useGetAuditLogs = (
   });
 };
 
-export const useGetAuditLogActorFilterOpts = (workspaceId: string) => {
+export const useGetAuditLogActorFilterOpts = (projectId: string) => {
   return useQuery({
-    queryKey: auditLogKeys.getAuditLogActorFilterOpts(workspaceId),
+    queryKey: auditLogKeys.getAuditLogActorFilterOpts(projectId),
     queryFn: async () => {
       const { data } = await apiRequest.get<{ actors: Actor[] }>(
-        `/api/v1/workspace/${workspaceId}/audit-logs/filters/actors`
+        `/api/v1/projects/${projectId}/audit-logs/filters/actors`
       );
       return data.actors;
     }

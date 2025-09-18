@@ -637,7 +637,12 @@ export const secretServiceFactory = ({
         }
       });
 
-      if (!deepPaths) return { secrets: [], imports: [] };
+      if (!deepPaths?.length) {
+        throw new NotFoundError({
+          message: `Folder with path '${path}' in environment '${environment}' was not found. Please ensure the environment slug and secret path is correct.`,
+          name: "SecretPathNotFound"
+        });
+      }
 
       paths = deepPaths.map(({ folderId, path: p }) => ({ folderId, path: p }));
     } else {
@@ -647,7 +652,12 @@ export const secretServiceFactory = ({
       });
 
       const folder = await folderDAL.findBySecretPath(projectId, environment, path);
-      if (!folder) return { secrets: [], imports: [] };
+      if (!folder) {
+        throw new NotFoundError({
+          message: `Folder with path '${path}' in environment '${environment}' was not found. Please ensure the environment slug and secret path is correct.`,
+          name: "SecretPathNotFound"
+        });
+      }
 
       paths = [{ folderId: folder.id, path }];
     }
@@ -2960,14 +2970,23 @@ export const secretServiceFactory = ({
     actor,
     actorId,
     actorAuthMethod,
-    actorOrgId
+    actorOrgId,
+    projectId: inputProjectId
   }: TMoveSecretsDTO) => {
-    const project = await projectDAL.findProjectBySlug(projectSlug, actorOrgId);
+    let project;
+    if (projectSlug) {
+      project = await projectDAL.findProjectBySlug(projectSlug, actorOrgId);
+    } else if (inputProjectId) {
+      project = await projectDAL.findById(inputProjectId);
+    }
+
     if (!project) {
       throw new NotFoundError({
         message: `Project with slug '${projectSlug}' not found`
       });
     }
+
+    const projectId = project.id;
     if (project.version === ProjectVersion.V3) {
       return secretV2BridgeService.moveSecrets({
         sourceEnvironment,
@@ -3160,7 +3179,7 @@ export const secretServiceFactory = ({
         });
       }
       const destinationFolderPolicy = await secretApprovalPolicyService.getSecretApprovalPolicy(
-        project.id,
+        projectId,
         destinationFolder.environment.slug,
         destinationFolder.path
       );
@@ -3247,7 +3266,7 @@ export const secretServiceFactory = ({
         }
         if (locallyUpdatedSecrets.length) {
           await fnSecretBulkUpdate({
-            projectId: project.id,
+            projectId,
             folderId: destinationFolder.id,
             secretVersionDAL,
             secretDAL,
@@ -3290,7 +3309,7 @@ export const secretServiceFactory = ({
       const locallyDeletedSecrets = decryptedSourceSecrets.map((el) => ({ ...el, operation: SecretOperations.Delete }));
 
       const sourceFolderPolicy = await secretApprovalPolicyService.getSecretApprovalPolicy(
-        project.id,
+        projectId,
         sourceFolder.environment.slug,
         sourceFolder.path
       );

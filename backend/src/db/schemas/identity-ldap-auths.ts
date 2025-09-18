@@ -25,7 +25,12 @@ export const IdentityLdapAuthsSchema = z.object({
   allowedFields: z.unknown().nullable().optional(),
   createdAt: z.date(),
   updatedAt: z.date(),
-  accessTokenPeriod: z.coerce.number().default(0)
+  accessTokenPeriod: z.coerce.number().default(0),
+  templateId: z.string().uuid().nullable().optional(),
+  lockoutEnabled: z.boolean().default(true),
+  lockoutThreshold: z.number().default(3),
+  lockoutDurationSeconds: z.number().default(300),
+  lockoutCounterResetSeconds: z.number().default(30)
 });
 
 export type TIdentityLdapAuths = z.infer<typeof IdentityLdapAuthsSchema>;

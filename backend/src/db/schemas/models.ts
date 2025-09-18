@@ -91,6 +91,7 @@ export enum TableName {
   IdentityProjectMembership = "identity_project_memberships",
   IdentityProjectMembershipRole = "identity_project_membership_role",
   IdentityProjectAdditionalPrivilege = "identity_project_additional_privilege",
+  IdentityAuthTemplate = "identity_auth_templates",
   // used by both identity and users
   IdentityMetadata = "identity_metadata",
   ResourceMetadata = "resource_metadata",
@@ -100,6 +101,7 @@ export enum TableName {
   AccessApprovalPolicyBypasser = "access_approval_policies_bypassers",
   AccessApprovalRequest = "access_approval_requests",
   AccessApprovalRequestReviewer = "access_approval_requests_reviewers",
+  AccessApprovalPolicyEnvironment = "access_approval_policies_environments",
   SecretApprovalPolicy = "secret_approval_policies",
   SecretApprovalPolicyApprover = "secret_approval_policies_approvers",
   SecretApprovalPolicyBypasser = "secret_approval_policies_bypassers",
@@ -107,6 +109,7 @@ export enum TableName {
   SecretApprovalRequestReviewer = "secret_approval_requests_reviewers",
   SecretApprovalRequestSecret = "secret_approval_requests_secrets",
   SecretApprovalRequestSecretTag = "secret_approval_request_secret_tags",
+  SecretApprovalPolicyEnvironment = "secret_approval_policies_environments",
   SecretRotation = "secret_rotations",
   SecretRotationOutput = "secret_rotation_outputs",
   SamlConfig = "saml_configs",
@@ -128,6 +131,7 @@ export enum TableName {
   SecretApprovalRequestSecretTagV2 = "secret_approval_request_secret_tags_v2",
   SnapshotSecretV2 = "secret_snapshot_secrets_v2",
   ProjectSplitBackfillIds = "project_split_backfill_ids",
+  UserNotifications = "user_notifications",
   // Gateway
   OrgGatewayConfig = "org_gateway_config",
   Gateway = "gateways",
@@ -175,7 +179,16 @@ export enum TableName {
   SecretScanningConfig = "secret_scanning_configs",
   // reminders
   Reminder = "reminders",
-  ReminderRecipient = "reminders_recipients"
+  ReminderRecipient = "reminders_recipients",
+
+  // gateway v2
+  InstanceRelayConfig = "instance_relay_config",
+  OrgRelayConfig = "org_relay_config",
+  OrgGatewayConfigV2 = "org_gateway_config_v2",
+  Relay = "relays",
+  GatewayV2 = "gateways_v2",
+
+  KeyValueStore = "key_value_store"
 }
 
 export type TImmutableDBKeys = "id" | "createdAt" | "updatedAt" | "commitId";

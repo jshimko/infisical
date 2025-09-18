@@ -16,7 +16,11 @@ import {
   Select,
   SelectItem
 } from "@app/components/v2";
-import { APP_CONNECTION_MAP, getAppConnectionMethodDetails } from "@app/helpers/appConnections";
+import {
+  APP_CONNECTION_MAP,
+  getAppConnectionMethodDetails,
+  useGetAppConnectionOauthReturnUrl
+} from "@app/helpers/appConnections";
 import { isInfisicalCloud } from "@app/helpers/platform";
 import { useGetAppConnectionOption } from "@app/hooks/api/appConnections";
 import { AppConnection } from "@app/hooks/api/appConnections/enums";
@@ -26,6 +30,7 @@ import {
   TGitLabConnection
 } from "@app/hooks/api/appConnections/types/gitlab-connection";
 
+import { GitLabFormData } from "../../../OauthCallbackPage/OauthCallbackPage.types";
 import {
   genericAppConnectionFieldsSchema,
   GenericAppConnectionsFields
@@ -34,11 +39,12 @@ import {
 type Props = {
   appConnection?: TGitLabConnection;
   onSubmit: (formData: FormData) => Promise<void>;
+  projectId: string | undefined | null;
 };
 
 const formSchema = z.discriminatedUnion("method", [
   genericAppConnectionFieldsSchema.extend({
-    app: z.literal(AppConnection.Gitlab),
+    app: z.literal(AppConnection.GitLab),
     method: z.literal(GitLabConnectionMethod.AccessToken),
     credentials: z.object({
       accessToken: z.string().min(1, "Access token is required"),
@@ -54,7 +60,7 @@ const formSchema = z.discriminatedUnion("method", [
     })
   }),
   genericAppConnectionFieldsSchema.extend({
-    app: z.literal(AppConnection.Gitlab),
+    app: z.literal(AppConnection.GitLab),
     method: z.literal(GitLabConnectionMethod.OAuth),
     credentials: z.object({
       code: z.string().min(1, "Code is required"),
@@ -72,14 +78,14 @@ const formSchema = z.discriminatedUnion("method", [
 
 type FormData = z.infer<typeof formSchema>;
 
-export const GitLabConnectionForm = ({ appConnection, onSubmit: formSubmit }: Props) => {
+export const GitLabConnectionForm = ({ appConnection, onSubmit: formSubmit, projectId }: Props) => {
   const isUpdate = Boolean(appConnection);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
   const {
     option: { oauthClientId },
     isLoading
-  } = useGetAppConnectionOption(AppConnection.Gitlab);
+  } = useGetAppConnectionOption(AppConnection.GitLab);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -88,7 +94,7 @@ export const GitLabConnectionForm = ({ appConnection, onSubmit: formSubmit }: Pr
         ? { ...appConnection, credentials: { code: "custom" } }
         : (appConnection ??
           ({
-            app: AppConnection.Gitlab,
+            app: AppConnection.GitLab,
             method: GitLabConnectionMethod.AccessToken,
             credentials: {
               accessToken: "",
@@ -97,6 +103,8 @@ export const GitLabConnectionForm = ({ appConnection, onSubmit: formSubmit }: Pr
             }
           } as FormData))
   });
+
+  const returnUrl = useGetAppConnectionOauthReturnUrl();
 
   const {
     handleSubmit,
@@ -132,8 +140,10 @@ export const GitLabConnectionForm = ({ appConnection, onSubmit: formSubmit }: Pr
             JSON.stringify({
               ...formData,
               connectionId: appConnection?.id,
-              isUpdate
-            })
+              isUpdate,
+              projectId,
+              returnUrl
+            } as GitLabFormData)
           );
 
           // Redirect to Gitlab OAuth
@@ -207,7 +217,7 @@ export const GitLabConnectionForm = ({ appConnection, onSubmit: formSubmit }: Pr
           render={({ field: { value, onChange }, fieldState: { error } }) => (
             <FormControl
               tooltipText={`The method you would like to use to connect with ${
-                APP_CONNECTION_MAP[AppConnection.Gitlab].name
+                APP_CONNECTION_MAP[AppConnection.GitLab].name
               }. This field cannot be changed after creation.`}
               errorText={
                 !isLoading && isMissingConfig && selectedMethod === GitLabConnectionMethod.OAuth

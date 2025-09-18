@@ -1,16 +1,17 @@
 import { useMemo } from "react";
 import { subject } from "@casl/ability";
-import { faAnglesRight, faMinusSquare, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faAnglesRight, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { twMerge } from "tailwind-merge";
 
 import { createNotification } from "@app/components/notifications";
-import { Button, DeleteActionModal, IconButton, Tooltip } from "@app/components/v2";
+import { Button, DeleteActionModal, Tooltip } from "@app/components/v2";
 import {
   ProjectPermissionActions,
   ProjectPermissionSub,
+  useProject,
   useProjectPermission,
-  useWorkspace
+  useSubscription
 } from "@app/context";
 import { ProjectPermissionSecretActions } from "@app/context/ProjectPermissionContext/types";
 import { usePopUp } from "@app/hooks";
@@ -51,6 +52,7 @@ export const SelectionPanel = ({
   usedBySecretSyncs = []
 }: Props) => {
   const { permission } = useProjectPermission();
+  const { subscription } = useSubscription();
 
   const { handlePopUpOpen, handlePopUpToggle, handlePopUpClose, popUp } = usePopUp([
     "bulkDeleteEntries",
@@ -64,9 +66,8 @@ export const SelectionPanel = ({
   );
   const selectedCount = selectedFolderCount + selectedKeysCount;
 
-  const { currentWorkspace } = useWorkspace();
-  const workspaceId = currentWorkspace?.id || "";
-  const userAvailableEnvs = currentWorkspace?.environments || [];
+  const { currentProject, projectId } = useProject();
+  const userAvailableEnvs = currentProject?.environments || [];
   const { mutateAsync: deleteBatchSecretV3 } = useDeleteSecretBatch();
   const { mutateAsync: deleteFolder } = useDeleteFolder();
 
@@ -101,6 +102,16 @@ export const SelectionPanel = ({
     return "Do you want to delete the selected folders across environments?";
   };
 
+  const getDeleteModalSubTitle = () => {
+    if (selectedFolderCount > 0) {
+      if (subscription?.pitRecovery) {
+        return "All selected folders and their contents will be removed. You can reverse this action by rolling back to a previous commit.";
+      }
+      return "All selected folders and their contents will be removed. Rolling back to a previous commit isn't available on your current plan. Upgrade to enable this feature.";
+    }
+    return undefined;
+  };
+
   const handleBulkDelete = async () => {
     let processedEntries = 0;
 
@@ -122,7 +133,7 @@ export const SelectionPanel = ({
                 folderId: folder?.id,
                 path: secretPath,
                 environment: env.slug,
-                projectId: workspaceId
+                projectId
               });
             }
           })
@@ -161,7 +172,7 @@ export const SelectionPanel = ({
         processedEntries += secretsToDelete.length;
         await deleteBatchSecretV3({
           secretPath,
-          workspaceId,
+          projectId,
           environment: env.slug,
           secrets: secretsToDelete
         });
@@ -221,12 +232,14 @@ export const SelectionPanel = ({
         )}
       >
         <div className="mt-3.5 flex items-center rounded-md border border-mineshaft-600 bg-mineshaft-800 px-4 py-2 text-bunker-300">
-          <Tooltip content="Clear">
-            <IconButton variant="plain" ariaLabel="clear-selection" onClick={resetSelectedEntries}>
-              <FontAwesomeIcon icon={faMinusSquare} size="lg" />
-            </IconButton>
-          </Tooltip>
-          <div className="ml-1 flex-grow px-2 text-sm">{selectedCount} Selected</div>
+          <div className="mr-2 text-sm">{selectedCount} Selected</div>
+          <button
+            type="button"
+            className="mr-auto text-xs text-mineshaft-400 underline-offset-2 hover:text-mineshaft-200 hover:underline"
+            onClick={resetSelectedEntries}
+          >
+            Unselect All
+          </button>
           {isRotatedSecretSelected && (
             <span className="text-sm text-mineshaft-400">
               Rotated Secrets will not be affected by action.
@@ -267,8 +280,8 @@ export const SelectionPanel = ({
         isOpen={popUp.bulkMoveSecrets.isOpen}
         onOpenChange={(isOpen) => handlePopUpToggle("bulkMoveSecrets", isOpen)}
         environments={userAvailableEnvs}
-        projectId={workspaceId}
-        projectSlug={currentWorkspace.slug}
+        projectId={projectId}
+        projectSlug={currentProject.slug}
         sourceSecretPath={secretPath}
         secrets={selectedEntries[EntryType.SECRET]}
         onComplete={resetSelectedEntries}
@@ -277,6 +290,7 @@ export const SelectionPanel = ({
         isOpen={popUp.bulkDeleteEntries.isOpen}
         deleteKey="delete"
         title={getDeleteModalTitle()}
+        subTitle={getDeleteModalSubTitle()}
         onChange={(isOpen) => handlePopUpToggle("bulkDeleteEntries", isOpen)}
         onDeleteApproved={handleBulkDelete}
         formContent={

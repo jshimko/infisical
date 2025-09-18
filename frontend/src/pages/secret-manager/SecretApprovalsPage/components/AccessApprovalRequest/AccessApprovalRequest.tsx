@@ -39,10 +39,10 @@ import { Badge } from "@app/components/v2/Badge";
 import {
   ProjectPermissionMemberActions,
   ProjectPermissionSub,
+  useProject,
   useProjectPermission,
   useSubscription,
-  useUser,
-  useWorkspace
+  useUser
 } from "@app/context";
 import {
   getUserTablePreference,
@@ -93,7 +93,7 @@ export const AccessApprovalRequest = ({
 }) => {
   const [selectedRequest, setSelectedRequest] = useState<
     | (TAccessApprovalRequest & {
-        user: { firstName?: string; lastName?: string; email?: string } | null;
+        user: { firstName?: string | null; lastName?: string | null; email?: string | null } | null;
         isRequestedByCurrentUser: boolean;
         isSelfApproveAllowed: boolean;
         isApprover: boolean;
@@ -110,7 +110,7 @@ export const AccessApprovalRequest = ({
   const { permission } = useProjectPermission();
   const { user } = useUser();
   const { subscription } = useSubscription();
-  const { currentWorkspace } = useWorkspace();
+  const { currentProject } = useProject();
 
   const { data: members } = useGetWorkspaceUsers(projectId, true);
   const membersGroupById = members?.reduce<Record<string, TWorkspaceUser>>(
@@ -410,7 +410,7 @@ export const AccessApprovalRequest = ({
                   <DropdownMenuLabel className="sticky top-0 bg-mineshaft-900">
                     Select an Environment
                   </DropdownMenuLabel>
-                  {currentWorkspace?.environments.map(({ slug, name }) => (
+                  {currentProject?.environments.map(({ slug, name }) => (
                     <DropdownMenuItem
                       onClick={() => setEnvFilter((state) => (state === slug ? undefined : slug))}
                       key={`request-filter-${slug}`}
@@ -591,6 +591,16 @@ export const AccessApprovalRequest = ({
               handlePopUpClose("reviewRequest");
               setSelectedRequest(null);
               refetchRequests();
+            }}
+            onUpdate={(request) => {
+              // scott: this isn't ideal but our current use of state makes this complicated...
+              // we shouldn't be using state like this...
+              handleSelectRequest({
+                ...selectedRequest,
+                isTemporary: request.isTemporary,
+                temporaryRange: request.temporaryRange,
+                reviewers: []
+              });
             }}
             canBypass={generateRequestDetails(selectedRequest).canBypass}
           />

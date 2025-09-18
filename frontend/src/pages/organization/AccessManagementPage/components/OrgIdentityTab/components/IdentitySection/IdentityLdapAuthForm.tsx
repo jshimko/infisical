@@ -3,6 +3,7 @@ import { Controller, useFieldArray, useForm } from "react-hook-form";
 import { faPlus, faQuestionCircle, faXmark } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { zodResolver } from "@hookform/resolvers/zod";
+import ms from "ms";
 import { z } from "zod";
 
 import { createNotification } from "@app/components/notifications";
@@ -11,6 +12,8 @@ import {
   FormControl,
   IconButton,
   Input,
+  Select,
+  SelectItem,
   Tab,
   TabList,
   TabPanel,
@@ -18,23 +21,34 @@ import {
   TextArea,
   Tooltip
 } from "@app/components/v2";
-import { useOrganization, useSubscription } from "@app/context";
+import { useOrganization, useOrgPermission, useSubscription } from "@app/context";
 import {
+  OrgPermissionMachineIdentityAuthTemplateActions,
+  OrgPermissionSubjects
+} from "@app/context/OrgPermissionContext/types";
+import { getObjectFromSeconds } from "@app/helpers/datetime";
+import {
+  MachineIdentityAuthMethod,
   useAddIdentityLdapAuth,
   useGetIdentityLdapAuth,
   useUpdateIdentityLdapAuth
 } from "@app/hooks/api";
 import { IdentityTrustedIp } from "@app/hooks/api/identities/types";
+import { useGetAvailableTemplates } from "@app/hooks/api/identityAuthTemplates/queries";
 import { UsePopUpState } from "@app/hooks/usePopUp";
 
+import { LockoutTab } from "./lockout/LockoutTab";
+import { superRefineLockout } from "./lockout/super-refine";
 import { IdentityFormTab } from "./types";
 
 const schema = z
   .object({
-    url: z.string().min(1),
-    bindDN: z.string(),
-    bindPass: z.string(),
-    searchBase: z.string(),
+    scope: z.enum(["template", "custom"]),
+    templateId: z.string().optional(),
+    url: z.string().optional(),
+    bindDN: z.string().optional(),
+    bindPass: z.string().optional(),
+    searchBase: z.string().optional(),
     searchFilter: z.string(), // defaults to (uid={{username}})
     ldapCaCertificate: z
       .string()
@@ -64,9 +78,71 @@ const schema = z
           ipAddress: z.string().max(50)
         })
       )
-      .min(1)
+      .min(1),
+
+    lockoutEnabled: z.boolean().default(true),
+    lockoutThreshold: z
+      .string()
+      .refine(
+        (value) => Number(value) <= 30 && Number(value) >= 1,
+        "Lockout threshold must be between 1 and 30"
+      ),
+    lockoutDurationValue: z.string(),
+    lockoutDurationUnit: z.enum(["s", "m", "h", "d"], {
+      invalid_type_error: "Please select a valid time unit"
+    }),
+    lockoutCounterResetValue: z.string(),
+    lockoutCounterResetUnit: z.enum(["s", "m", "h"], {
+      invalid_type_error: "Please select a valid time unit"
+    })
   })
-  .required();
+  .required()
+  .superRefine((data, ctx) => {
+    superRefineLockout(data, ctx);
+
+    // Validation based on scope
+    if (data.scope === "template") {
+      if (!data.templateId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Template is required when using template scope",
+          path: ["templateId"]
+        });
+      }
+      return;
+    }
+
+    if (data.scope === "custom") {
+      if (!data.url) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "LDAP URL is required when using custom scope",
+          path: ["url"]
+        });
+      }
+      if (!data.bindDN) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Bind DN is required when using custom scope",
+          path: ["bindDN"]
+        });
+      }
+      if (!data.bindPass) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Bind Pass is required when using custom scope",
+          path: ["bindPass"]
+        });
+      }
+      if (!data.searchBase) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Search Base is required when using custom scope",
+          path: ["searchBase"]
+        });
+      }
+    }
+  });
 
 export type FormData = z.infer<typeof schema>;
 
@@ -93,6 +169,13 @@ export const IdentityLdapAuthForm = ({
   const { mutateAsync: addMutateAsync } = useAddIdentityLdapAuth();
   const { mutateAsync: updateMutateAsync } = useUpdateIdentityLdapAuth();
   const [tabValue, setTabValue] = useState<IdentityFormTab>(IdentityFormTab.Configuration);
+  const { data: templates } = useGetAvailableTemplates(MachineIdentityAuthMethod.LDAP);
+  const { permission } = useOrgPermission();
+
+  const canAttachTemplates = permission.can(
+    OrgPermissionMachineIdentityAuthTemplateActions.AttachTemplates,
+    OrgPermissionSubjects.MachineIdentityAuthTemplate
+  );
 
   const { data } = useGetIdentityLdapAuth(identityId ?? "", {
     enabled: isUpdate
@@ -102,11 +185,14 @@ export const IdentityLdapAuthForm = ({
     control,
     handleSubmit,
     reset,
-
+    watch,
+    setValue,
     formState: { isSubmitting }
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
+      scope: "custom",
+      templateId: "",
       url: "",
       bindDN: "",
       bindPass: "",
@@ -115,9 +201,24 @@ export const IdentityLdapAuthForm = ({
       accessTokenTTL: "2592000",
       accessTokenMaxTTL: "2592000",
       accessTokenNumUsesLimit: "0",
-      accessTokenTrustedIps: [{ ipAddress: "0.0.0.0/0" }, { ipAddress: "::/0" }]
+      accessTokenTrustedIps: [{ ipAddress: "0.0.0.0/0" }, { ipAddress: "::/0" }],
+      lockoutEnabled: true,
+      lockoutThreshold: "3",
+      lockoutDurationValue: "5",
+      lockoutDurationUnit: "m",
+      lockoutCounterResetValue: "30",
+      lockoutCounterResetUnit: "s"
     }
   });
+
+  const scope = watch("scope");
+
+  const lockoutEnabledWatch = watch("lockoutEnabled");
+  const lockoutThresholdWatch = watch("lockoutThreshold");
+  const lockoutDurationValueWatch = watch("lockoutDurationValue");
+  const lockoutDurationUnitWatch = watch("lockoutDurationUnit");
+  const lockoutCounterResetValueWatch = watch("lockoutCounterResetValue");
+  const lockoutCounterResetUnitWatch = watch("lockoutCounterResetUnit");
 
   const {
     fields: accessTokenTrustedIpsFields,
@@ -131,16 +232,33 @@ export const IdentityLdapAuthForm = ({
     remove: removeAllowedField
   } = useFieldArray({ control, name: "allowedFields" });
 
+  // Helper function to determine scope based on existing data
+  const determineScope = (authData: any) => {
+    // If templateId exists in the data, it's template scope
+    if (authData.templateId) {
+      return "template";
+    }
+    // Default to custom if we can't determine
+    return "custom";
+  };
+
   useEffect(() => {
     if (data) {
+      const detectedScope = determineScope(data);
+
+      const lockoutDurationObj = getObjectFromSeconds(data.lockoutDurationSeconds);
+      const lockoutCounterResetObj = getObjectFromSeconds(data.lockoutCounterResetSeconds);
+
       reset({
-        url: data.url,
-        bindDN: data.bindDN,
-        bindPass: data.bindPass,
-        searchBase: data.searchBase,
+        scope: detectedScope,
+        templateId: data.templateId || "",
+        url: data.url || "",
+        bindDN: data.bindDN || "",
+        bindPass: data.bindPass || "",
+        searchBase: data.searchBase || "",
         searchFilter: data.searchFilter,
         ldapCaCertificate: data.ldapCaCertificate || undefined,
-        allowedFields: data.allowedFields,
+        allowedFields: data.allowedFields || [],
         accessTokenTTL: String(data.accessTokenTTL),
         accessTokenMaxTTL: String(data.accessTokenMaxTTL),
         accessTokenNumUsesLimit: String(data.accessTokenNumUsesLimit),
@@ -150,80 +268,109 @@ export const IdentityLdapAuthForm = ({
               ipAddress: `${ipAddress}${prefix !== undefined ? `/${prefix}` : ""}`
             };
           }
-        )
+        ),
+        lockoutEnabled: data.lockoutEnabled,
+        lockoutThreshold: String(data.lockoutThreshold),
+        lockoutDurationValue: String(lockoutDurationObj.value),
+        lockoutDurationUnit: lockoutDurationObj.unit as "s" | "m" | "h" | "d",
+        lockoutCounterResetValue: String(lockoutCounterResetObj.value),
+        lockoutCounterResetUnit: lockoutCounterResetObj.unit as "s" | "m" | "h"
       });
-    } else {
-      reset({
-        url: "",
-        bindDN: "",
-        bindPass: "",
-        searchBase: "",
-        searchFilter: "(uid={{username}})",
-        ldapCaCertificate: undefined,
-        allowedFields: [],
-        accessTokenTTL: "2592000",
-        accessTokenMaxTTL: "2592000",
-        accessTokenNumUsesLimit: "0",
-        accessTokenTrustedIps: [{ ipAddress: "0.0.0.0/0" }, { ipAddress: "::/0" }]
-      });
+      return;
     }
-  }, [data]);
+
+    reset({
+      scope: "custom",
+      templateId: "",
+      url: "",
+      bindDN: "",
+      bindPass: "",
+      searchBase: "",
+      searchFilter: "(uid={{username}})",
+      ldapCaCertificate: undefined,
+      allowedFields: [],
+      accessTokenTTL: "2592000",
+      accessTokenMaxTTL: "2592000",
+      accessTokenNumUsesLimit: "0",
+      accessTokenTrustedIps: [{ ipAddress: "0.0.0.0/0" }, { ipAddress: "::/0" }],
+      lockoutEnabled: true,
+      lockoutThreshold: "3",
+      lockoutDurationValue: "5",
+      lockoutDurationUnit: "m",
+      lockoutCounterResetValue: "30",
+      lockoutCounterResetUnit: "s"
+    });
+  }, [data, reset]);
 
   useEffect(() => {
     if (!subscription?.ldap) {
       handlePopUpOpen("upgradePlan");
       handlePopUpToggle("identityAuthMethod", false);
     }
-  }, [subscription]);
+  }, [subscription, handlePopUpOpen, handlePopUpToggle]);
 
-  const onFormSubmit = async ({
-    url,
-    bindDN,
-    bindPass,
-    searchBase,
-    searchFilter,
-    ldapCaCertificate,
-    allowedFields,
-    accessTokenTTL,
-    accessTokenMaxTTL,
-    accessTokenNumUsesLimit,
-    accessTokenTrustedIps
-  }: FormData) => {
+  const onFormSubmit = async (formData: FormData) => {
     try {
       if (!identityId) return;
 
+      const {
+        scope: submissionScope,
+        templateId: submissionTemplateId,
+        url: submissionUrl,
+        bindDN: submissionBindDN,
+        bindPass: submissionBindPass,
+        searchBase: submissionSearchBase,
+        searchFilter,
+        ldapCaCertificate,
+        allowedFields,
+        accessTokenTTL,
+        accessTokenMaxTTL,
+        accessTokenNumUsesLimit,
+        accessTokenTrustedIps,
+        lockoutEnabled,
+        lockoutThreshold,
+        lockoutDurationValue,
+        lockoutDurationUnit,
+        lockoutCounterResetValue,
+        lockoutCounterResetUnit
+      } = formData;
+
+      const lockoutDurationSeconds = ms(`${lockoutDurationValue}${lockoutDurationUnit}`) / 1000;
+      const lockoutCounterResetSeconds =
+        ms(`${lockoutCounterResetValue}${lockoutCounterResetUnit}`) / 1000;
+
+      const basePayload = {
+        organizationId: orgId,
+        identityId,
+        searchFilter,
+        ldapCaCertificate,
+        allowedFields,
+        accessTokenTTL: Number(accessTokenTTL),
+        accessTokenMaxTTL: Number(accessTokenMaxTTL),
+        accessTokenNumUsesLimit: Number(accessTokenNumUsesLimit),
+        accessTokenTrustedIps,
+        lockoutEnabled,
+        lockoutThreshold: Number(lockoutThreshold),
+        lockoutDurationSeconds,
+        lockoutCounterResetSeconds
+      };
+
+      // Add scope-specific fields
+      const payload =
+        submissionScope === "template"
+          ? { ...basePayload, templateId: submissionTemplateId }
+          : {
+              ...basePayload,
+              url: submissionUrl,
+              bindDN: submissionBindDN,
+              bindPass: submissionBindPass,
+              searchBase: submissionSearchBase
+            };
+
       if (data) {
-        await updateMutateAsync({
-          organizationId: orgId,
-          identityId,
-          url,
-          bindDN,
-          bindPass,
-          searchBase,
-          searchFilter,
-          ldapCaCertificate,
-          allowedFields,
-          accessTokenTTL: Number(accessTokenTTL),
-          accessTokenMaxTTL: Number(accessTokenMaxTTL),
-          accessTokenNumUsesLimit: Number(accessTokenNumUsesLimit),
-          accessTokenTrustedIps
-        });
+        await updateMutateAsync(payload);
       } else {
-        await addMutateAsync({
-          organizationId: orgId,
-          identityId,
-          url,
-          bindDN,
-          bindPass,
-          searchBase,
-          searchFilter,
-          ldapCaCertificate,
-          allowedFields,
-          accessTokenTTL: Number(accessTokenTTL),
-          accessTokenMaxTTL: Number(accessTokenMaxTTL),
-          accessTokenNumUsesLimit: Number(accessTokenNumUsesLimit),
-          accessTokenTrustedIps
-        });
+        await addMutateAsync(payload);
       }
 
       handlePopUpToggle("identityAuthMethod", false);
@@ -245,8 +392,13 @@ export const IdentityLdapAuthForm = ({
   return (
     <form
       onSubmit={handleSubmit(onFormSubmit, (fields) => {
-        setTabValue(
+        const firstErrorField = Object.keys(fields)[0];
+        let tab = IdentityFormTab.Advanced;
+
+        if (
           [
+            "scope",
+            "templateId",
             "url",
             "bindDN",
             "bindPass",
@@ -256,30 +408,128 @@ export const IdentityLdapAuthForm = ({
             "allowedFields",
             "accessTokenMaxTTL",
             "accessTokenNumUsesLimit"
-          ].includes(Object.keys(fields)[0])
-            ? IdentityFormTab.Configuration
-            : IdentityFormTab.Advanced
-        );
+          ].includes(firstErrorField)
+        ) {
+          tab = IdentityFormTab.Configuration;
+        } else if (
+          [
+            "lockoutEnabled",
+            "lockoutThreshold",
+            "lockoutDurationValue",
+            "lockoutDurationUnit",
+            "lockoutCounterResetValue",
+            "lockoutCounterResetUnit"
+          ].includes(firstErrorField)
+        ) {
+          tab = IdentityFormTab.Lockout;
+        }
+
+        setTabValue(tab);
       })}
     >
       <Tabs value={tabValue} onValueChange={(value) => setTabValue(value as IdentityFormTab)}>
         <TabList>
           <Tab value={IdentityFormTab.Configuration}>Configuration</Tab>
+          <Tab value={IdentityFormTab.Lockout}>Lockout</Tab>
           <Tab value={IdentityFormTab.Advanced}>Advanced</Tab>
         </TabList>
         <TabPanel value={IdentityFormTab.Configuration}>
+          {canAttachTemplates && (
+            <Controller
+              control={control}
+              name="scope"
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <FormControl
+                  label="Configuration Type"
+                  isError={Boolean(error)}
+                  errorText={error?.message}
+                >
+                  <Select
+                    value={value}
+                    onValueChange={(val) => {
+                      onChange(val);
+                      setValue("templateId", data?.templateId || "");
+                      setValue("url", data?.url || "");
+                      setValue("bindDN", data?.bindDN || "");
+                      setValue("bindPass", data?.bindPass || "");
+                      setValue("searchBase", data?.searchBase || "");
+                      setValue("ldapCaCertificate", data?.ldapCaCertificate || "");
+                    }}
+                    className="w-full"
+                    position="popper"
+                    dropdownContainerClassName="max-w-none"
+                  >
+                    <SelectItem value="template">Use Template</SelectItem>
+                    <SelectItem value="custom">Custom Configuration</SelectItem>
+                  </Select>
+                </FormControl>
+              )}
+            />
+          )}
+
+          {scope === "template" && (
+            <Controller
+              control={control}
+              name="templateId"
+              render={({ field: { value, onChange }, fieldState: { error } }) => (
+                <FormControl
+                  label="Template"
+                  isError={Boolean(error)}
+                  errorText={error?.message}
+                  isRequired
+                >
+                  <Select
+                    value={value}
+                    onValueChange={(val) => {
+                      onChange(val);
+                      const tmp = templates?.find((t) => t.id === val);
+                      if (!tmp) return;
+                      setValue("url", tmp.templateFields.url);
+                      setValue("bindDN", tmp.templateFields.bindDN);
+                      setValue("bindPass", tmp.templateFields.bindPass);
+                      setValue("searchBase", tmp.templateFields.searchBase);
+                      setValue("ldapCaCertificate", tmp.templateFields.ldapCaCertificate);
+                    }}
+                    className="w-full"
+                    position="popper"
+                    dropdownContainerClassName="max-w-none"
+                    placeholder="Select a template"
+                  >
+                    {templates?.map((template) => {
+                      return (
+                        <SelectItem value={template.id} key={template.id}>
+                          {template.name}
+                        </SelectItem>
+                      );
+                    })}
+                  </Select>
+                </FormControl>
+              )}
+            />
+          )}
+
           <Controller
             control={control}
-            defaultValue="2592000"
             name="url"
             render={({ field, fieldState: { error } }) => (
               <FormControl
                 label="LDAP URL"
                 isError={Boolean(error)}
                 errorText={error?.message}
+                tooltipText={
+                  scope === "template"
+                    ? "This field cannot be modified when using a template"
+                    : undefined
+                }
                 isRequired
               >
-                <Input {...field} placeholder="ldaps://domain-or-ip:636" type="text" />
+                <Input
+                  {...field}
+                  placeholder="ldaps://domain-or-ip:636"
+                  type="text"
+                  isDisabled={scope === "template"}
+                  containerClassName={scope === "template" ? "opacity-55" : ""}
+                />
               </FormControl>
             )}
           />
@@ -292,14 +542,23 @@ export const IdentityLdapAuthForm = ({
                 label="Bind DN"
                 isError={Boolean(error)}
                 errorText={error?.message}
+                tooltipText={
+                  scope === "template"
+                    ? "This field cannot be modified when using a template"
+                    : undefined
+                }
               >
-                <Input {...field} placeholder="cn=infisical,ou=Users,dc=example,dc=com" />
+                <Input
+                  {...field}
+                  containerClassName={scope === "template" ? "opacity-55" : ""}
+                  placeholder="cn=infisical,ou=Users,dc=example,dc=com"
+                  isDisabled={scope === "template"}
+                />
               </FormControl>
             )}
           />
           <Controller
             control={control}
-            defaultValue=""
             name="bindPass"
             render={({ field, fieldState: { error } }) => (
               <FormControl
@@ -307,8 +566,19 @@ export const IdentityLdapAuthForm = ({
                 label="Bind Pass"
                 isError={Boolean(error)}
                 errorText={error?.message}
+                tooltipText={
+                  scope === "template"
+                    ? "This field cannot be modified when using a template"
+                    : undefined
+                }
               >
-                <Input {...field} placeholder="********" type="password" />
+                <Input
+                  {...field}
+                  placeholder="********"
+                  type="password"
+                  containerClassName={scope === "template" ? "opacity-55" : ""}
+                  isDisabled={scope === "template"}
+                />
               </FormControl>
             )}
           />
@@ -321,8 +591,18 @@ export const IdentityLdapAuthForm = ({
                 label="Search Base / DN"
                 isError={Boolean(error)}
                 errorText={error?.message}
+                tooltipText={
+                  scope === "template"
+                    ? "This field cannot be modified when using a template"
+                    : undefined
+                }
               >
-                <Input {...field} placeholder="ou=machines,dc=acme,dc=com" />
+                <Input
+                  {...field}
+                  placeholder="ou=machines,dc=acme,dc=com"
+                  containerClassName={scope === "template" ? "opacity-55" : ""}
+                  isDisabled={scope === "template"}
+                />
               </FormControl>
             )}
           />
@@ -452,7 +732,6 @@ export const IdentityLdapAuthForm = ({
 
           <Controller
             control={control}
-            defaultValue="2592000"
             name="accessTokenTTL"
             render={({ field, fieldState: { error } }) => (
               <FormControl
@@ -467,7 +746,6 @@ export const IdentityLdapAuthForm = ({
           />
           <Controller
             control={control}
-            defaultValue="2592000"
             name="accessTokenMaxTTL"
             render={({ field, fieldState: { error } }) => (
               <FormControl
@@ -482,7 +760,6 @@ export const IdentityLdapAuthForm = ({
           />
           <Controller
             control={control}
-            defaultValue="0"
             name="accessTokenNumUsesLimit"
             render={({ field, fieldState: { error } }) => (
               <FormControl
@@ -496,6 +773,15 @@ export const IdentityLdapAuthForm = ({
             )}
           />
         </TabPanel>
+        <LockoutTab
+          control={control}
+          lockoutEnabled={lockoutEnabledWatch}
+          lockoutThreshold={lockoutThresholdWatch}
+          lockoutDurationValue={lockoutDurationValueWatch}
+          lockoutDurationUnit={lockoutDurationUnitWatch}
+          lockoutCounterResetValue={lockoutCounterResetValueWatch}
+          lockoutCounterResetUnit={lockoutCounterResetUnitWatch}
+        />
         <TabPanel value={IdentityFormTab.Advanced}>
           <Controller
             control={control}
@@ -506,9 +792,18 @@ export const IdentityLdapAuthForm = ({
                 isOptional
                 errorText={error?.message}
                 isError={Boolean(error)}
-                tooltipText="An optional PEM-encoded CA cert for the LDAP server. This is used by the TLS client for secure communication with the LDAP server."
+                tooltipText={
+                  scope === "template"
+                    ? "This field cannot be modified when using a template"
+                    : "An optional PEM-encoded CA cert for the LDAP server. This is used by the TLS client for secure communication with the LDAP server."
+                }
               >
-                <TextArea {...field} placeholder="-----BEGIN CERTIFICATE----- ..." />
+                <TextArea
+                  {...field}
+                  placeholder="-----BEGIN CERTIFICATE----- ..."
+                  className={scope === "template" ? "opacity-55" : ""}
+                  isDisabled={scope === "template"}
+                />
               </FormControl>
             )}
           />

@@ -8,16 +8,17 @@ import { queryClient as qc } from "@app/hooks/api/reactQuery";
 import { APIKeyDataV2 } from "../apiKeys/types";
 import { MfaMethod } from "../auth/types";
 import { TGroupWithProjectMemberships } from "../groups/types";
+import { projectKeys } from "../projects";
 import { setAuthToken } from "../reactQuery";
 import { subscriptionQueryKeys } from "../subscriptions/queries";
-import { workspaceKeys } from "../workspace";
 import { userKeys } from "./query-keys";
 import {
   AddUserToOrgDTO,
   APIKeyData,
   AuthMethod,
   CreateAPIKeyRes,
-  DeletOrgMembershipDTO,
+  DeleteOrgMembershipBatchDTO,
+  DeleteOrgMembershipDTO,
   OrgUser,
   RenameUserDTO,
   TokenVersion,
@@ -196,10 +197,10 @@ export const useAddUsersToOrg = () => {
       projects?.forEach((project) => {
         if (project.slug) {
           queryClient.invalidateQueries({
-            queryKey: workspaceKeys.getWorkspaceGroupMemberships(project.slug)
+            queryKey: projectKeys.getProjectGroupMemberships(project.slug)
           });
         }
-        queryClient.invalidateQueries({ queryKey: workspaceKeys.getWorkspaceUsers(project.id) });
+        queryClient.invalidateQueries({ queryKey: projectKeys.getProjectUsers(project.id) });
       });
     }
   });
@@ -243,9 +244,26 @@ export const useGetOrgMembershipProjectMemberships = (
 export const useDeleteOrgMembership = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<object, object, DeletOrgMembershipDTO>({
+  return useMutation<object, object, DeleteOrgMembershipDTO>({
     mutationFn: ({ membershipId, orgId }) => {
       return apiRequest.delete(`/api/v2/organizations/${orgId}/memberships/${membershipId}`);
+    },
+    onSuccess: (_, { orgId }) => {
+      queryClient.invalidateQueries({ queryKey: userKeys.getOrgUsers(orgId) });
+    }
+  });
+};
+
+export const useDeleteOrgMembershipBatch = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<object, object, DeleteOrgMembershipBatchDTO>({
+    mutationFn: ({ membershipIds, orgId }) => {
+      return apiRequest.delete(`/api/v2/organizations/${orgId}/memberships`, {
+        data: {
+          membershipIds
+        }
+      });
     },
     onSuccess: (_, { orgId }) => {
       queryClient.invalidateQueries({ queryKey: userKeys.getOrgUsers(orgId) });
@@ -256,7 +274,7 @@ export const useDeleteOrgMembership = () => {
 export const useDeactivateOrgMembership = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<object, object, DeletOrgMembershipDTO>({
+  return useMutation<object, object, DeleteOrgMembershipDTO>({
     mutationFn: ({ membershipId, orgId }) => {
       return apiRequest.post(
         `/api/v2/organizations/${orgId}/memberships/${membershipId}/deactivate`
@@ -475,14 +493,6 @@ export const useGetMyOrganizationProjects = (orgId: string) => {
     },
     enabled: true
   });
-};
-
-export const fetchMyPrivateKey = async () => {
-  const {
-    data: { privateKey }
-  } = await apiRequest.get<{ privateKey: string }>("/api/v1/user/private-key");
-
-  return privateKey;
 };
 
 export const useListUserGroupMemberships = (username: string) => {

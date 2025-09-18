@@ -16,10 +16,13 @@ import { getConfig } from "@app/lib/config/env";
 import { BadRequestError, InternalServerError } from "@app/lib/errors";
 import { logger } from "@app/lib/logger";
 import { QueueJobs, QueueName, TQueueServiceFactory } from "@app/queue";
+import { TAppConnectionDALFactory } from "@app/services/app-connection/app-connection-dal";
 import { decryptAppConnection } from "@app/services/app-connection/app-connection-fns";
 import { TAppConnection } from "@app/services/app-connection/app-connection-types";
 import { ActorType } from "@app/services/auth/auth-type";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
+import { TNotificationServiceFactory } from "@app/services/notification/notification-service";
+import { NotificationType } from "@app/services/notification/notification-types";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
 import { TProjectMembershipDALFactory } from "@app/services/project-membership/project-membership-dal";
 import { SmtpTemplates, TSmtpService } from "@app/services/smtp/smtp-service";
@@ -48,8 +51,10 @@ type TSecretRotationV2QueueServiceFactoryDep = {
   projectMembershipDAL: Pick<TProjectMembershipDALFactory, "findAllProjectMembers">;
   projectDAL: Pick<TProjectDALFactory, "findById">;
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">;
+  appConnectionDAL: Pick<TAppConnectionDALFactory, "updateById">;
   auditLogService: Pick<TAuditLogServiceFactory, "createAuditLog">;
   keyStore: Pick<TKeyStoreFactory, "acquireLock" | "getItem">;
+  notificationService: Pick<TNotificationServiceFactory, "createUserNotifications">;
 };
 
 export type TSecretScanningV2QueueServiceFactory = Awaited<ReturnType<typeof secretScanningV2QueueServiceFactory>>;
@@ -62,7 +67,9 @@ export const secretScanningV2QueueServiceFactory = async ({
   smtpService,
   kmsService,
   auditLogService,
-  keyStore
+  keyStore,
+  appConnectionDAL,
+  notificationService
 }: TSecretRotationV2QueueServiceFactoryDep) => {
   const queueDataSourceFullScan = async (
     dataSource: TSecretScanningDataSourceWithConnection,
@@ -71,7 +78,10 @@ export const secretScanningV2QueueServiceFactory = async ({
     try {
       const { type } = dataSource;
 
-      const factory = SECRET_SCANNING_FACTORY_MAP[type]();
+      const factory = SECRET_SCANNING_FACTORY_MAP[type]({
+        kmsService,
+        appConnectionDAL
+      });
 
       const rawResources = await factory.listRawResources(dataSource);
 
@@ -171,7 +181,10 @@ export const secretScanningV2QueueServiceFactory = async ({
         let connection: TAppConnection | null = null;
         if (dataSource.connection) connection = await decryptAppConnection(dataSource.connection, kmsService);
 
-        const factory = SECRET_SCANNING_FACTORY_MAP[dataSource.type as SecretScanningDataSource]();
+        const factory = SECRET_SCANNING_FACTORY_MAP[dataSource.type as SecretScanningDataSource]({
+          kmsService,
+          appConnectionDAL
+        });
 
         const findingsPath = join(tempFolder, "findings.json");
 
@@ -329,7 +342,10 @@ export const secretScanningV2QueueServiceFactory = async ({
     dataSourceId,
     dataSourceType
   }: Pick<TQueueSecretScanningResourceDiffScan, "payload" | "dataSourceId" | "dataSourceType">) => {
-    const factory = SECRET_SCANNING_FACTORY_MAP[dataSourceType as SecretScanningDataSource]();
+    const factory = SECRET_SCANNING_FACTORY_MAP[dataSourceType as SecretScanningDataSource]({
+      kmsService,
+      appConnectionDAL
+    });
 
     const resourcePayload = factory.getDiffScanResourcePayload(payload);
 
@@ -391,7 +407,10 @@ export const secretScanningV2QueueServiceFactory = async ({
 
       if (!resource) throw new Error(`Resource with ID "${resourceId}" not found`);
 
-      const factory = SECRET_SCANNING_FACTORY_MAP[dataSource.type as SecretScanningDataSource]();
+      const factory = SECRET_SCANNING_FACTORY_MAP[dataSource.type as SecretScanningDataSource]({
+        kmsService,
+        appConnectionDAL
+      });
 
       const tempFolder = await createTempFolder();
 
@@ -577,16 +596,38 @@ export const secretScanningV2QueueServiceFactory = async ({
 
         const timestamp = new Date().toISOString();
 
+        const subjectLine =
+          payload.status === SecretScanningScanStatus.Completed
+            ? "Incident Alert: Secret(s) Leaked"
+            : `Secret Scanning Failed`;
+
+        await notificationService.createUserNotifications(
+          recipients.map((member) => ({
+            userId: member.userId,
+            orgId: project.orgId,
+            type:
+              payload.status === SecretScanningScanStatus.Completed
+                ? NotificationType.SECRET_SCANNING_SECRETS_DETECTED
+                : NotificationType.SECRET_SCANNING_SCAN_FAILED,
+            title: subjectLine,
+            body:
+              payload.status === SecretScanningScanStatus.Completed
+                ? `Uncovered **${payload.numberOfSecrets}** secret(s) ${payload.isDiffScan ? " from a recent commit to" : " in"} **${resourceName}**.`
+                : `Encountered an error while attempting to scan the resource **${resourceName}**: ${payload.errorMessage}`,
+            link:
+              payload.status === SecretScanningScanStatus.Completed
+                ? `/projects/secret-scanning/${projectId}/findings?search=scanId:${payload.scanId}`
+                : `/projects/secret-scanning/${projectId}/data-sources/${dataSource.type}/${dataSource.id}`
+          }))
+        );
+
         await smtpService.sendMail({
           recipients: recipients.map((member) => member.user.email!).filter(Boolean),
           template:
             payload.status === SecretScanningScanStatus.Completed
               ? SmtpTemplates.SecretScanningV2SecretsDetected
               : SmtpTemplates.SecretScanningV2ScanFailed,
-          subjectLine:
-            payload.status === SecretScanningScanStatus.Completed
-              ? "Incident Alert: Secret(s) Leaked"
-              : `Secret Scanning Failed`,
+          subjectLine,
           substitutions:
             payload.status === SecretScanningScanStatus.Completed
               ? {

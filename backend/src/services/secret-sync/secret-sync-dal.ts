@@ -30,6 +30,8 @@ const baseSecretSyncQuery = ({ filter, db, tx }: { db: TDbClient; filter?: Secre
       db.ref("encryptedCredentials").withSchema(TableName.AppConnection).as("connectionEncryptedCredentials"),
       db.ref("description").withSchema(TableName.AppConnection).as("connectionDescription"),
       db.ref("version").withSchema(TableName.AppConnection).as("connectionVersion"),
+      db.ref("gatewayId").withSchema(TableName.AppConnection).as("connectionGatewayId"),
+      db.ref("projectId").withSchema(TableName.AppConnection).as("connectionProjectId"),
       db.ref("createdAt").withSchema(TableName.AppConnection).as("connectionCreatedAt"),
       db.ref("updatedAt").withSchema(TableName.AppConnection).as("connectionUpdatedAt"),
       db
@@ -65,6 +67,8 @@ const expandSecretSync = (
     connectionUpdatedAt,
     connectionVersion,
     connectionIsPlatformManagedCredentials,
+    connectionGatewayId,
+    connectionProjectId,
     ...el
   } = secretSync;
 
@@ -83,7 +87,9 @@ const expandSecretSync = (
       createdAt: connectionCreatedAt,
       updatedAt: connectionUpdatedAt,
       version: connectionVersion,
-      isPlatformManagedCredentials: connectionIsPlatformManagedCredentials
+      isPlatformManagedCredentials: connectionIsPlatformManagedCredentials,
+      gatewayId: connectionGatewayId,
+      projectId: connectionProjectId
     },
     folder: folder
       ? {

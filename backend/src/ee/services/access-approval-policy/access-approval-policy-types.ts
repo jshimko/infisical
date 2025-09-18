@@ -26,7 +26,8 @@ export enum BypasserType {
 export type TCreateAccessApprovalPolicy = {
   approvals: number;
   secretPath: string;
-  environment: string;
+  environment?: string;
+  environments?: string[];
   approvers: (
     | { type: ApproverType.Group; id: string; sequence?: number }
     | { type: ApproverType.User; id?: string; username?: string; sequence?: number }
@@ -40,6 +41,7 @@ export type TCreateAccessApprovalPolicy = {
   enforcementLevel: EnforcementLevel;
   allowedSelfApprovals: boolean;
   approvalsRequired?: { numberOfApprovals: number; stepNumber: number }[];
+  maxTimePeriod?: string | null;
 } & Omit<TProjectPermission, "projectId">;
 
 export type TUpdateAccessApprovalPolicy = {
@@ -58,6 +60,8 @@ export type TUpdateAccessApprovalPolicy = {
   enforcementLevel?: EnforcementLevel;
   allowedSelfApprovals: boolean;
   approvalsRequired?: { numberOfApprovals: number; stepNumber: number }[];
+  environments?: string[];
+  maxTimePeriod?: string | null;
 } & Omit<TProjectPermission, "projectId">;
 
 export type TDeleteAccessApprovalPolicy = {
@@ -102,7 +106,8 @@ export interface TAccessApprovalPolicyServiceFactory {
     environment,
     enforcementLevel,
     allowedSelfApprovals,
-    approvalsRequired
+    approvalsRequired,
+    maxTimePeriod
   }: TCreateAccessApprovalPolicy) => Promise<{
     environment: {
       name: string;
@@ -113,6 +118,15 @@ export interface TAccessApprovalPolicyServiceFactory {
       slug: string;
       position: number;
     };
+    environments: {
+      name: string;
+      id: string;
+      createdAt: Date;
+      updatedAt: Date;
+      projectId: string;
+      slug: string;
+      position: number;
+    }[];
     projectId: string;
     name: string;
     id: string;
@@ -124,6 +138,7 @@ export interface TAccessApprovalPolicyServiceFactory {
     allowedSelfApprovals: boolean;
     secretPath: string;
     deletedAt?: Date | null | undefined;
+    maxTimePeriod?: string | null;
   }>;
   deleteAccessApprovalPolicy: ({
     policyId,
@@ -148,11 +163,17 @@ export interface TAccessApprovalPolicyServiceFactory {
     allowedSelfApprovals: boolean;
     secretPath: string;
     deletedAt?: Date | null | undefined;
+    maxTimePeriod?: string | null;
     environment: {
       id: string;
       name: string;
       slug: string;
     };
+    environments: {
+      id: string;
+      name: string;
+      slug: string;
+    }[];
     projectId: string;
   }>;
   updateAccessApprovalPolicy: ({
@@ -168,13 +189,20 @@ export interface TAccessApprovalPolicyServiceFactory {
     approvals,
     enforcementLevel,
     allowedSelfApprovals,
-    approvalsRequired
+    approvalsRequired,
+    environments,
+    maxTimePeriod
   }: TUpdateAccessApprovalPolicy) => Promise<{
     environment: {
       id: string;
       name: string;
       slug: string;
     };
+    environments: {
+      id: string;
+      name: string;
+      slug: string;
+    }[];
     projectId: string;
     name: string;
     id: string;
@@ -186,6 +214,7 @@ export interface TAccessApprovalPolicyServiceFactory {
     allowedSelfApprovals: boolean;
     secretPath?: string | null | undefined;
     deletedAt?: Date | null | undefined;
+    maxTimePeriod?: string | null;
   }>;
   getAccessApprovalPolicyByProjectSlug: ({
     actorId,
@@ -220,11 +249,17 @@ export interface TAccessApprovalPolicyServiceFactory {
       allowedSelfApprovals: boolean;
       secretPath: string;
       deletedAt?: Date | null | undefined;
+      maxTimePeriod?: string | null;
       environment: {
         id: string;
         name: string;
         slug: string;
       };
+      environments: {
+        id: string;
+        name: string;
+        slug: string;
+      }[];
       projectId: string;
       bypassers: (
         | {
@@ -271,11 +306,17 @@ export interface TAccessApprovalPolicyServiceFactory {
     allowedSelfApprovals: boolean;
     secretPath: string;
     deletedAt?: Date | null | undefined;
+    maxTimePeriod?: string | null;
     environment: {
       id: string;
       name: string;
       slug: string;
     };
+    environments: {
+      id: string;
+      name: string;
+      slug: string;
+    }[];
     projectId: string;
     bypassers: (
       | {

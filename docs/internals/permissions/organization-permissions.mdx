@@ -9,7 +9,7 @@ Infisical's organization permissions system follows a role-based access control 
 
 Each permission consists of:
 
-- **Subject**: The resource the permission applies to (e.g., workspaces, members, billing)
+- **Subject**: The resource the permission applies to (e.g., project, members, billing)
 - **Action**: The operation that can be performed (e.g., read, create, edit, delete)
 
 Some organization-level resources—specifically `app-connections`—support conditional permissions and permission inversion for more granular access control.
@@ -18,13 +18,13 @@ Some organization-level resources—specifically `app-connections`—support con
 
 Below is a comprehensive list of all available organization-level subjects and their supported actions, organized by functional area.
 
-### Workspace Management
+### Project Management
 
-#### Subject: `workspace`
+#### Subject: `project` (formerly workspace)
 
-| Action   | Description           |
-| -------- | --------------------- |
-| `create` | Create new workspaces |
+| Action   | Description        |
+| -------- | ------------------ |
+| `create` | Create new project |
 
 ### Role Management
 
@@ -217,3 +217,14 @@ Supports conditions and permission inversion
 | `edit-gateways`   | Modify existing gateway settings  |
 | `delete-gateways` | Remove gateways from organization |
 | `attach-gateways` | Attach gateways to resources      |
+
+#### Subject: `machine-identity-auth-template`
+
+| Action             | Description                                    |
+| ------------------ | ---------------------------------------------- |
+| `list-templates`   | View identity auth templates                   |
+| `create-templates` | Create new identity auth templates             |
+| `edit-templates`   | Modify existing identity auth templates        |
+| `delete-templates` | Remove identity auth templates                 |
+| `unlink-templates` | Unlink identity auth templates from identities |
+| `attach-templates` | Attach identity auth templates to identities   |

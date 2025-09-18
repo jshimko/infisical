@@ -1,12 +1,13 @@
 import { z } from "zod";
 
+import { ProjectType } from "@app/db/schemas";
 import { OCIConnectionListItemSchema, SanitizedOCIConnectionSchema } from "@app/ee/services/app-connections/oci";
 import {
   OracleDBConnectionListItemSchema,
   SanitizedOracleDBConnectionSchema
 } from "@app/ee/services/app-connections/oracledb";
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
-import { ApiDocsTags } from "@app/lib/api-docs";
+import { ApiDocsTags, AppConnections } from "@app/lib/api-docs";
 import { readLimit } from "@app/server/config/rateLimiter";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import {
@@ -15,6 +16,10 @@ import {
 } from "@app/services/app-connection/1password";
 import { Auth0ConnectionListItemSchema, SanitizedAuth0ConnectionSchema } from "@app/services/app-connection/auth0";
 import { AwsConnectionListItemSchema, SanitizedAwsConnectionSchema } from "@app/services/app-connection/aws";
+import {
+  AzureADCSConnectionListItemSchema,
+  SanitizedAzureADCSConnectionSchema
+} from "@app/services/app-connection/azure-adcs/azure-adcs-connection-schemas";
 import {
   AzureAppConfigurationConnectionListItemSchema,
   SanitizedAzureAppConfigurationConnectionSchema
@@ -75,6 +80,10 @@ import {
 import { LdapConnectionListItemSchema, SanitizedLdapConnectionSchema } from "@app/services/app-connection/ldap";
 import { MsSqlConnectionListItemSchema, SanitizedMsSqlConnectionSchema } from "@app/services/app-connection/mssql";
 import { MySqlConnectionListItemSchema, SanitizedMySqlConnectionSchema } from "@app/services/app-connection/mysql";
+import {
+  NetlifyConnectionListItemSchema,
+  SanitizedNetlifyConnectionSchema
+} from "@app/services/app-connection/netlify";
 import { OktaConnectionListItemSchema, SanitizedOktaConnectionSchema } from "@app/services/app-connection/okta";
 import {
   PostgresConnectionListItemSchema,
@@ -145,7 +154,9 @@ const SanitizedAppConnectionSchema = z.union([
   ...SanitizedChecklyConnectionSchema.options,
   ...SanitizedSupabaseConnectionSchema.options,
   ...SanitizedDigitalOceanConnectionSchema.options,
-  ...SanitizedOktaConnectionSchema.options
+  ...SanitizedNetlifyConnectionSchema.options,
+  ...SanitizedOktaConnectionSchema.options,
+  ...SanitizedAzureADCSConnectionSchema.options
 ]);
 
 const AppConnectionOptionsSchema = z.discriminatedUnion("app", [
@@ -184,7 +195,9 @@ const AppConnectionOptionsSchema = z.discriminatedUnion("app", [
   ChecklyConnectionListItemSchema,
   SupabaseConnectionListItemSchema,
   DigitalOceanConnectionListItemSchema,
-  OktaConnectionListItemSchema
+  NetlifyConnectionListItemSchema,
+  OktaConnectionListItemSchema,
+  AzureADCSConnectionListItemSchema
 ]);
 
 export const registerAppConnectionRouter = async (server: FastifyZodProvider) => {
@@ -198,6 +211,9 @@ export const registerAppConnectionRouter = async (server: FastifyZodProvider) =>
       hide: false,
       tags: [ApiDocsTags.AppConnections],
       description: "List the available App Connection Options.",
+      querystring: z.object({
+        projectType: z.nativeEnum(ProjectType).optional()
+      }),
       response: {
         200: z.object({
           appConnectionOptions: AppConnectionOptionsSchema.array()
@@ -205,8 +221,8 @@ export const registerAppConnectionRouter = async (server: FastifyZodProvider) =>
       }
     },
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
-    handler: () => {
-      const appConnectionOptions = server.services.appConnection.listAppConnectionOptions();
+    handler: (req) => {
+      const appConnectionOptions = server.services.appConnection.listAppConnectionOptions(req.query.projectType);
       return { appConnectionOptions };
     }
   });
@@ -220,18 +236,27 @@ export const registerAppConnectionRouter = async (server: FastifyZodProvider) =>
     schema: {
       hide: false,
       tags: [ApiDocsTags.AppConnections],
-      description: "List all the App Connections for the current organization.",
+      description: "List all the App Connections for the current organization or project.",
+      querystring: z.object({
+        projectId: z.string().optional().describe(AppConnections.LIST().projectId)
+      }),
       response: {
         200: z.object({ appConnections: SanitizedAppConnectionSchema.array() })
       }
     },
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     handler: async (req) => {
-      const appConnections = await server.services.appConnection.listAppConnectionsByOrg(req.permission);
+      const { projectId } = req.query;
+      const appConnections = await server.services.appConnection.listAppConnections(
+        req.permission,
+        undefined,
+        projectId
+      );
 
       await server.services.auditLog.createAuditLog({
         ...req.auditLogInfo,
         orgId: req.permission.orgId,
+        projectId,
         event: {
           type: EventType.GET_APP_CONNECTIONS,
           metadata: {

@@ -1,9 +1,9 @@
 import { forwardRef, TextareaHTMLAttributes, useCallback, useMemo, useRef, useState } from "react";
-import { faCircle, faFolder, faKey } from "@fortawesome/free-solid-svg-icons";
+import { faFolder, faKey, faLayerGroup } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import * as Popover from "@radix-ui/react-popover";
 
-import { useWorkspace } from "@app/context";
+import { useProject } from "@app/context";
 import { useDebounce, useToggle } from "@app/hooks";
 import { useGetProjectFolders, useGetProjectSecrets } from "@app/hooks/api";
 
@@ -76,10 +76,10 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
     },
     ref
   ) => {
-    const { currentWorkspace } = useWorkspace();
-    const workspaceId = currentWorkspace?.id || "";
+    const { currentProject } = useProject();
+    const projectId = currentProject?.id || "";
 
-    const [debouncedValue] = useDebounce(value, 500);
+    const [debouncedValue] = useDebounce(value, 100);
 
     const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
@@ -101,7 +101,7 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
       let predicate = suggestionSourceValue;
       if (isDeep) {
         const [envSlug, ...folderPaths] = suggestionSourceValue.split(".");
-        const isValidEnvSlug = currentWorkspace?.environments.find((e) => e.slug === envSlug);
+        const isValidEnvSlug = currentProject?.environments.find((e) => e.slug === envSlug);
         suggestionSourceEnv = isValidEnvSlug ? envSlug : undefined;
         suggestionSourceSecretPath = `/${folderPaths.slice(0, -1)?.join("/")}`;
         predicate = folderPaths[folderPaths.length - 1];
@@ -125,7 +125,7 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
       viewSecretValue: false,
       environment: suggestionSource.environment || "",
       secretPath: suggestionSource.secretPath || "",
-      workspaceId,
+      projectId,
       options: {
         enabled: isPopupOpen
       }
@@ -133,7 +133,7 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
     const { data: folders } = useGetProjectFolders({
       environment: suggestionSource.environment || "",
       path: suggestionSource.secretPath || "",
-      projectId: workspaceId,
+      projectId,
       options: {
         enabled: isPopupOpen
       }
@@ -142,13 +142,13 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
     const suggestions = useMemo(() => {
       if (!isPopupOpen) return [];
       // reset highlight whenever recomputation happens
-      setHighlightedIndex(-1);
+      setHighlightedIndex(0);
       const suggestionsArr: ReferenceItem[] = [];
       const predicate = suggestionSource.predicate.toLowerCase();
 
       if (!suggestionSource.isDeep) {
         // At first level only environments and secrets
-        (currentWorkspace?.environments || []).forEach(({ name, slug }) => {
+        (currentProject?.environments || []).forEach(({ name, slug }) => {
           if (name.toLowerCase().startsWith(predicate))
             suggestionsArr.push({
               label: name,
@@ -176,7 +176,7 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
           });
       });
       return suggestionsArr;
-    }, [secrets, folders, currentWorkspace?.environments, isPopupOpen, suggestionSource.value]);
+    }, [secrets, folders, currentProject?.environments, isPopupOpen, suggestionSource.value]);
 
     const handleSuggestionSelect = (selectIndex?: number) => {
       const selectedSuggestion =
@@ -298,17 +298,21 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
           }}
         >
           <div
-            className="h-full w-full max-w-60 flex-col items-center justify-center rounded-md text-white"
+            className="h-full w-full flex-col items-center justify-center rounded-md text-white"
             ref={popoverContentRef}
           >
             {suggestions.map((item, i) => {
               let entryIcon;
+              let subText;
               if (item.type === ReferenceType.SECRET) {
-                entryIcon = faKey;
+                entryIcon = <FontAwesomeIcon icon={faKey} className="text-bunker-300" />;
+                subText = "Secret";
               } else if (item.type === ReferenceType.ENVIRONMENT) {
-                entryIcon = faCircle;
+                entryIcon = <FontAwesomeIcon icon={faLayerGroup} className="text-green-700" />;
+                subText = "Environment";
               } else {
-                entryIcon = faFolder;
+                entryIcon = <FontAwesomeIcon icon={faFolder} className="text-yellow-700" />;
+                subText = "Folder";
               }
 
               return (
@@ -327,22 +331,22 @@ export const InfisicalSecretInput = forwardRef<HTMLTextAreaElement, Props>(
                   }}
                   onMouseEnter={() => setHighlightedIndex(i)}
                   style={{ pointerEvents: "auto" }}
-                  className="flex items-center justify-between border-mineshaft-600 text-left"
+                  className="flex w-full items-center justify-between border-mineshaft-600 text-left"
                   key={`secret-reference-secret-${i + 1}`}
                 >
                   <div
                     className={`${
-                      highlightedIndex === i ? "bg-gray-600" : ""
-                    } text-md relative mb-0.5 flex w-full cursor-pointer select-none items-center justify-between rounded-md px-2 py-2 outline-none transition-all hover:bg-mineshaft-500 data-[highlighted]:bg-mineshaft-500`}
+                      highlightedIndex === i ? "bg-mineshaft-500" : ""
+                    } text-md relative flex w-full cursor-pointer select-none items-center justify-between px-2 py-2 outline-none transition-all hover:bg-mineshaft-700 data-[highlighted]:bg-mineshaft-700`}
                   >
-                    <div className="flex w-full gap-2">
-                      <div className="flex items-center text-yellow-700">
-                        <FontAwesomeIcon
-                          icon={entryIcon}
-                          size={item.type === ReferenceType.ENVIRONMENT ? "xs" : "1x"}
-                        />
+                    <div className="flex w-full items-start gap-2">
+                      <div className="mt-1 flex items-center">{entryIcon}</div>
+                      <div className="text-md w-10/12 truncate text-left">
+                        {item.label}
+                        <div className="mb-[0.1rem] text-xs leading-3 text-bunker-400">
+                          {subText}
+                        </div>
                       </div>
-                      <div className="text-md w-10/12 truncate text-left">{item.label}</div>
                     </div>
                   </div>
                 </div>

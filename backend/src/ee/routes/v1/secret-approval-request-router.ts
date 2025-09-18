@@ -27,7 +27,7 @@ export const registerSecretApprovalRequestRouter = async (server: FastifyZodProv
     },
     schema: {
       querystring: z.object({
-        workspaceId: z.string().trim(),
+        projectId: z.string().trim(),
         environment: z.string().trim().optional(),
         committer: z.string().trim().optional(),
         search: z.string().trim().optional(),
@@ -80,7 +80,7 @@ export const registerSecretApprovalRequestRouter = async (server: FastifyZodProv
         actorAuthMethod: req.permission.authMethod,
         actorOrgId: req.permission.orgId,
         ...req.query,
-        projectId: req.query.workspaceId
+        projectId: req.query.projectId
       });
       return { approvals, totalCount };
     }
@@ -94,7 +94,7 @@ export const registerSecretApprovalRequestRouter = async (server: FastifyZodProv
     },
     schema: {
       querystring: z.object({
-        workspaceId: z.string().trim(),
+        projectId: z.string().trim(),
         policyId: z.string().trim().optional()
       }),
       response: {
@@ -113,7 +113,7 @@ export const registerSecretApprovalRequestRouter = async (server: FastifyZodProv
         actorId: req.permission.id,
         actorAuthMethod: req.permission.authMethod,
         actorOrgId: req.permission.orgId,
-        projectId: req.query.workspaceId,
+        projectId: req.query.projectId,
         policyId: req.query.policyId
       });
       return { approvals };
@@ -294,22 +294,30 @@ export const registerSecretApprovalRequestRouter = async (server: FastifyZodProv
         200: z.object({
           approval: SecretApprovalRequestsSchema.merge(
             z.object({
-              // secretPath: z.string(),
               policy: z.object({
                 id: z.string(),
                 name: z.string(),
                 approvals: z.number(),
-                approvers: approvalRequestUser.array(),
+                approvers: approvalRequestUser
+                  .extend({ isOrgMembershipActive: z.boolean().nullable().optional() })
+                  .array(),
                 bypassers: approvalRequestUser.array(),
                 secretPath: z.string().optional().nullable(),
                 enforcementLevel: z.string(),
                 deletedAt: z.date().nullish(),
-                allowedSelfApprovals: z.boolean()
+                allowedSelfApprovals: z.boolean(),
+                shouldCheckSecretPermission: z.boolean().nullable().optional()
               }),
               environment: z.string(),
               statusChangedByUser: approvalRequestUser.optional(),
               committerUser: approvalRequestUser.nullish(),
-              reviewers: approvalRequestUser.extend({ status: z.string(), comment: z.string().optional() }).array(),
+              reviewers: approvalRequestUser
+                .extend({
+                  status: z.string(),
+                  comment: z.string().optional(),
+                  isOrgMembershipActive: z.boolean().nullable().optional()
+                })
+                .array(),
               secretPath: z.string(),
               commits: secretRawSchema
                 .omit({ _id: true, environment: true, workspace: true, type: true, version: true, secretValue: true })

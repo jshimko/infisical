@@ -30,6 +30,7 @@ import {
   TDeleteFolderDTO,
   TDeleteManyFoldersDTO,
   TGetFolderByIdDTO,
+  TGetFolderByPathDTO,
   TGetFolderDTO,
   TGetFoldersDeepByEnvsDTO,
   TUpdateFolderDTO,
@@ -46,7 +47,7 @@ type TSecretFolderServiceFactoryDep = {
   folderCommitService: Pick<TFolderCommitServiceFactory, "createCommit">;
   projectDAL: Pick<TProjectDALFactory, "findProjectBySlug">;
   secretApprovalPolicyService: Pick<TSecretApprovalPolicyServiceFactory, "getSecretApprovalPolicy">;
-  secretV2BridgeDAL: Pick<TSecretV2BridgeDALFactory, "findByFolderIds">;
+  secretV2BridgeDAL: Pick<TSecretV2BridgeDALFactory, "findByFolderIds" | "invalidateSecretCacheByProjectId">;
 };
 
 export type TSecretFolderServiceFactory = ReturnType<typeof secretFolderServiceFactory>;
@@ -238,8 +239,16 @@ export const secretFolderServiceFactory = ({
       return doc;
     });
 
+    const [folderWithFullPath] = await folderDAL.findSecretPathByFolderIds(projectId, [folder.id]);
+
+    if (!folderWithFullPath) {
+      throw new NotFoundError({
+        message: `Failed to retrieve path for folder with ID '${folder.id}'`
+      });
+    }
+
     await snapshotService.performSnapshot(folder.parentId as string);
-    return folder;
+    return { ...folder, path: folderWithFullPath.path };
   };
 
   const updateManyFolders = async ({
@@ -389,6 +398,7 @@ export const secretFolderServiceFactory = ({
 
     await Promise.all(result.map(async (res) => snapshotService.performSnapshot(res.newFolder.parentId as string)));
 
+    await secretV2BridgeDAL.invalidateSecretCacheByProjectId(projectId);
     return {
       projectId,
       newFolders: result.map((res) => res.newFolder),
@@ -496,8 +506,28 @@ export const secretFolderServiceFactory = ({
       return doc;
     });
 
+    const foldersWithFullPaths = await folderDAL.findSecretPathByFolderIds(projectId, [newFolder.id, folder.id]);
+
+    const newFolderWithFullPath = foldersWithFullPaths.find((f) => f?.id === newFolder.id);
+    if (!newFolderWithFullPath) {
+      throw new NotFoundError({
+        message: `Failed to retrieve path for folder with ID '${newFolder.id}'`
+      });
+    }
+
+    const folderWithFullPath = foldersWithFullPaths.find((f) => f?.id === folder.id);
+    if (!folderWithFullPath) {
+      throw new NotFoundError({
+        message: `Failed to retrieve path for folder with ID '${folder.id}'`
+      });
+    }
+
     await snapshotService.performSnapshot(newFolder.parentId as string);
-    return { folder: newFolder, old: folder };
+    await secretV2BridgeDAL.invalidateSecretCacheByProjectId(projectId);
+    return {
+      folder: { ...newFolder, path: newFolderWithFullPath.path },
+      old: { ...folder, path: folderWithFullPath.path }
+    };
   };
 
   const $checkFolderPolicy = async ({
@@ -696,6 +726,7 @@ export const secretFolderServiceFactory = ({
     });
 
     await snapshotService.performSnapshot(folder.parentId as string);
+    await secretV2BridgeDAL.invalidateSecretCacheByProjectId(projectId);
     return folder;
   };
 
@@ -1371,6 +1402,31 @@ export const secretFolderServiceFactory = ({
     };
   };
 
+  const getFolderByPath = async (
+    { projectId, environment, secretPath }: TGetFolderByPathDTO,
+    actor: OrgServiceActor
+  ) => {
+    // folder check is allowed to be read by anyone
+    // permission is to check if user has access
+    await permissionService.getProjectPermission({
+      actor: actor.type,
+      actorId: actor.id,
+      projectId,
+      actorAuthMethod: actor.authMethod,
+      actorOrgId: actor.orgId,
+      actionProjectType: ActionProjectType.SecretManager
+    });
+
+    const folder = await folderDAL.findBySecretPath(projectId, environment, secretPath);
+
+    if (!folder)
+      throw new NotFoundError({
+        message: `Could not find folder with path "${secretPath}" in environment "${environment}" for project with ID "${projectId}"`
+      });
+
+    return folder;
+  };
+
   return {
     createFolder,
     updateFolder,
@@ -1378,6 +1434,7 @@ export const secretFolderServiceFactory = ({
     deleteFolder,
     getFolders,
     getFolderById,
+    getFolderByPath,
     getProjectFolderCount,
     getFoldersMultiEnv,
     getFoldersDeepByEnvs,

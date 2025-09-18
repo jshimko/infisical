@@ -1,16 +1,15 @@
 import { EnforcementLevel, PolicyType } from "../policies/enums";
+import { ProjectEnv } from "../projects/types";
 import { TProjectPermission } from "../roles/types";
 import { ApprovalStatus } from "../secretApprovalRequest/types";
-import { WorkspaceEnv } from "../workspace/types";
 
 export type TAccessApprovalPolicy = {
   id: string;
   name: string;
   approvals: number;
   secretPath: string;
-  envId: string;
   workspace: string;
-  environment: WorkspaceEnv;
+  environments: ProjectEnv[];
   projectId: string;
   policyType: PolicyType;
   approversRequired: boolean;
@@ -19,6 +18,7 @@ export type TAccessApprovalPolicy = {
   approvers?: Approver[];
   bypassers?: Bypasser[];
   allowedSelfApprovals: boolean;
+  maxTimePeriod?: string | null;
 };
 
 export enum ApproverType {
@@ -36,6 +36,7 @@ export type Approver = {
   type: ApproverType;
   sequence?: number;
   approvalsRequired?: number;
+  isOrgMembershipActive: boolean;
 };
 
 export type Bypasser = {
@@ -82,6 +83,7 @@ export type TAccessApprovalRequest = {
     name: string;
     approvals: number;
     approvers: {
+      isOrgMembershipActive: boolean;
       userId: string;
       sequence?: number;
       approvalsRequired?: number;
@@ -94,14 +96,18 @@ export type TAccessApprovalRequest = {
     enforcementLevel: EnforcementLevel;
     deletedAt: Date | null;
     allowedSelfApprovals: boolean;
+    maxTimePeriod?: string | null;
   };
 
   reviewers: {
+    isOrgMembershipActive: boolean;
     userId: string;
     status: string;
   }[];
 
   note?: string;
+  editNote?: string;
+  editedByUserId?: string;
 };
 
 export type TAccessApproval = {
@@ -145,6 +151,13 @@ export type TCreateAccessRequestDTO = {
   note?: string;
 } & Omit<TProjectUserPrivilege, "id" | "createdAt" | "updatedAt" | "slug" | "projectMembershipId">;
 
+export type TUpdateAccessRequestDTO = {
+  requestId: string;
+  editNote: string;
+  temporaryRange: string;
+  projectSlug: string;
+};
+
 export type TGetAccessApprovalRequestsDTO = {
   projectSlug: string;
   policyId?: string;
@@ -166,29 +179,31 @@ export type TGetSecretApprovalPolicyOfBoardDTO = {
 export type TCreateAccessPolicyDTO = {
   projectSlug: string;
   name?: string;
-  environment: string;
-  approvers?: Approver[];
+  environments: string[];
+  approvers?: Omit<Approver, "isOrgMembershipActive">[];
   bypassers?: Bypasser[];
   approvals?: number;
   secretPath: string;
   enforcementLevel?: EnforcementLevel;
   allowedSelfApprovals: boolean;
   approvalsRequired?: { numberOfApprovals: number; stepNumber: number }[];
+  maxTimePeriod?: string | null;
 };
 
 export type TUpdateAccessPolicyDTO = {
   id: string;
   name?: string;
-  approvers?: Approver[];
+  approvers?: Omit<Approver, "isOrgMembershipActive">[];
   bypassers?: Bypasser[];
   secretPath?: string;
-  environment?: string;
+  environments?: string[];
   approvals?: number;
   enforcementLevel?: EnforcementLevel;
   allowedSelfApprovals: boolean;
   // for invalidating list
   projectSlug: string;
   approvalsRequired?: { numberOfApprovals: number; stepNumber: number }[];
+  maxTimePeriod?: string | null;
 };
 
 export type TDeleteSecretPolicyDTO = {

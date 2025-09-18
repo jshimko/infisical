@@ -14,11 +14,12 @@ export type TAllowedFields = z.infer<typeof AllowedFieldsSchema>;
 
 export type TAttachLdapAuthDTO = {
   identityId: string;
-  url: string;
-  searchBase: string;
+  templateId?: string;
+  url?: string;
+  searchBase?: string;
   searchFilter: string;
-  bindDN: string;
-  bindPass: string;
+  bindDN?: string;
+  bindPass?: string;
   ldapCaCertificate?: string;
   allowedFields?: TAllowedFields[];
   accessTokenTTL: number;
@@ -26,10 +27,15 @@ export type TAttachLdapAuthDTO = {
   accessTokenNumUsesLimit: number;
   accessTokenTrustedIps: { ipAddress: string }[];
   isActorSuperAdmin?: boolean;
+  lockoutEnabled: boolean;
+  lockoutThreshold: number;
+  lockoutDurationSeconds: number;
+  lockoutCounterResetSeconds: number;
 } & Omit<TProjectPermission, "projectId">;
 
 export type TUpdateLdapAuthDTO = {
   identityId: string;
+  templateId?: string;
   url?: string;
   searchBase?: string;
   searchFilter?: string;
@@ -41,6 +47,10 @@ export type TUpdateLdapAuthDTO = {
   accessTokenMaxTTL?: number;
   accessTokenNumUsesLimit?: number;
   accessTokenTrustedIps?: { ipAddress: string }[];
+  lockoutEnabled?: boolean;
+  lockoutThreshold?: number;
+  lockoutDurationSeconds?: number;
+  lockoutCounterResetSeconds?: number;
 } & Omit<TProjectPermission, "projectId">;
 
 export type TGetLdapAuthDTO = {
@@ -54,3 +64,12 @@ export type TLoginLdapAuthDTO = {
 export type TRevokeLdapAuthDTO = {
   identityId: string;
 } & Omit<TProjectPermission, "projectId">;
+
+export type TClearLdapAuthLockoutsDTO = {
+  identityId: string;
+} & Omit<TProjectPermission, "projectId">;
+
+export type TCheckLdapAuthLockoutDTO = {
+  identityId: string;
+  username: string;
+};

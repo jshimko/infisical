@@ -24,7 +24,7 @@ export type TOfflineLicense = {
 
 export type TFeatureSet = {
   _id: null;
-  slug: null;
+  slug: string | null;
   tier: -1;
   workspaceLimit: null;
   workspacesUsed: number;
@@ -47,6 +47,7 @@ export type TFeatureSet = {
   auditLogStreamLimit: 3;
   githubOrgSync: false;
   samlSSO: false;
+  enforceGoogleSSO: false;
   hsm: false;
   oidcSSO: false;
   secretAccessInsights: false;
@@ -75,7 +76,9 @@ export type TFeatureSet = {
   secretScanning: false;
   enterpriseSecretSyncs: false;
   enterpriseAppConnections: false;
+  machineIdentityAuthTemplates: false;
   fips: false;
+  eventSubscriptions: false;
 };
 
 export type TOrgPlansTableDTO = {
@@ -84,6 +87,7 @@ export type TOrgPlansTableDTO = {
 
 export type TOrgPlanDTO = {
   projectId?: string;
+  refreshCache?: boolean;
 } & TOrgPermission;
 
 export type TStartOrgTrialDTO = {

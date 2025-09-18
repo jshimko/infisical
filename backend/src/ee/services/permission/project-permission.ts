@@ -147,6 +147,14 @@ export enum ProjectPermissionSecretScanningDataSourceActions {
   ReadResources = "read-data-source-resources"
 }
 
+export enum ProjectPermissionAppConnectionActions {
+  Read = "read-app-connections",
+  Create = "create-app-connections",
+  Edit = "edit-app-connections",
+  Delete = "delete-app-connections",
+  Connect = "connect-app-connections"
+}
+
 export enum ProjectPermissionSecretScanningFindingActions {
   Read = "read-findings",
   Update = "update-findings"
@@ -155,6 +163,17 @@ export enum ProjectPermissionSecretScanningFindingActions {
 export enum ProjectPermissionSecretScanningConfigActions {
   Read = "read-configs",
   Update = "update-configs"
+}
+
+export enum ProjectPermissionSecretEventActions {
+  SubscribeCreated = "subscribe-on-created",
+  SubscribeUpdated = "subscribe-on-updated",
+  SubscribeDeleted = "subscribe-on-deleted",
+  SubscribeImportMutations = "subscribe-on-import-mutations"
+}
+
+export enum ProjectPermissionAuditLogsActions {
+  Read = "read"
 }
 
 export enum ProjectPermissionSub {
@@ -196,10 +215,19 @@ export enum ProjectPermissionSub {
   Kmip = "kmip",
   SecretScanningDataSources = "secret-scanning-data-sources",
   SecretScanningFindings = "secret-scanning-findings",
-  SecretScanningConfigs = "secret-scanning-configs"
+  SecretScanningConfigs = "secret-scanning-configs",
+  SecretEvents = "secret-events",
+  AppConnections = "app-connections"
 }
 
 export type SecretSubjectFields = {
+  environment: string;
+  secretPath: string;
+  secretName?: string;
+  secretTags?: string[];
+};
+
+export type SecretEventSubjectFields = {
   environment: string;
   secretPath: string;
   secretName?: string;
@@ -253,6 +281,10 @@ export type PkiSubscriberSubjectFields = {
   // (dangtony98): consider adding [commonName] as a subject field in the future
 };
 
+export type AppConnectionSubjectFields = {
+  connectionId: string;
+};
+
 export type ProjectPermissionSet =
   | [
       ProjectPermissionSecretActions,
@@ -289,7 +321,7 @@ export type ProjectPermissionSet =
   | [ProjectPermissionGroupActions, ProjectPermissionSub.Groups]
   | [ProjectPermissionActions, ProjectPermissionSub.Integrations]
   | [ProjectPermissionActions, ProjectPermissionSub.Webhooks]
-  | [ProjectPermissionActions, ProjectPermissionSub.AuditLogs]
+  | [ProjectPermissionAuditLogsActions, ProjectPermissionSub.AuditLogs]
   | [ProjectPermissionActions, ProjectPermissionSub.Environments]
   | [ProjectPermissionActions, ProjectPermissionSub.IpAllowList]
   | [ProjectPermissionActions, ProjectPermissionSub.Settings]
@@ -342,7 +374,18 @@ export type ProjectPermissionSet =
   | [ProjectPermissionCommitsActions, ProjectPermissionSub.Commits]
   | [ProjectPermissionSecretScanningDataSourceActions, ProjectPermissionSub.SecretScanningDataSources]
   | [ProjectPermissionSecretScanningFindingActions, ProjectPermissionSub.SecretScanningFindings]
-  | [ProjectPermissionSecretScanningConfigActions, ProjectPermissionSub.SecretScanningConfigs];
+  | [ProjectPermissionSecretScanningConfigActions, ProjectPermissionSub.SecretScanningConfigs]
+  | [
+      ProjectPermissionSecretEventActions,
+      ProjectPermissionSub.SecretEvents | (ForcedSubject<ProjectPermissionSub.SecretEvents> & SecretEventSubjectFields)
+    ]
+  | [
+      ProjectPermissionAppConnectionActions,
+      (
+        | ProjectPermissionSub.AppConnections
+        | (ForcedSubject<ProjectPermissionSub.AppConnections> & AppConnectionSubjectFields)
+      )
+    ];
 
 const SECRET_PATH_MISSING_SLASH_ERR_MSG = "Invalid Secret Path; it must start with a '/'";
 const SECRET_PATH_PERMISSION_OPERATOR_SCHEMA = z.union([
@@ -483,7 +526,17 @@ const SecretConditionV2Schema = z
       .object({
         [PermissionConditionOperators.$IN]: PermissionConditionSchema[PermissionConditionOperators.$IN]
       })
-      .partial()
+      .partial(),
+    eventType: z.union([
+      z.string(),
+      z
+        .object({
+          [PermissionConditionOperators.$EQ]: PermissionConditionSchema[PermissionConditionOperators.$EQ],
+          [PermissionConditionOperators.$NEQ]: PermissionConditionSchema[PermissionConditionOperators.$NEQ],
+          [PermissionConditionOperators.$IN]: PermissionConditionSchema[PermissionConditionOperators.$IN]
+        })
+        .partial()
+    ])
   })
   .partial();
 
@@ -540,6 +593,21 @@ const PkiTemplateConditionSchema = z
         .object({
           [PermissionConditionOperators.$EQ]: PermissionConditionSchema[PermissionConditionOperators.$EQ],
           [PermissionConditionOperators.$GLOB]: PermissionConditionSchema[PermissionConditionOperators.$GLOB],
+          [PermissionConditionOperators.$IN]: PermissionConditionSchema[PermissionConditionOperators.$IN]
+        })
+        .partial()
+    ])
+  })
+  .partial();
+
+const AppConnectionConditionSchema = z
+  .object({
+    connectionId: z.union([
+      z.string(),
+      z
+        .object({
+          [PermissionConditionOperators.$EQ]: PermissionConditionSchema[PermissionConditionOperators.$EQ],
+          [PermissionConditionOperators.$NEQ]: PermissionConditionSchema[PermissionConditionOperators.$NEQ],
           [PermissionConditionOperators.$IN]: PermissionConditionSchema[PermissionConditionOperators.$IN]
         })
         .partial()
@@ -616,7 +684,7 @@ const GeneralPermissionSchema = [
   }),
   z.object({
     subject: z.literal(ProjectPermissionSub.AuditLogs).describe("The entity this permission pertains to."),
-    action: CASL_ACTION_SCHEMA_NATIVE_ENUM(ProjectPermissionActions).describe(
+    action: CASL_ACTION_SCHEMA_NATIVE_ENUM(ProjectPermissionAuditLogsActions).describe(
       "Describe what action an entity can take."
     )
   }),
@@ -727,6 +795,16 @@ const GeneralPermissionSchema = [
     action: CASL_ACTION_SCHEMA_NATIVE_ENUM(ProjectPermissionSecretScanningConfigActions).describe(
       "Describe what action an entity can take."
     )
+  }),
+  z.object({
+    subject: z.literal(ProjectPermissionSub.AppConnections).describe("The entity this permission pertains to."),
+    inverted: z.boolean().optional().describe("Whether rule allows or forbids."),
+    action: CASL_ACTION_SCHEMA_NATIVE_ENUM(ProjectPermissionAppConnectionActions).describe(
+      "Describe what action an entity can take."
+    ),
+    conditions: AppConnectionConditionSchema.describe(
+      "When specified, only matching conditions will be allowed to access given resource."
+    ).optional()
   })
 ];
 
@@ -865,7 +943,16 @@ export const ProjectPermissionV2Schema = z.discriminatedUnion("subject", [
       "When specified, only matching conditions will be allowed to access given resource."
     ).optional()
   }),
-
+  z.object({
+    subject: z.literal(ProjectPermissionSub.SecretEvents).describe("The entity this permission pertains to."),
+    inverted: z.boolean().optional().describe("Whether rule allows or forbids."),
+    action: CASL_ACTION_SCHEMA_NATIVE_ENUM(ProjectPermissionSecretEventActions).describe(
+      "Describe what action an entity can take."
+    ),
+    conditions: SecretSyncConditionV2Schema.describe(
+      "When specified, only matching conditions will be allowed to access given resource."
+    ).optional()
+  }),
   ...GeneralPermissionSchema
 ]);
 

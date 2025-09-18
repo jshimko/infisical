@@ -14,9 +14,9 @@ import {
   faFingerprint,
   faFolder,
   faFolderPlus,
+  faInfoCircle,
   faKey,
   faLock,
-  faMinusSquare,
   faPaste,
   faPlus,
   faRotate,
@@ -33,6 +33,7 @@ import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
 import { CreateSecretRotationV2Modal } from "@app/components/secret-rotations-v2";
 import {
+  Badge,
   Button,
   DeleteActionModal,
   DropdownMenu,
@@ -54,9 +55,9 @@ import {
   ProjectPermissionActions,
   ProjectPermissionDynamicSecretActions,
   ProjectPermissionSub,
+  useProject,
   useProjectPermission,
-  useSubscription,
-  useWorkspace
+  useSubscription
 } from "@app/context";
 import {
   ProjectPermissionCommitsActions,
@@ -98,7 +99,7 @@ import { CreateSecretImportForm } from "./CreateSecretImportForm";
 import { FolderForm } from "./FolderForm";
 import { MoveSecretsModal } from "./MoveSecretsModal";
 
-type TParsedEnv = Record<string, { value: string; comments: string[]; secretPath?: string }>;
+type TParsedEnv = { value: string; comments: string[]; secretPath?: string; secretKey: string }[];
 type TParsedFolderEnv = Record<
   string,
   Record<string, { value: string; comments: string[]; secretPath?: string }>
@@ -108,9 +109,6 @@ type TSecOverwriteOpt = { update: TParsedEnv; create: TParsedEnv };
 type Props = {
   // switch the secrets type as it gets decrypted after api call
   environment: string;
-  // @depreciated will be moving all these details to zustand
-  workspaceId: string;
-  projectSlug: string;
   secretPath?: string;
   filter: Filter;
   tags?: WsTag[];
@@ -141,8 +139,6 @@ type Props = {
 
 export const ActionBar = ({
   environment,
-  workspaceId,
-  projectSlug,
   secretPath = "/",
   filter,
   tags = [],
@@ -163,6 +159,7 @@ export const ActionBar = ({
   hasPathPolicies,
   onClearFilters
 }: Props) => {
+  const { projectId, currentProject } = useProject();
   const { handlePopUpOpen, handlePopUpToggle, handlePopUpClose, popUp } = usePopUp([
     "addFolder",
     "addDynamicSecret",
@@ -195,7 +192,6 @@ export const ActionBar = ({
   const { reset: resetSelectedSecret } = useSelectedSecretActions();
   const isMultiSelectActive = Boolean(Object.keys(selectedSecrets).length);
 
-  const { currentWorkspace } = useWorkspace();
   const { permission } = useProjectPermission();
 
   const handleFolderCreate = async (folderName: string, description: string | null) => {
@@ -213,7 +209,7 @@ export const ActionBar = ({
         };
 
         addPendingChange(pendingFolderCreate, {
-          workspaceId,
+          projectId,
           environment,
           secretPath
         });
@@ -226,7 +222,7 @@ export const ActionBar = ({
         name: folderName,
         path: secretPath,
         environment,
-        projectId: workspaceId,
+        projectId,
         description
       });
       handlePopUpClose("addFolder");
@@ -246,7 +242,7 @@ export const ActionBar = ({
   const handleSecretDownload = async () => {
     try {
       const { secrets: localSecrets, imports: localImportedSecrets } = await fetchProjectSecrets({
-        workspaceId,
+        projectId,
         expandSecretReferences: true,
         includeImports: true,
         environment,
@@ -316,7 +312,7 @@ export const ActionBar = ({
     try {
       await deleteBatchSecretV3({
         secretPath,
-        workspaceId,
+        projectId,
         environment,
         secrets: bulkDeletedSecrets.map(({ key }) => ({ secretKey: key, type: SecretType.Shared }))
       });
@@ -347,13 +343,12 @@ export const ActionBar = ({
     try {
       const secretsToMove = Object.values(selectedSecrets);
       const { isDestinationUpdated, isSourceUpdated } = await moveSecrets({
-        projectSlug,
         shouldOverwrite,
         sourceEnvironment: environment,
         sourceSecretPath: secretPath,
         destinationEnvironment,
         destinationSecretPath,
-        projectId: workspaceId,
+        projectId,
         secretIds: secretsToMove.map((sec) => sec.id)
       });
 
@@ -406,8 +401,8 @@ export const ActionBar = ({
     }
 
     try {
-      const allUpdateSecrets: TParsedEnv = {};
-      const allCreateSecrets: TParsedEnv = {};
+      const allUpdateSecrets: TParsedEnv = [];
+      const allCreateSecrets: TParsedEnv = [];
 
       await Promise.all(
         Object.entries(envByPath).map(async ([folderPath, secrets]) => {
@@ -438,7 +433,7 @@ export const ActionBar = ({
             (_, i) => secretFolderKeys.slice(i * batchSize, (i + 1) * batchSize)
           );
 
-          const existingSecretLookup: Record<string, boolean> = {};
+          const existingSecretLookup = new Set<string>();
 
           const processBatches = async () => {
             await secretBatches.reduce(async (previous, batch) => {
@@ -447,12 +442,12 @@ export const ActionBar = ({
               const { secrets: batchSecrets } = await fetchDashboardProjectSecretsByKeys({
                 secretPath: normalizedPath,
                 environment,
-                projectId: workspaceId,
+                projectId,
                 keys: batch
               });
 
               batchSecrets.forEach((secret) => {
-                existingSecretLookup[secret.secretKey] = true;
+                existingSecretLookup.add(`${normalizedPath}-${secret.secretKey}`);
               });
             }, Promise.resolve());
           };
@@ -466,18 +461,18 @@ export const ActionBar = ({
             // Store the path with the secret for later batch processing
             const secretWithPath = {
               ...secretData,
-              secretPath: normalizedPath
+              secretPath: normalizedPath,
+              secretKey
             };
 
-            if (existingSecretLookup[secretKey]) {
-              allUpdateSecrets[secretKey] = secretWithPath;
+            if (existingSecretLookup.has(`${normalizedPath}-${secretKey}`)) {
+              allUpdateSecrets.push(secretWithPath);
             } else {
-              allCreateSecrets[secretKey] = secretWithPath;
+              allCreateSecrets.push(secretWithPath);
             }
           });
         })
       );
-
       handlePopUpOpen("confirmUpload", {
         update: allUpdateSecrets,
         create: allCreateSecrets
@@ -520,7 +515,7 @@ export const ActionBar = ({
       const allPaths = new Set<string>();
 
       // Add paths from create secrets
-      Object.values(create || {}).forEach((secData) => {
+      create.forEach((secData) => {
         if (secData.secretPath && secData.secretPath !== secretPath) {
           allPaths.add(secData.secretPath);
         }
@@ -565,7 +560,7 @@ export const ActionBar = ({
             name: folderName,
             path: parentPath,
             environment,
-            projectId: workspaceId
+            projectId
           });
 
           createdFolders.add(fullPath);
@@ -576,8 +571,8 @@ export const ActionBar = ({
         return Promise.resolve();
       }, Promise.resolve());
 
-      if (Object.keys(create || {}).length > 0) {
-        Object.entries(create).forEach(([secretKey, secData]) => {
+      if (create.length > 0) {
+        create.forEach((secData) => {
           // Use the stored secretPath or fall back to the current secretPath
           const path = secData.secretPath || secretPath;
 
@@ -589,7 +584,7 @@ export const ActionBar = ({
             type: SecretType.Shared,
             secretComment: secData.comments.join("\n"),
             secretValue: secData.value,
-            secretKey
+            secretKey: secData.secretKey
           });
         });
 
@@ -597,7 +592,7 @@ export const ActionBar = ({
           Object.entries(groupedCreateSecrets).map(([path, secrets]) =>
             createSecretBatch({
               secretPath: path,
-              workspaceId,
+              projectId,
               environment,
               secrets
             })
@@ -605,8 +600,8 @@ export const ActionBar = ({
         );
       }
 
-      if (Object.keys(update || {}).length > 0) {
-        Object.entries(update).forEach(([secretKey, secData]) => {
+      if (update.length > 0) {
+        update.forEach((secData) => {
           // Use the stored secretPath or fall back to the current secretPath
           const path = secData.secretPath || secretPath;
 
@@ -618,7 +613,7 @@ export const ActionBar = ({
             type: SecretType.Shared,
             secretComment: secData.comments.join("\n"),
             secretValue: secData.value,
-            secretKey
+            secretKey: secData.secretKey
           });
         });
 
@@ -627,7 +622,7 @@ export const ActionBar = ({
           Object.entries(groupedUpdateSecrets).map(([path, secrets]) =>
             updateSecretBatch({
               secretPath: path,
-              workspaceId,
+              projectId,
               environment,
               secrets
             })
@@ -637,13 +632,12 @@ export const ActionBar = ({
 
       // Invalidate appropriate queries to refresh UI
       queryClient.invalidateQueries({
-        queryKey: secretKeys.getProjectSecret({ workspaceId, environment, secretPath })
+        queryKey: secretKeys.getProjectSecret({ projectId, environment, secretPath })
       });
+      queryClient.invalidateQueries({});
+      dashboardKeys.getDashboardSecrets({ projectId, secretPath });
       queryClient.invalidateQueries({
-        queryKey: dashboardKeys.getDashboardSecrets({ projectId: workspaceId, secretPath })
-      });
-      queryClient.invalidateQueries({
-        queryKey: secretApprovalRequestKeys.count({ workspaceId })
+        queryKey: secretApprovalRequestKeys.count({ projectId })
       });
 
       // Close the modal and show notification
@@ -666,6 +660,8 @@ export const ActionBar = ({
   const isTableFiltered =
     Object.values(filter.tags).some(Boolean) || Object.values(filter.include).some(Boolean);
 
+  const filteredTags = Object.values(filter?.tags ?? {}).filter(Boolean).length;
+
   return (
     <>
       <div className="mt-4 flex items-center space-x-2">
@@ -674,8 +670,8 @@ export const ActionBar = ({
           className="w-2/5"
           value={filter.searchFilter}
           onChange={onSearchChange}
-          environments={[currentWorkspace.environments.find((env) => env.slug === environment)!]}
-          projectId={workspaceId}
+          environments={[currentProject.environments.find((env) => env.slug === environment)!]}
+          projectId={projectId}
           tags={tags}
         />
         <div>
@@ -698,7 +694,7 @@ export const ActionBar = ({
                 Filters
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="p-0">
+            <DropdownMenuContent align="end" sideOffset={2} className="p-0">
               <DropdownMenuGroup>Filter By</DropdownMenuGroup>
               <DropdownMenuItem
                 onClick={(e) => {
@@ -777,11 +773,19 @@ export const ActionBar = ({
                     iconPos="right"
                     icon={<FontAwesomeIcon icon={faChevronRight} size="sm" />}
                   >
-                    Tags
+                    <div className="flex w-full justify-between">
+                      <span>Tags</span>
+                      {Boolean(filteredTags) && <Badge>{filteredTags} Applied</Badge>}
+                    </div>
                   </DropdownSubMenuTrigger>
                   <DropdownSubMenuContent className="thin-scrollbar max-h-[20rem] overflow-y-auto rounded-l-none">
                     <DropdownMenuLabel className="sticky top-0 bg-mineshaft-900">
-                      Apply Tags to Filter Secrets
+                      <div className="flex w-full items-center justify-between">
+                        <span>Filter by Secret Tags</span>
+                        <Tooltip content="Matches secrets with one or more of the applied tags">
+                          <FontAwesomeIcon icon={faInfoCircle} />
+                        </Tooltip>
+                      </div>
                     </DropdownMenuLabel>
                     {tags.map(({ id, slug, color }) => (
                       <DropdownMenuItem
@@ -1061,14 +1065,14 @@ export const ActionBar = ({
         )}
       >
         <div className="mt-3.5 flex items-center rounded-md border border-mineshaft-600 bg-mineshaft-800 px-4 py-2 text-bunker-300">
-          <Tooltip content="Clear">
-            <IconButton variant="plain" ariaLabel="clear-selection" onClick={resetSelectedSecret}>
-              <FontAwesomeIcon icon={faMinusSquare} size="lg" />
-            </IconButton>
-          </Tooltip>
-          <div className="ml-2 flex-grow px-2 text-sm">
-            {Object.keys(selectedSecrets).length} Selected
-          </div>
+          <div className="mr-2 text-sm">{Object.keys(selectedSecrets).length} Selected</div>
+          <button
+            type="button"
+            className="mr-auto text-xs text-mineshaft-400 underline-offset-2 hover:text-mineshaft-200 hover:underline"
+            onClick={resetSelectedSecret}
+          >
+            Unselect All
+          </button>
           <ProjectPermissionCan
             I={ProjectPermissionActions.Delete}
             a={subject(ProjectPermissionSub.Secrets, {
@@ -1123,8 +1127,8 @@ export const ActionBar = ({
       {/* all the side triggers from actions like modals etc */}
       <CreateSecretImportForm
         environment={environment}
-        workspaceId={workspaceId}
         secretPath={secretPath}
+        projectId={projectId}
         onUpgradePlan={() => handlePopUpOpen("upgradePlan")}
         isOpen={popUp.addSecretImport.isOpen}
         onClose={() => handlePopUpClose("addSecretImport")}
@@ -1133,7 +1137,7 @@ export const ActionBar = ({
       <CreateDynamicSecretForm
         isOpen={popUp.addDynamicSecret.isOpen}
         onToggle={(isOpen) => handlePopUpToggle("addDynamicSecret", isOpen)}
-        projectSlug={projectSlug}
+        projectSlug={currentProject.slug}
         environments={[{ slug: environment, name: environment, id: "not-used" }]}
         secretPath={secretPath}
         isSingleEnvironmentMode
@@ -1179,8 +1183,8 @@ export const ActionBar = ({
         onToggle={(isOpen) => handlePopUpToggle("replicateFolder", isOpen)}
         onParsedEnv={handleParsedEnvMultiFolder}
         environment={environment}
-        environments={currentWorkspace.environments}
-        workspaceId={workspaceId}
+        environments={currentProject.environments}
+        projectId={projectId}
         secretPath={secretPath}
       />
       {subscription && (
@@ -1230,8 +1234,8 @@ export const ActionBar = ({
             <div className="flex flex-col text-gray-300">
               <div>Your project already contains the following {updateSecretCount} secrets:</div>
               <div className="mt-2 text-sm text-gray-400">
-                {Object.keys((popUp?.confirmUpload?.data as TSecOverwriteOpt)?.update || {})
-                  ?.map((key) => key)
+                {(popUp?.confirmUpload?.data as TSecOverwriteOpt)?.update
+                  ?.map((sec) => sec.secretKey)
                   .join(", ")}
               </div>
               <div className="mt-6">

@@ -20,6 +20,8 @@ import { TProjectSlackConfigDALFactory } from "@app/services/slack/project-slack
 import { SmtpTemplates, TSmtpService } from "@app/services/smtp/smtp-service";
 import { TUserDALFactory } from "@app/services/user/user-dal";
 
+import { TNotificationServiceFactory } from "../../../services/notification/notification-service";
+import { NotificationType } from "../../../services/notification/notification-types";
 import { TAccessApprovalPolicyApproverDALFactory } from "../access-approval-policy/access-approval-policy-approver-dal";
 import { TAccessApprovalPolicyDALFactory } from "../access-approval-policy/access-approval-policy-dal";
 import { TGroupDALFactory } from "../group/group-dal";
@@ -54,7 +56,7 @@ type TSecretApprovalRequestServiceFactoryDep = {
   accessApprovalPolicyDAL: Pick<TAccessApprovalPolicyDALFactory, "findOne" | "find" | "findLastValidPolicy">;
   accessApprovalRequestReviewerDAL: Pick<
     TAccessApprovalRequestReviewerDALFactory,
-    "create" | "find" | "findOne" | "transaction"
+    "create" | "find" | "findOne" | "transaction" | "delete"
   >;
   groupDAL: Pick<TGroupDALFactory, "findAllGroupPossibleMembers">;
   projectMembershipDAL: Pick<TProjectMembershipDALFactory, "findById">;
@@ -67,6 +69,7 @@ type TSecretApprovalRequestServiceFactoryDep = {
   projectSlackConfigDAL: Pick<TProjectSlackConfigDALFactory, "getIntegrationDetailsByProject">;
   microsoftTeamsService: Pick<TMicrosoftTeamsServiceFactory, "sendNotification">;
   projectMicrosoftTeamsConfigDAL: Pick<TProjectMicrosoftTeamsConfigDALFactory, "getIntegrationDetailsByProject">;
+  notificationService: Pick<TNotificationServiceFactory, "createUserNotifications">;
 };
 
 export const accessApprovalRequestServiceFactory = ({
@@ -84,8 +87,28 @@ export const accessApprovalRequestServiceFactory = ({
   kmsService,
   microsoftTeamsService,
   projectMicrosoftTeamsConfigDAL,
-  projectSlackConfigDAL
+  projectSlackConfigDAL,
+  notificationService
 }: TSecretApprovalRequestServiceFactoryDep): TAccessApprovalRequestServiceFactory => {
+  const $getEnvironmentFromPermissions = (permissions: unknown): string | null => {
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+      return null;
+    }
+
+    const firstPermission = permissions[0] as unknown[];
+    if (!Array.isArray(firstPermission) || firstPermission.length < 3) {
+      return null;
+    }
+
+    const metadata = firstPermission[2] as Record<string, unknown>;
+    if (typeof metadata === "object" && metadata !== null && "environment" in metadata) {
+      const env = metadata.environment;
+      return typeof env === "string" ? env : null;
+    }
+
+    return null;
+  };
+
   const createAccessApprovalRequest: TAccessApprovalRequestServiceFactory["createAccessApprovalRequest"] = async ({
     isTemporary,
     temporaryRange,
@@ -135,6 +158,15 @@ export const accessApprovalRequestServiceFactory = ({
     }
     if (policy.deletedAt) {
       throw new BadRequestError({ message: "The policy linked to this request has been deleted" });
+    }
+
+    // Check if the requested time falls under policy.maxTimePeriod
+    if (policy.maxTimePeriod) {
+      if (!temporaryRange || ms(temporaryRange) > ms(policy.maxTimePeriod)) {
+        throw new BadRequestError({
+          message: `Requested access time range is limited to ${policy.maxTimePeriod} by policy`
+        });
+      }
     }
 
     const approverIds: string[] = [];
@@ -217,7 +249,8 @@ export const accessApprovalRequestServiceFactory = ({
       );
 
       const requesterFullName = `${requestedByUser.firstName} ${requestedByUser.lastName}`;
-      const approvalUrl = `${cfg.SITE_URL}/projects/secret-management/${project.id}/approval`;
+      const approvalPath = `/projects/secret-management/${project.id}/approval`;
+      const approvalUrl = `${cfg.SITE_URL}${approvalPath}`;
 
       await triggerWorkflowIntegrationNotification({
         input: {
@@ -246,6 +279,17 @@ export const accessApprovalRequestServiceFactory = ({
         }
       });
 
+      await notificationService.createUserNotifications(
+        approverUsers.map((approver) => ({
+          userId: approver.id,
+          orgId: actorOrgId,
+          type: NotificationType.ACCESS_APPROVAL_REQUEST,
+          title: "Access Approval Request",
+          body: `**${requesterFullName}** (${requestedByUser.email}) has requested ${isTemporary ? "temporary" : "permanent"} access to **${secretPath}** in the **${envSlug}** environment for project **${project.name}**.`,
+          link: approvalPath
+        }))
+      );
+
       await smtpService.sendMail({
         recipients: approverUsers.filter((approver) => approver.email).map((approver) => approver.email!),
         subjectLine: "Access Approval Request",
@@ -266,6 +310,173 @@ export const accessApprovalRequestServiceFactory = ({
         },
         template: SmtpTemplates.AccessApprovalRequest
       });
+
+      return approvalRequest;
+    });
+
+    return { request: approval };
+  };
+
+  const updateAccessApprovalRequest: TAccessApprovalRequestServiceFactory["updateAccessApprovalRequest"] = async ({
+    temporaryRange,
+    actorId,
+    actor,
+    actorOrgId,
+    actorAuthMethod,
+    editNote,
+    requestId
+  }) => {
+    const cfg = getConfig();
+
+    const accessApprovalRequest = await accessApprovalRequestDAL.findById(requestId);
+    if (!accessApprovalRequest) {
+      throw new NotFoundError({ message: `Access request with ID '${requestId}' not found` });
+    }
+
+    const { policy, requestedByUser } = accessApprovalRequest;
+    if (policy.deletedAt) {
+      throw new BadRequestError({
+        message: "The policy associated with this access request has been deleted."
+      });
+    }
+
+    const { membership, hasRole } = await permissionService.getProjectPermission({
+      actor,
+      actorId,
+      projectId: accessApprovalRequest.projectId,
+      actorAuthMethod,
+      actorOrgId,
+      actionProjectType: ActionProjectType.SecretManager
+    });
+
+    if (!membership) {
+      throw new ForbiddenRequestError({ message: "You are not a member of this project" });
+    }
+
+    const isApprover = policy.approvers.find((approver) => approver.userId === actorId);
+
+    if (!hasRole(ProjectMembershipRole.Admin) && !isApprover) {
+      throw new ForbiddenRequestError({ message: "You are not authorized to modify this request" });
+    }
+
+    const project = await projectDAL.findById(accessApprovalRequest.projectId);
+
+    if (!project) {
+      throw new NotFoundError({
+        message: `The project associated with this access request was not found. [projectId=${accessApprovalRequest.projectId}]`
+      });
+    }
+
+    if (accessApprovalRequest.status !== ApprovalStatus.PENDING) {
+      throw new BadRequestError({ message: "The request has been closed" });
+    }
+
+    const editedByUser = await userDAL.findById(actorId);
+
+    if (!editedByUser) throw new NotFoundError({ message: "Editing user not found" });
+
+    if (accessApprovalRequest.isTemporary && accessApprovalRequest.temporaryRange) {
+      if (ms(temporaryRange) > ms(accessApprovalRequest.temporaryRange)) {
+        throw new BadRequestError({ message: "Updated access duration must be less than current access duration" });
+      }
+    }
+
+    const { envSlug, secretPath, accessTypes } = verifyRequestedPermissions({
+      permissions: accessApprovalRequest.permissions
+    });
+
+    const approval = await accessApprovalRequestDAL.transaction(async (tx) => {
+      const approvalRequest = await accessApprovalRequestDAL.updateById(
+        requestId,
+        {
+          temporaryRange,
+          isTemporary: true,
+          editNote,
+          editedByUserId: actorId
+        },
+        tx
+      );
+
+      // reset review progress
+      await accessApprovalRequestReviewerDAL.delete(
+        {
+          requestId
+        },
+        tx
+      );
+
+      const requesterFullName = `${requestedByUser.firstName} ${requestedByUser.lastName}`;
+      const editorFullName = `${editedByUser.firstName} ${editedByUser.lastName}`;
+      const approvalPath = `/projects/secret-management/${project.id}/approval`;
+      const approvalUrl = `${cfg.SITE_URL}${approvalPath}`;
+
+      await triggerWorkflowIntegrationNotification({
+        input: {
+          notification: {
+            type: TriggerFeature.ACCESS_REQUEST_UPDATED,
+            payload: {
+              projectName: project.name,
+              requesterFullName,
+              isTemporary: true,
+              requesterEmail: requestedByUser.email as string,
+              secretPath,
+              environment: envSlug,
+              permissions: accessTypes,
+              approvalUrl,
+              editNote,
+              editorEmail: editedByUser.email as string,
+              editorFullName
+            }
+          },
+          projectId: project.id
+        },
+        dependencies: {
+          projectDAL,
+          projectSlackConfigDAL,
+          kmsService,
+          microsoftTeamsService,
+          projectMicrosoftTeamsConfigDAL
+        }
+      });
+
+      await notificationService.createUserNotifications(
+        policy.approvers
+          .filter((approver) => Boolean(approver.userId) && approver.userId !== editedByUser.id)
+          .map((approver) => ({
+            userId: approver.userId!,
+            orgId: actorOrgId,
+            type: NotificationType.ACCESS_APPROVAL_REQUEST_UPDATED,
+            title: "Access Approval Request Updated",
+            body: `**${editorFullName}** (${editedByUser.email}) has updated the access request submitted by **${requesterFullName}** (${requestedByUser.email}) for **${secretPath}** in the **${envSlug}** environment for project **${project.name}**.`,
+            link: approvalPath
+          }))
+      );
+
+      const recipients = policy.approvers
+        .filter((approver) => Boolean(approver.email) && approver.userId !== editedByUser.id)
+        .map((approver) => approver.email!);
+
+      if (recipients.length > 0) {
+        await smtpService.sendMail({
+          recipients,
+          subjectLine: "Access Approval Request Updated",
+          substitutions: {
+            projectName: project.name,
+            requesterFullName,
+            requesterEmail: requestedByUser.email,
+            isTemporary: true,
+            expiresIn: msFn(ms(temporaryRange || ""), { long: true }),
+            secretPath,
+            environment: envSlug,
+            permissions: accessTypes,
+            approvalUrl,
+            editNote,
+            editorFullName,
+            editorEmail: editedByUser.email
+          },
+          template: SmtpTemplates.AccessApprovalRequestUpdated
+        });
+      }
 
       return approvalRequest;
     });
@@ -308,6 +519,15 @@ export const accessApprovalRequestServiceFactory = ({
       requests = requests.filter((request) => request.environment === envSlug);
     }
 
+    requests = requests.map((request) => {
+      const permissionEnvironment = $getEnvironmentFromPermissions(request.permissions);
+
+      if (permissionEnvironment) {
+        request.environmentName = permissionEnvironment;
+      }
+      return request;
+    });
+
     return { requests };
   };
 
@@ -325,12 +545,26 @@ export const accessApprovalRequestServiceFactory = ({
       throw new NotFoundError({ message: `Secret approval request with ID '${requestId}' not found` });
     }
 
-    const { policy, environment } = accessApprovalRequest;
+    const { policy, environments, permissions } = accessApprovalRequest;
     if (policy.deletedAt) {
       throw new BadRequestError({
         message: "The policy associated with this access request has been deleted."
       });
     }
+
+    const permissionEnvironment = $getEnvironmentFromPermissions(permissions);
+    if (
+      !permissionEnvironment ||
+      (!environments.includes(permissionEnvironment) && status === ApprovalStatus.APPROVED)
+    ) {
+      throw new BadRequestError({
+        message: `The original policy ${policy.name} is not attached to environment '${permissionEnvironment}'.`
+      });
+    }
+    const environment = await projectEnvDAL.findOne({
+      projectId: accessApprovalRequest.projectId,
+      slug: permissionEnvironment
+    });
 
     const { membership, hasRole } = await permissionService.getProjectPermission({
       actor,
@@ -543,6 +777,20 @@ export const accessApprovalRequestServiceFactory = ({
               .map((appUser) => appUser.email)
               .filter((email): email is string => !!email);
 
+            const approvalPath = `/projects/secret-management/${project.id}/approval`;
+            const approvalUrl = `${cfg.SITE_URL}${approvalPath}`;
+
+            await notificationService.createUserNotifications(
+              approverUsersForEmail.map((approver) => ({
+                userId: approver.id,
+                orgId: actorOrgId,
+                type: NotificationType.ACCESS_POLICY_BYPASSED,
+                title: "Secret Access Policy Bypassed",
+                body: `**${actingUser.firstName} ${actingUser.lastName}** (${actingUser.email}) has accessed a secret in **${policy.secretPath || "/"}** in the **${environment?.name || permissionEnvironment}** environment for project **${project.name}** without obtaining the required approval.`,
+                link: approvalPath
+              }))
+            );
+
             if (recipientEmails.length > 0) {
               await smtpService.sendMail({
                 recipients: recipientEmails,
@@ -553,8 +801,8 @@ export const accessApprovalRequestServiceFactory = ({
                   requesterEmail: actingUser.email,
                   bypassReason: bypassReason || "No reason provided",
                   secretPath: policy.secretPath || "/",
-                  environment,
-                  approvalUrl: `${cfg.SITE_URL}/projects/secret-management/${project.id}/approval`,
+                  environment: environment?.name || permissionEnvironment,
+                  approvalUrl,
                   requestType: "access"
                 },
                 template: SmtpTemplates.AccessSecretRequestBypassed
@@ -599,6 +847,7 @@ export const accessApprovalRequestServiceFactory = ({
 
   return {
     createAccessApprovalRequest,
+    updateAccessApprovalRequest,
     listApprovalRequests,
     reviewAccessRequest,
     getCount

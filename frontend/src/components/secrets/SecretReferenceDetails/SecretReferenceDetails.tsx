@@ -13,7 +13,7 @@ import { twMerge } from "tailwind-merge";
 
 import { createNotification } from "@app/components/notifications";
 import { FormControl, FormLabel, SecretInput, Spinner, Tooltip } from "@app/components/v2";
-import { useWorkspace } from "@app/context";
+import { useProject } from "@app/context";
 import { useGetSecretReferenceTree } from "@app/hooks/api";
 import { ApiErrorTypes, TApiErrors, TSecretReferenceTraceNode } from "@app/hooks/api/types";
 
@@ -89,8 +89,8 @@ export const SecretReferenceNode = ({
 };
 
 export const SecretReferenceTree = ({ secretPath, environment, secretKey }: Props) => {
-  const { currentWorkspace } = useWorkspace();
-  const projectId = currentWorkspace?.id || "";
+  const { currentProject } = useProject();
+  const projectId = currentProject?.id || "";
 
   const { data, isPending, isError, error } = useGetSecretReferenceTree({
     secretPath,
@@ -125,7 +125,7 @@ export const SecretReferenceTree = ({ secretPath, environment, secretKey }: Prop
   if (isPending) {
     return (
       <div className="flex items-center justify-center py-4">
-        <Spinner size="xs" />
+        <Spinner className="text-mineshaft-400" />
       </div>
     );
   }

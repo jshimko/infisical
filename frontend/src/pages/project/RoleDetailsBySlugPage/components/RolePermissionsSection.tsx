@@ -8,14 +8,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { createNotification } from "@app/components/notifications";
 import { AccessTree } from "@app/components/permissions";
 import { Button } from "@app/components/v2";
-import { ProjectPermissionSub, useWorkspace } from "@app/context";
+import { ProjectPermissionSub, useProject } from "@app/context";
 import { ProjectPermissionSet } from "@app/context/ProjectPermissionContext";
 import { evaluatePermissionsAbility } from "@app/helpers/permissions";
 import { useGetProjectRoleBySlug, useUpdateProjectRole } from "@app/hooks/api";
+import { ProjectType } from "@app/hooks/api/projects/types";
 import { ProjectMembershipRole } from "@app/hooks/api/roles/types";
-import { ProjectType } from "@app/hooks/api/workspace/types";
 
 import { AddPoliciesButton } from "./AddPoliciesButton";
+import { AppConnectionPermissionConditions } from "./AppConnectionPermissionConditions";
 import { DynamicSecretPermissionConditions } from "./DynamicSecretPermissionConditions";
 import { GeneralPermissionConditions } from "./GeneralPermissionConditions";
 import { GeneralPermissionPolicies } from "./GeneralPermissionPolicies";
@@ -32,6 +33,7 @@ import {
   rolePermission2Form,
   TFormSchema
 } from "./ProjectRoleModifySection.utils";
+import { SecretEventPermissionConditions } from "./SecretEventPermissionConditions";
 import { SecretPermissionConditions } from "./SecretPermissionConditions";
 import { SecretSyncPermissionConditions } from "./SecretSyncPermissionConditions";
 import { SshHostPermissionConditions } from "./SshHostPermissionConditions";
@@ -72,6 +74,14 @@ export const renderConditionalComponents = (
       return <SecretSyncPermissionConditions isDisabled={isDisabled} />;
     }
 
+    if (subject === ProjectPermissionSub.SecretEvents) {
+      return <SecretEventPermissionConditions isDisabled={isDisabled} />;
+    }
+
+    if (subject === ProjectPermissionSub.AppConnections) {
+      return <AppConnectionPermissionConditions isDisabled={isDisabled} />;
+    }
+
     return <GeneralPermissionConditions isDisabled={isDisabled} type={subject} />;
   }
 
@@ -79,10 +89,10 @@ export const renderConditionalComponents = (
 };
 
 export const RolePermissionsSection = ({ roleSlug, isDisabled }: Props) => {
-  const { currentWorkspace } = useWorkspace();
-  const projectId = currentWorkspace?.id || "";
+  const { currentProject } = useProject();
+  const projectId = currentProject?.id || "";
   const { data: role, isPending } = useGetProjectRoleBySlug(
-    currentWorkspace?.id ?? "",
+    currentProject?.id ?? "",
     roleSlug as string
   );
 
@@ -121,7 +131,7 @@ export const RolePermissionsSection = ({ roleSlug, isDisabled }: Props) => {
     (role?.slug ?? "") as ProjectMembershipRole
   );
 
-  const isSecretManagerProject = currentWorkspace.type === ProjectType.SecretManager;
+  const isSecretManagerProject = currentProject.type === ProjectType.SecretManager;
 
   const permissions = form.watch("permissions");
 
@@ -173,7 +183,7 @@ export const RolePermissionsSection = ({ roleSlug, isDisabled }: Props) => {
                   Save
                 </Button>
                 <div className="ml-2 border-l border-mineshaft-500 pl-4">
-                  <AddPoliciesButton isDisabled={isDisabled} projectType={currentWorkspace.type} />
+                  <AddPoliciesButton isDisabled={isDisabled} projectType={currentProject.type} />
                 </div>
               </div>
             )}

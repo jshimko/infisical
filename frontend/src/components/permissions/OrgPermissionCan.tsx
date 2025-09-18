@@ -1,46 +1,48 @@
 import { FunctionComponent, ReactNode } from "react";
-import { BoundCanProps, Can } from "@casl/react";
-import { faLock } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { AbilityTuple, MongoAbility } from "@casl/ability";
+import { Can } from "@casl/react";
 
-import { TOrgPermission, useOrgPermission } from "@app/context/OrgPermissionContext";
+import { TooltipProps } from "@app/components/v2/Tooltip/Tooltip";
+import { useOrgPermission } from "@app/context/OrgPermissionContext";
+import { OrgPermissionSet } from "@app/context/OrgPermissionContext/types";
 
-import { Tooltip } from "../v2";
+import { AccessRestrictedBanner, Tooltip } from "../v2";
 
 export const OrgPermissionGuardBanner = () => {
   return (
     <div className="container mx-auto flex h-full items-center justify-center">
-      <div className="flex items-end space-x-12 rounded-md bg-mineshaft-800 p-16 text-bunker-300">
-        <div>
-          <FontAwesomeIcon icon={faLock} size="6x" />
-        </div>
-        <div>
-          <div className="mb-2 text-4xl font-medium">Access Restricted</div>
-          <div className="text-sm">
-            Your role has limited permissions, please <br /> contact your admin to gain access
-          </div>
-        </div>
-      </div>
+      <AccessRestrictedBanner />
     </div>
   );
 };
 
-type Props = {
+type Props<T extends AbilityTuple> = {
   label?: ReactNode;
   // this prop is used when there exist already a tooltip as helper text for users
   // so when permission is allowed same tooltip will be reused  to show helpertext
   renderTooltip?: boolean;
   allowedLabel?: string;
   renderGuardBanner?: boolean;
-} & BoundCanProps<TOrgPermission>;
+  tooltipProps?: Omit<TooltipProps, "children">;
+  I: T[0];
+  ability?: MongoAbility<T>;
+  children: ReactNode | ((isAllowed: boolean, ability: T) => ReactNode);
+  passThrough?: boolean;
+} & (
+  | { an: T[1] }
+  | {
+      a: T[1];
+    }
+);
 
-export const OrgPermissionCan: FunctionComponent<Props> = ({
+export const OrgPermissionCan: FunctionComponent<Props<OrgPermissionSet>> = ({
   label = "Access restricted",
   children,
   passThrough = true,
   renderTooltip,
   allowedLabel,
   renderGuardBanner,
+  tooltipProps,
   ...props
 }) => {
   const { permission } = useOrgPermission();
@@ -50,16 +52,22 @@ export const OrgPermissionCan: FunctionComponent<Props> = ({
       {(isAllowed, ability) => {
         // akhilmhdh: This is set as type due to error in casl react type.
         const finalChild =
-          typeof children === "function"
-            ? children(isAllowed, ability as TOrgPermission)
-            : children;
+          typeof children === "function" ? children(isAllowed, ability as any) : children;
 
         if (!isAllowed && passThrough) {
-          return <Tooltip content={label}>{finalChild}</Tooltip>;
+          return (
+            <Tooltip content={label} {...tooltipProps}>
+              {finalChild}
+            </Tooltip>
+          );
         }
 
         if (isAllowed && renderTooltip && allowedLabel) {
-          return <Tooltip content={allowedLabel}>{finalChild}</Tooltip>;
+          return (
+            <Tooltip content={allowedLabel} {...tooltipProps}>
+              {finalChild}
+            </Tooltip>
+          );
         }
 
         if (!isAllowed && renderGuardBanner) {

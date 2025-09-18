@@ -25,6 +25,7 @@ import {
 import { TSecretApprovalPolicyServiceFactory } from "@app/ee/services/secret-approval-policy/secret-approval-policy-service";
 import { TSecretApprovalRequestDALFactory } from "@app/ee/services/secret-approval-request/secret-approval-request-dal";
 import { TSecretApprovalRequestSecretDALFactory } from "@app/ee/services/secret-approval-request/secret-approval-request-secret-dal";
+import { scanSecretPolicyViolations } from "@app/ee/services/secret-scanning-v2/secret-scanning-v2-fns";
 import { TSecretSnapshotServiceFactory } from "@app/ee/services/secret-snapshot/secret-snapshot-service";
 import { TKeyStoreFactory } from "@app/keystore/keystore";
 import { DatabaseErrorCode } from "@app/lib/error-codes";
@@ -38,6 +39,7 @@ import { ActorType } from "../auth/auth-type";
 import { TCommitResourceChangeDTO, TFolderCommitServiceFactory } from "../folder-commit/folder-commit-service";
 import { TKmsServiceFactory } from "../kms/kms-service";
 import { KmsDataKey } from "../kms/kms-types";
+import { TProjectDALFactory } from "../project/project-dal";
 import { TProjectEnvDALFactory } from "../project-env/project-env-dal";
 import { TReminderServiceFactory } from "../reminder/reminder-types";
 import { TResourceMetadataDALFactory } from "../resource-metadata/resource-metadata-dal";
@@ -88,6 +90,7 @@ import { TSecretVersionV2TagDALFactory } from "./secret-version-tag-dal";
 
 type TSecretV2BridgeServiceFactoryDep = {
   secretDAL: TSecretV2BridgeDALFactory;
+  projectDAL: Pick<TProjectDALFactory, "findById">;
   secretVersionDAL: TSecretVersionV2DALFactory;
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">;
   secretVersionTagDAL: Pick<TSecretVersionV2TagDALFactory, "insertMany">;
@@ -105,7 +108,7 @@ type TSecretV2BridgeServiceFactoryDep = {
     | "findBySecretPathMultiEnv"
     | "findSecretPathByFolderIds"
   >;
-  secretImportDAL: Pick<TSecretImportDALFactory, "find" | "findByFolderIds">;
+  secretImportDAL: Pick<TSecretImportDALFactory, "find" | "findByFolderIds" | "findByIds">;
   secretQueueService: Pick<TSecretQueueFactory, "syncSecrets" | "handleSecretReminder" | "removeSecretReminder">;
   secretApprovalPolicyService: Pick<TSecretApprovalPolicyServiceFactory, "getSecretApprovalPolicy">;
   secretApprovalRequestDAL: Pick<TSecretApprovalRequestDALFactory, "create" | "transaction">;
@@ -115,7 +118,7 @@ type TSecretV2BridgeServiceFactoryDep = {
   >;
   snapshotService: Pick<TSecretSnapshotServiceFactory, "performSnapshot">;
   resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "insertMany" | "delete">;
-  keyStore: Pick<TKeyStoreFactory, "getItem" | "setExpiry" | "setItemWithExpiry" | "deleteItem">;
+  keyStore: Pick<TKeyStoreFactory, "getItem" | "setExpiry" | "setItemWithExpiry" | "deleteItem" | "pgGetIntItem">;
   reminderService: Pick<TReminderServiceFactory, "createReminder" | "getReminder">;
 };
 
@@ -126,6 +129,7 @@ export type TSecretV2BridgeServiceFactory = ReturnType<typeof secretV2BridgeServ
  */
 export const secretV2BridgeServiceFactory = ({
   secretDAL,
+  projectDAL,
   projectEnvDAL,
   secretTagDAL,
   secretVersionDAL,
@@ -295,6 +299,19 @@ export const secretV2BridgeServiceFactory = ({
       })
     );
 
+    const project = await projectDAL.findById(projectId);
+    await scanSecretPolicyViolations(
+      projectId,
+      secretPath,
+      [
+        {
+          secretKey: inputSecret.secretName,
+          secretValue: inputSecret.secretValue
+        }
+      ],
+      project.secretDetectionIgnoreValues || []
+    );
+
     const { nestedReferences, localReferences } = getAllSecretReferences(inputSecret.secretValue);
     const allSecretReferences = nestedReferences.concat(
       localReferences.map((el) => ({ secretKey: el, secretPath, environment }))
@@ -343,6 +360,7 @@ export const secretV2BridgeServiceFactory = ({
         tx
       });
 
+      await secretDAL.invalidateSecretCacheByProjectId(projectId, tx);
       return createdSecret;
     });
 
@@ -360,7 +378,6 @@ export const secretV2BridgeServiceFactory = ({
       });
     }
 
-    await secretDAL.invalidateSecretCacheByProjectId(projectId);
     if (inputSecret.type === SecretType.Shared) {
       await snapshotService.performSnapshot(folderId);
       await secretQueueService.syncSecrets({
@@ -369,7 +386,15 @@ export const secretV2BridgeServiceFactory = ({
         actorId,
         actor,
         projectId,
-        environmentSlug: folder.environment.slug
+        environmentSlug: folder.environment.slug,
+        event: {
+          created: {
+            secretId: secret.id,
+            environment: folder.environment.slug,
+            secretKey: secret.key,
+            secretPath
+          }
+        }
       });
     }
 
@@ -506,6 +531,21 @@ export const secretV2BridgeServiceFactory = ({
 
     const { secretName, secretValue } = inputSecret;
 
+    if (secretValue) {
+      const project = await projectDAL.findById(projectId);
+      await scanSecretPolicyViolations(
+        projectId,
+        secretPath,
+        [
+          {
+            secretKey: inputSecret.newSecretName || secretName,
+            secretValue
+          }
+        ],
+        project.secretDetectionIgnoreValues || []
+      );
+    }
+
     const { encryptor: secretManagerEncryptor } = await kmsService.createCipherPairWithDataKey({
       type: KmsDataKey.SecretManager,
       projectId
@@ -526,8 +566,8 @@ export const secretV2BridgeServiceFactory = ({
       await $validateSecretReferences(projectId, permission, allSecretReferences);
     }
 
-    const updatedSecret = await secretDAL.transaction(async (tx) =>
-      fnSecretBulkUpdate({
+    const updatedSecret = await secretDAL.transaction(async (tx) => {
+      const modifiedSecretsInDB = await fnSecretBulkUpdate({
         folderId,
         orgId: actorOrgId,
         resourceMetadataDAL,
@@ -558,8 +598,11 @@ export const secretV2BridgeServiceFactory = ({
           actorId
         },
         tx
-      })
-    );
+      });
+
+      await secretDAL.invalidateSecretCacheByProjectId(projectId, tx);
+      return modifiedSecretsInDB;
+    });
     if (inputSecret.secretReminderRepeatDays) {
       await reminderService.createReminder({
         actor,
@@ -575,7 +618,6 @@ export const secretV2BridgeServiceFactory = ({
       });
     }
 
-    await secretDAL.invalidateSecretCacheByProjectId(projectId);
     if (inputSecret.type === SecretType.Shared) {
       await snapshotService.performSnapshot(folderId);
       await secretQueueService.syncSecrets({
@@ -584,7 +626,15 @@ export const secretV2BridgeServiceFactory = ({
         actor,
         projectId,
         orgId: actorOrgId,
-        environmentSlug: folder.environment.slug
+        environmentSlug: folder.environment.slug,
+        event: {
+          updated: {
+            secretId: secret.id,
+            environment: folder.environment.slug,
+            secretKey: secret.key,
+            secretPath
+          }
+        }
       });
     }
 
@@ -667,8 +717,8 @@ export const secretV2BridgeServiceFactory = ({
     );
 
     try {
-      const deletedSecret = await secretDAL.transaction(async (tx) =>
-        fnSecretBulkDelete({
+      const deletedSecret = await secretDAL.transaction(async (tx) => {
+        const modifiedSecretsInDB = await fnSecretBulkDelete({
           projectId,
           folderId,
           actorId,
@@ -684,10 +734,11 @@ export const secretV2BridgeServiceFactory = ({
             }
           ],
           tx
-        })
-      );
+        });
+        await secretDAL.invalidateSecretCacheByProjectId(projectId, tx);
+        return modifiedSecretsInDB;
+      });
 
-      await secretDAL.invalidateSecretCacheByProjectId(projectId);
       if (inputSecret.type === SecretType.Shared) {
         await snapshotService.performSnapshot(folderId);
         await secretQueueService.syncSecrets({
@@ -696,7 +747,15 @@ export const secretV2BridgeServiceFactory = ({
           actor,
           projectId,
           orgId: actorOrgId,
-          environmentSlug: folder.environment.slug
+          environmentSlug: folder.environment.slug,
+          event: {
+            deleted: {
+              secretId: secretToDelete.id,
+              environment: folder.environment.slug,
+              secretKey: secretToDelete.key,
+              secretPath
+            }
+          }
         });
       }
 
@@ -971,7 +1030,7 @@ export const secretV2BridgeServiceFactory = ({
     });
     throwIfMissingSecretReadValueOrDescribePermission(permission, ProjectPermissionSecretActions.DescribeSecret);
 
-    const cachedSecretDalVersion = await keyStore.getItem(SecretServiceCacheKeys.getSecretDalVersion(projectId));
+    const cachedSecretDalVersion = await keyStore.pgGetIntItem(SecretServiceCacheKeys.getSecretDalVersion(projectId));
     const secretDalVersion = Number(cachedSecretDalVersion || 0);
     const cacheKey = SecretServiceCacheKeys.getSecretsOfServiceLayer(projectId, secretDalVersion, {
       ...dto,
@@ -1018,12 +1077,22 @@ export const secretV2BridgeServiceFactory = ({
         currentPath: path
       });
 
-      if (!deepPaths) return { secrets: [], imports: [] };
+      if (!deepPaths?.length) {
+        throw new NotFoundError({
+          message: `Folder with path '${path}' in environment '${environment}' was not found. Please ensure the environment slug and secret path is correct.`,
+          name: "SecretPathNotFound"
+        });
+      }
 
       paths = deepPaths.map(({ folderId, path: p }) => ({ folderId, path: p }));
     } else {
       const folder = await folderDAL.findBySecretPath(projectId, environment, path);
-      if (!folder) return { secrets: [], imports: [] };
+      if (!folder) {
+        throw new NotFoundError({
+          message: `Folder with path '${path}' in environment '${environment}' was not found. Please ensure the environment slug and secret path is correct.`,
+          name: "SecretPathNotFound"
+        });
+      }
 
       paths = [{ folderId: folder.id, path }];
     }
@@ -1585,6 +1654,9 @@ export const secretV2BridgeServiceFactory = ({
     if (secrets.length)
       throw new BadRequestError({ message: `Secret already exist: ${secrets.map((el) => el.key).join(",")}` });
 
+    const project = await projectDAL.findById(projectId);
+    await scanSecretPolicyViolations(projectId, secretPath, inputSecrets, project.secretDetectionIgnoreValues || []);
+
     // get all tags
     const sanitizedTagIds = inputSecrets.flatMap(({ tagIds = [] }) => tagIds);
     const tags = sanitizedTagIds.length ? await secretTagDAL.findManyTagsById(projectId, sanitizedTagIds) : [];
@@ -1623,7 +1695,7 @@ export const secretV2BridgeServiceFactory = ({
       await kmsService.createCipherPairWithDataKey({ type: KmsDataKey.SecretManager, projectId });
 
     const executeBulkInsert = async (tx: Knex) => {
-      return fnSecretBulkInsert({
+      const modifiedSecretsInDB = await fnSecretBulkInsert({
         inputSecrets: inputSecrets.map((el) => {
           const references = secretReferencesGroupByInputSecretKey[el.secretKey]?.nestedReferences;
 
@@ -1659,13 +1731,14 @@ export const secretV2BridgeServiceFactory = ({
         },
         tx
       });
+      await secretDAL.invalidateSecretCacheByProjectId(projectId, tx);
+      return modifiedSecretsInDB;
     };
 
     const newSecrets = providedTx
       ? await executeBulkInsert(providedTx)
       : await secretDAL.transaction(executeBulkInsert);
 
-    await secretDAL.invalidateSecretCacheByProjectId(projectId);
     await snapshotService.performSnapshot(folderId);
     await secretQueueService.syncSecrets({
       actor,
@@ -1673,7 +1746,15 @@ export const secretV2BridgeServiceFactory = ({
       secretPath,
       projectId,
       orgId: actorOrgId,
-      environmentSlug: folder.environment.slug
+      environmentSlug: folder.environment.slug,
+      event: {
+        created: newSecrets.map((el) => ({
+          secretId: el.id,
+          secretKey: el.key,
+          secretPath,
+          environment: folder.environment.slug
+        }))
+      }
     });
 
     return newSecrets.map((el) => {
@@ -1925,6 +2006,19 @@ export const secretV2BridgeServiceFactory = ({
         });
         await $validateSecretReferences(projectId, permission, secretReferences, tx);
 
+        const project = await projectDAL.findById(projectId);
+        await scanSecretPolicyViolations(
+          projectId,
+          secretPath,
+          secretsToUpdate
+            .filter((el) => el.secretValue)
+            .map((el) => ({
+              secretKey: el.newSecretName || el.secretKey,
+              secretValue: el.secretValue as string
+            })),
+          project.secretDetectionIgnoreValues || []
+        );
+
         const bulkUpdatedSecrets = await fnSecretBulkUpdate({
           folderId,
           orgId: actorOrgId,
@@ -2009,6 +2103,7 @@ export const secretV2BridgeServiceFactory = ({
         }
       }
 
+      await secretDAL.invalidateSecretCacheByProjectId(projectId, tx);
       return updatedSecrets;
     };
 
@@ -2016,7 +2111,6 @@ export const secretV2BridgeServiceFactory = ({
       ? await executeBulkUpdate(providedTx)
       : await secretDAL.transaction(executeBulkUpdate);
 
-    await secretDAL.invalidateSecretCacheByProjectId(projectId);
     await Promise.allSettled(folders.map((el) => (el?.id ? snapshotService.performSnapshot(el.id) : undefined)));
     await Promise.allSettled(
       folders.map((el) =>
@@ -2027,7 +2121,15 @@ export const secretV2BridgeServiceFactory = ({
               secretPath: el.path,
               projectId,
               orgId: actorOrgId,
-              environmentSlug: environment
+              environmentSlug: environment,
+              event: {
+                updated: updatedSecrets.map((sec) => ({
+                  secretId: sec.id,
+                  secretKey: sec.key,
+                  secretPath: sec.secretPath,
+                  environment
+                }))
+              }
             })
           : undefined
       )
@@ -2135,7 +2237,7 @@ export const secretV2BridgeServiceFactory = ({
     });
 
     const executeBulkDelete = async (tx: Knex) => {
-      return fnSecretBulkDelete({
+      const modifiedSecretsInDB = await fnSecretBulkDelete({
         secretDAL,
         secretQueueService,
         folderCommitService,
@@ -2151,6 +2253,8 @@ export const secretV2BridgeServiceFactory = ({
         commitChanges,
         tx
       });
+      await secretDAL.invalidateSecretCacheByProjectId(projectId, tx);
+      return modifiedSecretsInDB;
     };
 
     try {
@@ -2158,7 +2262,6 @@ export const secretV2BridgeServiceFactory = ({
         ? await executeBulkDelete(providedTx)
         : await secretDAL.transaction(executeBulkDelete);
 
-      await secretDAL.invalidateSecretCacheByProjectId(projectId);
       await snapshotService.performSnapshot(folderId);
       await secretQueueService.syncSecrets({
         actor,
@@ -2166,7 +2269,15 @@ export const secretV2BridgeServiceFactory = ({
         secretPath,
         projectId,
         orgId: actorOrgId,
-        environmentSlug: folder.environment.slug
+        environmentSlug: folder.environment.slug,
+        event: {
+          deleted: secretsDeleted.map((el) => ({
+            secretId: el.id,
+            secretKey: el.key,
+            secretPath,
+            environment: folder.environment.slug
+          }))
+        }
       });
 
       const { decryptor: secretManagerDecryptor } = await kmsService.createCipherPairWithDataKey({
@@ -2703,7 +2814,13 @@ export const secretV2BridgeServiceFactory = ({
         secretPath: destinationFolder.path,
         environmentSlug: destinationFolder.environment.slug,
         actorId,
-        actor
+        actor,
+        event: {
+          importMutation: {
+            secretPath: sourceFolder.path,
+            environment: sourceFolder.environment.slug
+          }
+        }
       });
     }
 
@@ -2715,7 +2832,13 @@ export const secretV2BridgeServiceFactory = ({
         secretPath: sourceFolder.path,
         environmentSlug: sourceFolder.environment.slug,
         actorId,
-        actor
+        actor,
+        event: {
+          importMutation: {
+            secretPath: sourceFolder.path,
+            environment: sourceFolder.environment.slug
+          }
+        }
       });
     }
 

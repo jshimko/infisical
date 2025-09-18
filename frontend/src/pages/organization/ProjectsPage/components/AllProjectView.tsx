@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useForm } from "react-hook-form";
 import {
   faArrowDownAZ,
   faBorderAll,
@@ -16,6 +15,7 @@ import { twMerge } from "tailwind-merge";
 
 import { createNotification } from "@app/components/notifications";
 import { OrgPermissionCan } from "@app/components/permissions";
+import { RequestProjectAccessModal } from "@app/components/projects/RequestProjectAccessModal";
 import {
   Badge,
   Button,
@@ -24,17 +24,15 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-  FormControl,
   IconButton,
   Input,
   Lottie,
-  Modal,
-  ModalContent,
   Pagination,
   Skeleton,
   Tooltip
 } from "@app/components/v2";
 import { OrgPermissionActions, OrgPermissionSubjects } from "@app/context";
+import { OrgPermissionAdminConsoleAction } from "@app/context/OrgPermissionContext/types";
 import { getProjectHomePage, getProjectLottieIcon, getProjectTitle } from "@app/helpers/project";
 import {
   getUserTablePreference,
@@ -42,66 +40,27 @@ import {
   setUserTablePreference
 } from "@app/helpers/userTablePreferences";
 import { useDebounce, usePagination, usePopUp, useResetPageHelper } from "@app/hooks";
-import { useRequestProjectAccess, useSearchProjects } from "@app/hooks/api";
-import { ProjectType, Workspace } from "@app/hooks/api/workspace/types";
+import { useOrgAdminAccessProject, useSearchProjects } from "@app/hooks/api";
+import { Project, ProjectEnv, ProjectType } from "@app/hooks/api/projects/types";
+import {
+  ProjectListToggle,
+  ProjectListView
+} from "@app/pages/organization/ProjectsPage/components/ProjectListToggle";
 
 type Props = {
   onAddNewProject: () => void;
   onUpgradePlan: () => void;
   isAddingProjectsAllowed: boolean;
-};
-
-type RequestAccessModalProps = {
-  projectId: string;
-  onPopUpToggle: () => void;
-};
-
-const RequestAccessModal = ({ projectId, onPopUpToggle }: RequestAccessModalProps) => {
-  const form = useForm<{ note: string }>();
-
-  const requestProjectAccess = useRequestProjectAccess();
-
-  const onFormSubmit = ({ note }: { note: string }) => {
-    if (requestProjectAccess.isPending) return;
-    requestProjectAccess.mutate(
-      {
-        comment: note,
-        projectId
-      },
-      {
-        onSuccess: () => {
-          createNotification({
-            type: "success",
-            title: "Project Access Request Sent",
-            text: "Project admins will receive an email of your request"
-          });
-          onPopUpToggle();
-        }
-      }
-    );
-  };
-
-  return (
-    <form onSubmit={form.handleSubmit(onFormSubmit)}>
-      <FormControl label="Note">
-        <Input {...form.register("note")} />
-      </FormControl>
-      <div className="mt-4 flex items-center">
-        <Button className="mr-4" size="sm" type="submit" isLoading={form.formState.isSubmitting}>
-          Submit Request
-        </Button>
-        <Button colorSchema="secondary" variant="plain" onClick={() => onPopUpToggle()}>
-          Cancel
-        </Button>
-      </div>
-    </form>
-  );
+  projectListView: ProjectListView;
+  onProjectListViewChange: (value: ProjectListView) => void;
 };
 
 export const AllProjectView = ({
   onAddNewProject,
   onUpgradePlan,
-  isAddingProjectsAllowed
+  isAddingProjectsAllowed,
+  projectListView,
+  onProjectListViewChange
 }: Props) => {
   const navigate = useNavigate();
   const [searchFilter, setSearchFilter] = useState("");
@@ -120,6 +79,8 @@ export const AllProjectView = ({
     initPerPage: getUserTablePreference("allProjectsTable", PreferenceKey.PerPage, 50)
   });
 
+  const orgAdminAccessProject = useOrgAdminAccessProject();
+
   const handlePerPageChange = (newPerPage: number) => {
     setPerPage(newPerPage);
     setUserTablePreference("allProjectsTable", PreferenceKey.PerPage, newPerPage);
@@ -137,12 +98,35 @@ export const AllProjectView = ({
     type: projectTypeFilter
   });
 
+  const handleAccessProject = async (
+    type: ProjectType,
+    projectId: string,
+    environments: ProjectEnv[]
+  ) => {
+    try {
+      await orgAdminAccessProject.mutateAsync({
+        projectId
+      });
+      await navigate({
+        to: getProjectHomePage(type, environments),
+        params: {
+          projectId
+        }
+      });
+    } catch {
+      createNotification({
+        text: "Failed to access project",
+        type: "error"
+      });
+    }
+  };
+
   useResetPageHelper({
     setPage,
     offset,
     totalCount: searchedProjects?.totalCount || 0
   });
-  const requestedWorkspaceDetails = (popUp.requestAccessConfirmation.data || {}) as Workspace;
+  const requestedWorkspaceDetails = (popUp.requestAccessConfirmation.data || {}) as Project;
 
   const handleToggleFilterByProjectType = (el: ProjectType) =>
     setProjectTypeFilter((state) => (state === el ? undefined : el));
@@ -150,10 +134,10 @@ export const AllProjectView = ({
   return (
     <div>
       <div className="flex w-full flex-row">
-        <div className="flex-grow" />
+        <ProjectListToggle value={projectListView} onChange={onProjectListViewChange} />
         <Input
           className="h-[2.3rem] bg-mineshaft-800 text-sm placeholder-mineshaft-50 duration-200 focus:bg-mineshaft-700/80"
-          containerClassName="w-full"
+          containerClassName="w-full ml-2"
           placeholder="Search by project name..."
           value={searchFilter}
           onChange={(e) => setSearchFilter(e.target.value)}
@@ -216,7 +200,7 @@ export const AllProjectView = ({
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <div className="ml-2 flex rounded-md border border-mineshaft-600 bg-mineshaft-800 p-1">
+        <div className="ml-2 flex gap-x-0.5 rounded-md border border-mineshaft-600 bg-mineshaft-800 p-1">
           <Tooltip content="Disabled across All Project view.">
             <div className="flex cursor-not-allowed items-center justify-center">
               <IconButton
@@ -240,22 +224,26 @@ export const AllProjectView = ({
           </IconButton>
         </div>
         <OrgPermissionCan I={OrgPermissionActions.Create} an={OrgPermissionSubjects.Workspace}>
-          {(isAllowed) => (
-            <Button
-              isDisabled={!isAllowed}
-              colorSchema="secondary"
-              leftIcon={<FontAwesomeIcon icon={faPlus} />}
-              onClick={() => {
-                if (isAddingProjectsAllowed) {
-                  onAddNewProject();
-                } else {
-                  onUpgradePlan();
-                }
-              }}
-              className="ml-2"
-            >
-              Add New Project
-            </Button>
+          {(isOldProjectPermissionAllowed) => (
+            <OrgPermissionCan I={OrgPermissionActions.Create} an={OrgPermissionSubjects.Project}>
+              {(isAllowed) => (
+                <Button
+                  isDisabled={!isAllowed && !isOldProjectPermissionAllowed}
+                  colorSchema="secondary"
+                  leftIcon={<FontAwesomeIcon icon={faPlus} />}
+                  onClick={() => {
+                    if (isAddingProjectsAllowed) {
+                      onAddNewProject();
+                    } else {
+                      onUpgradePlan();
+                    }
+                  }}
+                  className="ml-2"
+                >
+                  Add New Project
+                </Button>
+              )}
+            </OrgPermissionCan>
           )}
         </OrgPermissionCan>
       </div>
@@ -281,7 +269,7 @@ export const AllProjectView = ({
               onKeyDown={(evt) => {
                 if (evt.key === "Enter" && workspace.isMember) {
                   navigate({
-                    to: getProjectHomePage(workspace.type),
+                    to: getProjectHomePage(workspace.type, workspace.environments),
                     params: {
                       projectId: workspace.id
                     }
@@ -291,7 +279,7 @@ export const AllProjectView = ({
               onClick={() => {
                 if (workspace.isMember) {
                   navigate({
-                    to: getProjectHomePage(workspace.type),
+                    to: getProjectHomePage(workspace.type, workspace.environments),
                     params: {
                       projectId: workspace.id
                     }
@@ -325,15 +313,38 @@ export const AllProjectView = ({
                   <span>Joined</span>
                 </Badge>
               ) : (
-                <div className="opacity-0 transition-all group-hover:opacity-100">
-                  <Button
-                    size="xs"
-                    variant="outline_bg"
-                    onClick={() => handlePopUpOpen("requestAccessConfirmation", workspace)}
-                  >
-                    Request Access
-                  </Button>
-                </div>
+                <OrgPermissionCan
+                  I={OrgPermissionAdminConsoleAction.AccessAllProjects}
+                  an={OrgPermissionSubjects.AdminConsole}
+                >
+                  {(isAllowed) =>
+                    isAllowed ? (
+                      <Button
+                        size="xs"
+                        variant="outline_bg"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          handleAccessProject(workspace.type, workspace.id, workspace.environments);
+                        }}
+                        disabled={
+                          orgAdminAccessProject.variables?.projectId === workspace.id &&
+                          orgAdminAccessProject.isPending
+                        }
+                      >
+                        Join as Admin
+                      </Button>
+                    ) : (
+                      <Button
+                        size="xs"
+                        variant="outline_bg"
+                        onClick={() => handlePopUpOpen("requestAccessConfirmation", workspace)}
+                      >
+                        Request Access
+                      </Button>
+                    )
+                  }
+                </OrgPermissionCan>
               )}
             </div>
           ))}
@@ -358,20 +369,11 @@ export const AllProjectView = ({
           <div className="text-center font-light">No Projects Found</div>
         </div>
       )}
-      <Modal
+      <RequestProjectAccessModal
         isOpen={popUp.requestAccessConfirmation.isOpen}
         onOpenChange={(isOpen) => handlePopUpToggle("requestAccessConfirmation", isOpen)}
-      >
-        <ModalContent
-          title="Confirm Access Request"
-          subTitle={`Requesting access to project ${requestedWorkspaceDetails?.name}. You may include an optional note for project admins to review your request.`}
-        >
-          <RequestAccessModal
-            onPopUpToggle={() => handlePopUpToggle("requestAccessConfirmation")}
-            projectId={requestedWorkspaceDetails?.id}
-          />
-        </ModalContent>
-      </Modal>
+        project={requestedWorkspaceDetails}
+      />
     </div>
   );
 };

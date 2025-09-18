@@ -2,6 +2,7 @@ import { ForbiddenError } from "@casl/ability";
 import { z } from "zod";
 
 import { SecretFoldersSchema, SecretImportsSchema, UsersSchema } from "@app/db/schemas";
+import { RemindersSchema } from "@app/db/schemas/reminders";
 import { EventType, UserAgentType } from "@app/ee/services/audit-log/audit-log-types";
 import { ProjectPermissionSecretActions } from "@app/ee/services/permission/project-permission";
 import { SecretRotationV2Schema } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-union-schema";
@@ -206,7 +207,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
       const environments = req.query.environments.split(",");
 
       if (!projectId || environments.length === 0)
-        throw new BadRequestError({ message: "Missing workspace id or environment(s)" });
+        throw new BadRequestError({ message: "Missing project id or environment(s)" });
 
       const { shouldUseSecretV2Bridge } = await server.services.projectBot.getBotKey(projectId);
 
@@ -473,7 +474,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
                 organizationId: req.permission.orgId,
                 properties: {
                   numberOfSecrets: secretCountFromEnv,
-                  workspaceId: projectId,
+                  projectId,
                   environment,
                   secretPath,
                   channel: getUserAgentType(req.headers["user-agent"]),
@@ -628,7 +629,10 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
               secretValueHidden: z.boolean(),
               secretPath: z.string().optional(),
               secretMetadata: ResourceMetadataSchema.optional(),
-              tags: SanitizedTagSchema.array().optional()
+              tags: SanitizedTagSchema.array().optional(),
+              reminder: RemindersSchema.extend({
+                recipients: z.string().array().optional()
+              }).nullish()
             })
             .array()
             .optional(),
@@ -692,12 +696,15 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
         includeSecretRotations
       } = req.query;
 
-      if (!projectId || !environment) throw new BadRequestError({ message: "Missing workspace id or environment" });
+      if (!projectId || !environment) throw new BadRequestError({ message: "Missing project id or environment" });
 
       const { shouldUseSecretV2Bridge } = await server.services.projectBot.getBotKey(projectId);
 
       // prevent older projects from accessing endpoint
       if (!shouldUseSecretV2Bridge) throw new BadRequestError({ message: "Project version not supported" });
+
+      // verify folder exists and user has project permission
+      await server.services.folder.getFolderByPath({ projectId, environment, secretPath }, req.permission);
 
       const tags = req.query.tags?.split(",") ?? [];
 
@@ -706,7 +713,11 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
 
       let imports: Awaited<ReturnType<typeof server.services.secretImport.getImports>> | undefined;
       let folders: Awaited<ReturnType<typeof server.services.folder.getFolders>> | undefined;
-      let secrets: Awaited<ReturnType<typeof server.services.secret.getSecretsRaw>>["secrets"] | undefined;
+      let secrets:
+        | (Awaited<ReturnType<typeof server.services.secret.getSecretsRaw>>["secrets"][number] & {
+            reminder: Awaited<ReturnType<typeof server.services.reminder.getRemindersForDashboard>>[string] | null;
+          })[]
+        | undefined;
       let dynamicSecrets: Awaited<ReturnType<typeof server.services.dynamicSecret.listDynamicSecretsByEnv>> | undefined;
       let secretRotations:
         | Awaited<ReturnType<typeof server.services.secretRotationV2.getDashboardSecretRotations>>
@@ -904,7 +915,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
           });
 
           if (remainingLimit > 0 && totalSecretCount > adjustedOffset) {
-            secrets = (
+            const rawSecrets = (
               await server.services.secret.getSecretsRaw({
                 actorId: req.permission.id,
                 actor: req.permission.type,
@@ -925,6 +936,15 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
                 includeMetadataInSearch: true
               })
             ).secrets;
+
+            const reminders = await server.services.reminder.getRemindersForDashboard(
+              rawSecrets.map((secret) => secret.id)
+            );
+
+            secrets = rawSecrets.map((secret) => ({
+              ...secret,
+              reminder: reminders[secret.id] ?? null
+            }));
           }
         }
       } catch (error) {
@@ -981,7 +1001,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
             organizationId: req.permission.orgId,
             properties: {
               numberOfSecrets: secretCount,
-              workspaceId: projectId,
+              projectId,
               environment,
               secretPath,
               channel: getUserAgentType(req.headers["user-agent"]),
@@ -1148,7 +1168,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
               organizationId: req.permission.orgId,
               properties: {
                 numberOfSecrets: secretCountForEnv,
-                workspaceId: projectId,
+                projectId,
                 environment,
                 secretPath,
                 channel: getUserAgentType(req.headers["user-agent"]),
@@ -1341,7 +1361,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
           organizationId: req.permission.orgId,
           properties: {
             numberOfSecrets: secrets.length,
-            workspaceId: projectId,
+            projectId,
             environment,
             secretPath,
             channel: getUserAgentType(req.headers["user-agent"]),
