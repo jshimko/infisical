@@ -52,7 +52,7 @@ spec:
       initContainers:
       {{- if $infisicalValues.autoGenerateSecrets }}
       - name: ensure-secret-exists
-        image: bitnami/kubectl:latest
+        image: alpine/k8s:1.34.0
         command:
         - "/bin/bash"
         - "-c"
