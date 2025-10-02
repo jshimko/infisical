@@ -189,6 +189,9 @@ cnpg:
 
   dbUrlOptions: "?schema=infisical"
 
+  labels: {}
+  annotations: {}
+
   cluster:
     name: infisical
     spec:
@@ -204,6 +207,9 @@ cnpg:
     enabled: false
     instances: 1
 
+    labels: {}
+    annotations: {}
+
     type: rw
 
     pgbouncer:
@@ -214,6 +220,10 @@ cnpg:
 
   backups:
     enabled: false
+
+    labels: {}
+    annotations: {}
+
     schedule: "0 0 0 * * *" # every day at midnight UTC
     retentionPolicy: "30d"
 
