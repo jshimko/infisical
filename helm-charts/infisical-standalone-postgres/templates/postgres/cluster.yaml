@@ -6,7 +6,7 @@
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
-  name: {{ .Values.cnpg.cluster.name }}
+  name: {{ .Values.cnpg.cluster.name }}-postgres
 # https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-ClusterSpec
 spec:
   {{- toYaml .Values.cnpg.cluster.spec | nindent 4 }}
@@ -20,6 +20,20 @@ spec:
   {{- end }}
 
 ---
+
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ .Values.cnpg.cluster.name }}
+spec:
+  name: {{ .Values.cnpg.cluster.name }}
+  owner: {{ .Values.cnpg.cluster.name }}
+  cluster:
+    name: {{ .Values.cnpg.cluster.name }}-postgres
+  schemas:
+  - name: {{ .Values.cnpg.cluster.name }}
+    owner: {{ .Values.cnpg.cluster.name }}
+
 {{- if .Values.cnpg.pooler.enabled }}
 # PGBouncer
 # https://cloudnative-pg.io/documentation/current/connection_pooling/

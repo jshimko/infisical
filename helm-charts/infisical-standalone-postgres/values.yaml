@@ -190,17 +190,12 @@ cnpg:
   dbUrlOptions: "?schema=infisical"
 
   cluster:
-    name: infisical-postgres
+    name: infisical
     spec:
       instances: 1
 
       storage:
         size: 1Gi
-
-      bootstrap:
-        initdb:
-          database: infisical
-          owner: infisical
 
       walStorage:
         size: 1Gi
