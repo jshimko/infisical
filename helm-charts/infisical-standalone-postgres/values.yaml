@@ -186,6 +186,9 @@ ingress:
 # https://cloudnative-pg.io/
 cnpg:
   enabled: true
+
+  dbUrlOptions: "?schema=infisical"
+
   cluster:
     name: infisical-postgres
     spec:
