@@ -29,11 +29,13 @@ spec:
           command: ["npm", "run", "migration:latest"]
           env:
           {{- if .Values.cnpg.enabled }}
-          - name: DB_CONNECTION_URI
+          - name: CNPG_URI
             valueFrom:
               secretKeyRef:
                 name: "{{ .Values.cnpg.cluster.name }}-app"
                 key: "uri"
+          - name: DB_CONNECTION_URI
+            value: "$(CNPG_URI){{ .Values.cnpg.dbUrlOptions }}"
           {{- end }}
 
           {{- with $infisicalValues.env }}
