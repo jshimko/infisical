@@ -1,18 +1,17 @@
 {{ if .Values.infisical.enabled }}
-{{- $infisicalValues := .Values.infisical }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "infisical.fullname" . }}
   annotations:
     updatedAt: {{ now | date "2006-01-01 MST 15:04:05" | quote }}
-    {{- with $infisicalValues.deploymentAnnotations }}
+    {{- with .Values.infisical.deploymentAnnotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   labels:
     {{- include "infisical.labels" . | nindent 4 }}
 spec:
-  replicas: {{ $infisicalValues.replicaCount }}
+  replicas: {{ .Values.infisical.replicaCount }}
   selector:
     matchLabels:
       {{- include "infisical.matchLabels" . | nindent 6 }}
@@ -22,35 +21,35 @@ spec:
         {{- include "infisical.matchLabels" . | nindent 8 }}
       annotations:
         updatedAt: {{ now | date "2006-01-01 MST 15:04:05" | quote }}
-        {{- with $infisicalValues.podAnnotations }}
+        {{- with .Values.infisical.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- with $infisicalValues.topologySpreadConstraints }}
+      {{- with .Values.infisical.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $infisicalValues.affinity }}
+      {{- with .Values.infisical.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $infisicalValues.tolerations }}
+      {{- with .Values.infisical.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $infisicalValues.nodeSelector }}
+      {{- with .Values.infisical.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if $infisicalValues.image.imagePullSecrets }}
+      {{- if .Values.infisical.image.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml $infisicalValues.image.imagePullSecrets | nindent 6 }}
+        {{- toYaml .Values.infisical.image.imagePullSecrets | nindent 6 }}
       {{- end }}
-      {{- if or $infisicalValues.autoGenerateSecrets $infisicalValues.autoDatabaseSchemaMigration }}
+      {{- if or .Values.infisical.autoGenerateSecrets .Values.infisical.autoDatabaseSchemaMigration }}
       serviceAccountName: {{ include "infisical.serviceAccountName" . }}
       {{- end }}
       initContainers:
-      {{- if $infisicalValues.autoGenerateSecrets }}
+      {{- if .Values.infisical.autoGenerateSecrets }}
       - name: ensure-secret-exists
         image: alpine/k8s:1.34.0
         command:
@@ -58,8 +57,8 @@ spec:
         - "-c"
         - |
           # Check if secret already exists (to avoid regenerating on restarts)
-          if kubectl get secret {{ $infisicalValues.kubeSecretRef }} -n {{ .Release.Namespace }} &>/dev/null; then
-            echo "Secret '{{ $infisicalValues.kubeSecretRef }}' already exists in namespace '{{ .Release.Namespace }}'"
+          if kubectl get secret {{ .Values.infisical.kubeSecretRef }} -n {{ .Release.Namespace }} &>/dev/null; then
+            echo "Secret '{{ .Values.infisical.kubeSecretRef }}' already exists in namespace '{{ .Release.Namespace }}'"
             exit 0
           fi
 
@@ -67,15 +66,15 @@ spec:
           echo "Generating secure random values..."
           AUTH_SECRET=$(openssl rand -base64 32 | base64)
           ENCRYPTION_KEY=$(openssl rand -hex 16 | base64)
-          SITE_URL=$(echo "{{ $infisicalValues.siteUrl }}" | base64)
+          SITE_URL=$(echo "{{ .Values.infisical.siteUrl }}" | base64)
 
           # Create the secret
-          echo "Creating Kubernetes secret: {{ $infisicalValues.kubeSecretRef }}"
+          echo "Creating Kubernetes secret: {{ .Values.infisical.kubeSecretRef }}"
           cat <<EOF | kubectl apply -f -
           apiVersion: v1
           kind: Secret
           metadata:
-            name: {{ $infisicalValues.kubeSecretRef }}
+            name: {{ .Values.infisical.kubeSecretRef }}
             namespace: {{ .Release.Namespace }}
           type: Opaque
           data:
@@ -85,83 +84,87 @@ spec:
           EOF
 
           if [ $? -eq 0 ]; then
-            echo "Secret '{{ $infisicalValues.kubeSecretRef }}' created in namespace '{{ .Release.Namespace }}'"
+            echo "Secret '{{ .Values.infisical.kubeSecretRef }}' created in namespace '{{ .Release.Namespace }}'"
           else
             echo "Failed to create secret"
             exit 1
           fi
       {{- end }}
-      {{- if $infisicalValues.autoDatabaseSchemaMigration }}
+      {{- if .Values.infisical.autoDatabaseSchemaMigration }}
       - name: "migration-init"
-        image: "{{ $infisicalValues.databaseSchemaMigrationJob.image.repository }}:{{ $infisicalValues.databaseSchemaMigrationJob.image.tag }}"
-        imagePullPolicy: {{ $infisicalValues.databaseSchemaMigrationJob.image.pullPolicy }}
+        image: "{{ .Values.infisical.databaseSchemaMigrationJob.image.repository }}:{{ .Values.infisical.databaseSchemaMigrationJob.image.tag }}"
+        imagePullPolicy: {{ .Values.infisical.databaseSchemaMigrationJob.image.pullPolicy }}
         args:
         - "job"
         - "{{ .Release.Name }}-schema-migration-{{ .Release.Revision }}"
       {{- end }}
       containers:
-      - name: {{ template "infisical.name" . }}-{{ $infisicalValues.name }}
-        image: "{{ $infisicalValues.image.repository }}:{{ $infisicalValues.image.tag }}"
-        imagePullPolicy: {{ $infisicalValues.image.pullPolicy }}
+      - name: {{ template "infisical.name" . }}-{{ .Values.infisical.name }}
+        image: "{{ .Values.infisical.image.repository }}:{{ .Values.infisical.image.tag }}"
+        imagePullPolicy: {{ .Values.infisical.image.pullPolicy }}
         ports:
         - containerPort: 8080
         env:
-        {{- if .Values.postgresql.useExistingPostgresSecret.enabled }}
+        # postgres
+        {{- if .Values.cnpg.enabled }}
         - name: DB_CONNECTION_URI
           valueFrom:
             secretKeyRef:
-              name: {{ .Values.postgresql.useExistingPostgresSecret.existingConnectionStringSecret.name }}
-              key: {{ .Values.postgresql.useExistingPostgresSecret.existingConnectionStringSecret.key }}
+              name: "{{ .Values.cnpg.cluster.name }}-app"
+              key: "uri"
         {{- end }}
-        {{- if .Values.postgresql.enabled }}
-        - name: DB_CONNECTION_URI
-          value: {{ include "infisical.postgresDBConnectionString" . }}
-        {{- end }}
-        {{- if .Values.redis.enabled }}
+
+        # redis
+        {{- if .Values.redis.enabled  }}
         - name: REDIS_URL
-          value: {{ include "infisical.redisConnectionString" . }}
+          value: "redis://{{ .Values.redis.name }}:6379"
+        - name: REDIS_HOST
+          value: {{ .Values.redis.name }}
+        - name: REDIS_PORT
+          value: "6379"
         {{- end }}
-        {{- with $infisicalValues.env }}
+
+        {{- with .Values.infisical.env }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 
         envFrom:
         - secretRef:
-            name: {{ $infisicalValues.kubeSecretRef }}
-        {{- with $infisicalValues.envFrom }}
+            name: {{ .Values.infisical.kubeSecretRef }}
+        {{- with .Values.infisical.envFrom }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 
-        {{- with $infisicalValues.securityContext }}
+        {{- with .Values.infisical.securityContext }}
         securityContext:
           {{- toYaml . | nindent 12 }}
         {{- end }}
 
-        {{- with $infisicalValues.startupProbe }}
+        {{- with .Values.infisical.startupProbe }}
         startupProbe:
           {{- toYaml . | nindent 12 }}
         {{- end }}
 
-        {{- with $infisicalValues.livenessProbe }}
+        {{- with .Values.infisical.livenessProbe }}
         livenessProbe:
           {{- toYaml . | nindent 12 }}
         {{- end }}
 
-        {{- with $infisicalValues.readinessProbe }}
+        {{- with .Values.infisical.readinessProbe }}
         readinessProbe:
           {{- toYaml . | nindent 12 }}
         {{- end }}
 
-        {{- with  $infisicalValues.resources }}
+        {{- with  .Values.infisical.resources }}
         resources: {{- toYaml . | nindent 12 }}
         {{- end }}
 
-        {{- with $infisicalValues.extraVolumeMounts }}
+        {{- with .Values.infisical.volumeMounts }}
         volumeMounts:
           {{- toYaml . | nindent 10 }}
         {{- end }}
 
-      {{- with $infisicalValues.extraVolumes }}
+      {{- with .Values.infisical.volumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -173,19 +176,19 @@ metadata:
   name: {{ include "infisical.fullname" . }}
   labels:
     {{- include "infisical.labels" . | nindent 4 }}
-  {{- with $infisicalValues.service.annotations }}
+  {{- with .Values.infisical.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ $infisicalValues.service.type }}
+  type: {{ .Values.infisical.service.type }}
   selector:
     {{- include "infisical.matchLabels" . | nindent 8 }}
   ports:
     - protocol: TCP
-      port: {{ default 8080 $infisicalValues.service.port }}
+      port: {{ default 8080 .Values.infisical.service.port }}
       targetPort: 8080
-      {{- if eq $infisicalValues.service.type "NodePort" }}
-      nodePort: {{ $infisicalValues.service.nodePort }}
+      {{- if eq .Values.infisical.service.type "NodePort" }}
+      nodePort: {{ .Values.infisical.service.nodePort }}
       {{- end }}
 {{ end }}

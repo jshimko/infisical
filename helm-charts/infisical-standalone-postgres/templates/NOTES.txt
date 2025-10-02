@@ -2,10 +2,10 @@
 
 -- Infisical Helm Chart --
 
-██╗███╗   ██╗███████╗██╗███████╗██╗ ██████╗ █████╗ ██╗     
-██║████╗  ██║██╔════╝██║██╔════╝██║██╔════╝██╔══██╗██║     
-██║██╔██╗ ██║█████╗  ██║███████╗██║██║     ███████║██║     
-██║██║╚██╗██║██╔══╝  ██║╚════██║██║██║     ██╔══██║██║     
+██╗███╗   ██╗███████╗██╗███████╗██╗ ██████╗ █████╗ ██╗
+██║████╗  ██║██╔════╝██║██╔════╝██║██╔════╝██╔══██╗██║
+██║██╔██╗ ██║█████╗  ██║███████╗██║██║     ███████║██║
+██║██║╚██╗██║██╔══╝  ██║╚════██║██║██║     ██╔══██║██║
 ██║██║ ╚████║██║     ██║███████║██║╚██████╗██║  ██║███████╗
 ╚═╝╚═╝  ╚═══╝╚═╝     ╚═╝╚══════╝╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝
 {{ .Chart.Name }} ({{ .Chart.Version }})
@@ -19,8 +19,7 @@
 │
 │   Current installation (infisical) :
 │   • infisical          : {{ .Values.infisical.enabled }}
-|   • nginx              : {{ .Values.ingress.nginx.enabled }}
-|   • Postgres DB        : {{ .Values.postgresql.enabled }}
+|   • Postgres DB        : {{ .Values.cnpg.enabled }}
 |   • Redis              : {{ .Values.redis.enabled }}
 │
 ╰―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――┤
@@ -29,7 +28,7 @@
 
 → Get all the Infisical resources (excluding secrets/pvcs)
 $ kubectl get all -n {{ .Release.Namespace }}
- 
+
 → Get your release status
 $ helm status -n {{ .Release.Namespace }} {{ .Release.Name }}
 
@@ -38,7 +37,7 @@ $ helm get all -n {{ .Release.Namespace }} {{ .Release.Name }}
 
 → Uninstall your release
 $ helm uninstall -n {{ .Release.Namespace }} {{ .Release.Name }}
- 
+
 ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――┤
 
 ##

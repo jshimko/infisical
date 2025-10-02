@@ -1,0 +1,13 @@
+{{- if .Values.redis.enabled }}
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: Redis
+metadata:
+  name: {{ .Values.redis.name }}
+# https://ot-redis-operator.netlify.app/docs/configuration/redis/
+spec:
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000
+  kubernetesConfig:
+    {{- toYaml .Values.redis.kubernetesConfig | nindent 4 -}}
+{{- end }}

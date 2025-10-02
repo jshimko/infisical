@@ -31,7 +31,8 @@ spec:
       restartPolicy: OnFailure
       initContainers:
       - name: wait-for-infisical
-        image: curlimages/curl:8.14.1
+        image: curlimages/curl:latest
+        imagePullPolicy: {{ $infisicalValues.image.pullPolicy | default "IfNotPresent" }}
         command: ['sh', '-c']
         args:
         - |

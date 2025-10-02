@@ -1,0 +1,71 @@
+# CloudNativePG - PostgreSQL cluster, pooler, and automated backups
+# https://cloudnative-pg.io/documentation/current
+
+{{- if .Values.cnpg.enabled }}
+# PostgreSQL cluster
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.cnpg.cluster.name }}
+# https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-ClusterSpec
+spec:
+  {{- toYaml .Values.cnpg.cluster.spec | nindent 4 }}
+
+  {{- if .Values.cnpg.backups.enabled }}
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: {{ .Values.cnpg.cluster.name }}
+  {{- end }}
+
+---
+{{- if .Values.cnpg.pooler.enabled }}
+# PGBouncer
+# https://cloudnative-pg.io/documentation/current/connection_pooling/
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: {{ .Values.cnpg.cluster.name }}-pgbouncer
+spec:
+  cluster:
+    name: {{ .Values.cnpg.cluster.name }}
+  instances: {{ .Values.cnpg.pooler.instances }}
+  type: {{ .Values.cnpg.pooler.type }}
+  pgbouncer:
+    {{- toYaml .Values.cnpg.pooler.pgbouncer | nindent 4 }}
+{{- end }}
+
+{{- end }}
+
+---
+
+# Backups
+{{- if .Values.cnpg.backups.enabled }}
+# S3 compatible storage
+# https://cloudnative-pg.io/plugin-barman-cloud/docs/object_stores/#s3-compatible-storage-providers
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ .Values.cnpg.cluster.name }}
+spec:
+  retentionPolicy: {{ .Values.cnpg.backups.retentionPolicy }}
+  configuration:
+    {{- toYaml .Values.cnpg.backups.config | nindent 4 }}
+
+---
+
+# https://cloudnative-pg.io/documentation/current/backup/
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ .Values.cnpg.cluster.name }}
+spec:
+  method: plugin
+  cluster:
+    name: {{ .Values.cnpg.cluster.name }}
+  backupOwnerReference: self
+  schedule: {{ .Values.cnpg.backups.schedule }}
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+{{- end }}

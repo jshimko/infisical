@@ -25,7 +25,7 @@ infisical:
 
     image:
       # -- Infisical Infisical CLI image tag version
-      tag: "0.41.86"
+      tag: latest
 
     # -- Template for the data/stringData section of the Kubernetes secret. Available functions: encodeBase64
     secretTemplate: '{"data":{"token":"{{.Identity.Credentials.Token}}"}}'
@@ -35,7 +35,7 @@ infisical:
       name: "infisical-bootstrap-secret"
 
       # -- Namespace to create the bootstrap secret in. If not provided, the secret will be created in the same namespace as the release.
-      namespace: "default"
+      # namespace: "default"
 
     # -- Infisical organization to create in the Infisical instance during auto-bootstrap
     organization: "default-org"
@@ -74,7 +74,7 @@ infisical:
     # -- Image repository for the Infisical service
     repository: infisical/infisical
     # -- Specific version tag of the Infisical image. View the latest version here https://hub.docker.com/r/infisical/infisical
-    tag: "v0.120.0-postgres"
+    tag: latest
     # -- Pulls image only if not already present on the node
     pullPolicy: IfNotPresent
     # -- Secret references for pulling the image, if needed
@@ -114,6 +114,19 @@ infisical:
     periodSeconds: 10
     failureThreshold: 3
 
+  # -- Additional volumes on the output Deployment definition.
+  volumes: []
+  # - name: foo
+  #   secret:
+  #     secretName: mysecret
+  #     optional: false
+
+  # -- Additional volumeMounts on the output Deployment definition.
+  volumeMounts: []
+  # - name: foo
+  #   mountPath: "/etc/foo"
+  #   readOnly: true
+
   # -- Security context for Infisical pods
   securityContext: {}
   # -- Node affinity settings for pod placement
@@ -125,9 +138,6 @@ infisical:
   # -- Topology spread constraints for multi-zone deployments
   # -- Ref: https://kubernetes.io/docs/concepts/workloads/pods/pod-topology-spread-constraints/
   topologySpreadConstraints: []
-
-  # -- Kubernetes Secret reference containing Infisical root credentials
-  kubeSecretRef: "infisical-secrets"
 
   service:
     # -- Custom annotations for Infisical service
@@ -172,61 +182,99 @@ ingress:
     #   hosts:
     #     - some.domain.com
 
-postgresql:
-  # -- Enables an in-cluster PostgreSQL deployment. To achieve HA for Postgres, we recommend deploying https://github.com/zalando/postgres-operator instead.
+# Postgres Cluster
+# https://cloudnative-pg.io/
+cnpg:
   enabled: true
-  # -- PostgreSQL resource name
-  name: "postgresql"
-  # -- Full name override for PostgreSQL resources
-  fullnameOverride: "postgresql"
-
-  image:
-    # -- Image registry for PostgreSQL
-    registry: mirror.gcr.io
-    # -- Image repository for PostgreSQL
-    repository: bitnamilegacy/postgresql
-
-  auth:
-    # -- Database username for PostgreSQL
-    username: infisical
-    # -- Password for PostgreSQL database access
-    password: root
-    # -- Database name for Infisical
-    database: infisicalDB
-
-  useExistingPostgresSecret:
-    # -- Set to true if using an existing Kubernetes secret that contains PostgreSQL connection string
-    enabled: false
-    existingConnectionStringSecret:
-      # -- Kubernetes secret name containing the PostgreSQL connection string
-      name: ""
-      # -- Key name in the Kubernetes secret that holds the connection string
-      key: ""
-
-redis:
-  # -- Enables an in-cluster Redis deployment
-  enabled: true
-  # -- Redis resource name
-  name: "redis"
-  # -- Full name override for Redis resources
-  fullnameOverride: "redis"
-
-  image:
-    # -- Image registry for Redis
-    registry: mirror.gcr.io
-    # -- Image repository for Redis
-    repository: bitnamilegacy/redis
-
   cluster:
-    # -- Clustered Redis deployment
+    name: infisical-postgres
+    spec:
+      instances: 1
+
+      storage:
+        size: 1Gi
+
+      bootstrap:
+        initdb:
+          database: infisical
+          owner: infisical
+
+      walStorage:
+        size: 1Gi
+
+  pooler:
     enabled: false
+    instances: 1
 
-  # -- Requires a password for Redis authentication
-  usePassword: true
+    type: rw
 
-  auth:
-    # -- Redis password
-    password: "mysecretpassword"
+    pgbouncer:
+      poolMode: transaction
+      parameters:
+        max_client_conn: "1000"
+        default_pool_size: "10"
 
-  # -- Redis deployment type (e.g., standalone or cluster)
-  architecture: standalone
+  backups:
+    enabled: false
+    schedule: "0 0 0 * * *" # every day at midnight UTC
+    retentionPolicy: "30d"
+
+    # https://cloudnative-pg.io/plugin-barman-cloud/docs/object_stores/#s3-compatible-storage-providers
+    config:
+      {}
+      # endpointURL: https://s3.us-west-002.backblazeb2.com
+      # destinationPath: s3://infisical-cnpg/backups/local-dev/
+      # s3Credentials:
+      #   accessKeyId:
+      #     name: cnpg-s3-creds
+      #     key: ACCESS_KEY_ID
+      #   secretAccessKey:
+      #     name: cnpg-s3-creds
+      #     key: ACCESS_SECRET_KEY
+
+# Redis
+# https://ot-redis-operator.netlify.app/docs/getting-started/standalone/
+redis:
+  enabled: true
+
+  # deployment name
+  name: infisical-redis
+
+  # https://ot-redis-operator.netlify.app/docs/crd-reference/api-reference/#redisspec
+  kubernetesConfig:
+    # https://quay.io/repository/opstree/redis?tab=tags&tag=latest
+    image: quay.io/opstree/redis:v8.2.1
+    imagePullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 1Gi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        # storageClassName: standard
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+
+# Misc extra k8s manifests to be deployed
+extraManifests:
+  []
+  #
+  # - apiVersion: apps/v1
+  #   kind: Deployment
+  #   metadata:
+  #     name: my-deployment
+  #     namespace: custom-namespace
+  #   spec:
+  #     replicas: 1
+  #     template:
+  #       spec:
+  #         containers:
+  #         - name: my-container
+  #           image: my-image
+  #           command: ["my-command"]
+  #         restartPolicy: Never

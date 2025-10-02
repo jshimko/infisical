@@ -28,17 +28,14 @@ spec:
           image: "{{ $infisicalValues.image.repository }}:{{ $infisicalValues.image.tag }}"
           command: ["npm", "run", "migration:latest"]
           env:
-          {{- if .Values.postgresql.useExistingPostgresSecret.enabled }}
+          {{- if .Values.cnpg.enabled }}
           - name: DB_CONNECTION_URI
             valueFrom:
               secretKeyRef:
-                name: {{ .Values.postgresql.useExistingPostgresSecret.existingConnectionStringSecret.name }}
-                key: {{ .Values.postgresql.useExistingPostgresSecret.existingConnectionStringSecret.key }}
+                name: "{{ .Values.cnpg.cluster.name }}-app"
+                key: "uri"
           {{- end }}
-          {{- if .Values.postgresql.enabled }}
-          - name: DB_CONNECTION_URI
-            value: {{ include "infisical.postgresDBConnectionString" . }}
-          {{- end }}
+
           {{- with $infisicalValues.env }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
