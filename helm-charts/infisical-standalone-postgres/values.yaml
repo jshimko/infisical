@@ -240,6 +240,9 @@ redis:
   # deployment name
   name: infisical-redis
 
+  labels: {}
+  annotations: {}
+
   # https://ot-redis-operator.netlify.app/docs/crd-reference/api-reference/#redisspec
   kubernetesConfig:
     # https://quay.io/repository/opstree/redis?tab=tags&tag=latest
