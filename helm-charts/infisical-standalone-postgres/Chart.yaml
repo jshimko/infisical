@@ -7,26 +7,24 @@ type: application
 # This is the chart version. This version number should be incremented each time you make changes
 # to the chart and its templates, including the app version.
 # Versions are expected to follow Semantic Versioning (https://semver.org/)
-version: 1.6.1
+version: 1.7.0
 
 # This is the version number of the application being deployed. This version number should be
 # incremented each time you make changes to the application. Versions are not expected to
 # follow Semantic Versioning. They should reflect the version the application is using.
 # It is recommended to use it with quotes.
-appVersion: "v0.120.0-postgres"
+appVersion: "1.0.1"
 
 dependencies:
   - name: ingress-nginx
-    version: 4.12.1
+    version: 4.0.13
     repository: https://kubernetes.github.io/ingress-nginx
     condition: ingress.nginx.enabled
-  # https://github.com/bitnami/charts/blob/main/bitnami/postgresql/Chart.yaml
   - name: postgresql
-    version: 16.6.2
-    repository: https://charts.bitnami.com/bitnami
+    version: 14.1.10
+    repository: oci://registry-1.docker.io/bitnamicharts
     condition: postgresql.enabled
-  # https://github.com/bitnami/charts/blob/main/bitnami/redis/Chart.yaml
   - name: redis
-    version: 20.11.4
-    repository: https://charts.bitnami.com/bitnami
+    version: 18.14.1
+    repository: oci://registry-1.docker.io/bitnamicharts
     condition: redis.enabled

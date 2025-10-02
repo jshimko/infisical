@@ -50,6 +50,7 @@ export enum ApiDocsTags {
   IdentitySpecificPrivilegesV2 = "Identity Specific Privileges V2",
   AppConnections = "App Connections",
   SecretSyncs = "Secret Syncs",
+  PkiSyncs = "PKI Syncs",
   Integrations = "Integrations",
   ServiceTokens = "Service Tokens",
   AuditLogs = "Audit Logs",
@@ -1048,7 +1049,7 @@ export const RAW_SECRETS = {
   },
   GET_ACCESS_LIST: {
     secretName: "The name of the secret to get the access list for.",
-    workspaceId: "The ID of the project where the secret is located.",
+    projectId: "The ID of the project where the secret is located.",
     environment: "The slug of the environment where the the secret is located.",
     secretPath: "The folder path where the secret is located."
   }
@@ -2685,9 +2686,16 @@ export const SecretRotations = {
     },
     OKTA_CLIENT_SECRET: {
       clientId: "The ID of the Okta Application to rotate the client secret for."
+    },
+    REDIS_CREDENTIALS: {
+      permissionScope: "The ACL permission scope to assign to the issued Redis users."
     }
   },
   SECRETS_MAPPING: {
+    REDIS_CREDENTIALS: {
+      username: "The name of the secret that the username will be mapped to.",
+      password: "The name of the secret that the rotated password will be mapped to."
+    },
     SQL_CREDENTIALS: {
       username: "The name of the secret that the active username will be mapped to.",
       password: "The name of the secret that the generated password will be mapped to."
@@ -2864,7 +2872,9 @@ export const SamlSso = {
     entryPoint:
       "The entry point for the SAML authentication. This is the URL that the user will be redirected to after they have authenticated with the SAML provider.",
     issuer: "The SAML provider issuer URL or entity ID.",
-    cert: "The certificate to use for SAML authentication."
+    cert: "The certificate to use for SAML authentication.",
+    enableGroupSync:
+      "Whether to enable automatic synchronization of group memberships from the SAML provider to Infisical groups."
   },
   CREATE_CONFIG: {
     organizationId: "The ID of the organization to create the SAML config for.",
@@ -2873,7 +2883,9 @@ export const SamlSso = {
     entryPoint:
       "The entry point for the SAML authentication. This is the URL that the user will be redirected to after they have authenticated with the SAML provider.",
     issuer: "The SAML provider issuer URL or entity ID.",
-    cert: "The certificate to use for SAML authentication."
+    cert: "The certificate to use for SAML authentication.",
+    enableGroupSync:
+      "Whether to enable automatic synchronization of group memberships from the SAML provider to Infisical groups."
   }
 };
 
