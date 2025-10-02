@@ -32,7 +32,7 @@ spec:
           - name: CNPG_URI
             valueFrom:
               secretKeyRef:
-                name: "{{ .Values.cnpg.cluster.name }}-postgres-{{ .Values.cnpg.cluster.name }}"
+                name: "{{ .Values.cnpg.cluster.name }}-postgres-app"
                 key: "uri"
           - name: DB_CONNECTION_URI
             value: "$(CNPG_URI){{ .Values.cnpg.dbUrlOptions }}"
