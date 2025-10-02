@@ -8,9 +8,13 @@ kind: Cluster
 metadata:
   name: {{ .Values.cnpg.cluster.name }}-postgres
   labels:
-    {{- toYaml .Values.cnpg.cluster.labels | nindent 4 }}
+    {{- with .Values.cnpg.cluster.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
-    {{- toYaml .Values.cnpg.cluster.annotations | nindent 4 }}
+    {{- with .Values.cnpg.cluster.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 # https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-ClusterSpec
 spec:
   {{- toYaml .Values.cnpg.cluster.spec | nindent 4 }}
@@ -30,9 +34,13 @@ kind: Database
 metadata:
   name: {{ .Values.cnpg.cluster.name }}
   labels:
-    {{- toYaml .Values.cnpg.cluster.labels | nindent 4 }}
+    {{- with .Values.cnpg.cluster.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
-    {{- toYaml .Values.cnpg.cluster.annotations | nindent 4 }}
+    {{- with .Values.cnpg.cluster.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   name: {{ .Values.cnpg.cluster.name }}
   owner: {{ .Values.cnpg.cluster.name }}
@@ -50,9 +58,13 @@ kind: Pooler
 metadata:
   name: {{ .Values.cnpg.cluster.name }}-pgbouncer
   labels:
-    {{- toYaml .Values.cnpg.pooler.labels | nindent 4 }}
+    {{- with .Values.cnpg.pooler.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
-    {{- toYaml .Values.cnpg.pooler.annotations | nindent 4 }}
+    {{- with .Values.cnpg.pooler.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   cluster:
     name: {{ .Values.cnpg.cluster.name }}
@@ -75,9 +87,13 @@ kind: ObjectStore
 metadata:
   name: {{ .Values.cnpg.cluster.name }}
   labels:
-    {{- toYaml .Values.cnpg.backups.labels | nindent 4 }}
+    {{- with .Values.cnpg.backups.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
-    {{- toYaml .Values.cnpg.backups.annotations | nindent 4 }}
+    {{- with .Values.cnpg.backups.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   retentionPolicy: {{ .Values.cnpg.backups.retentionPolicy }}
   configuration:
@@ -91,9 +107,13 @@ kind: ScheduledBackup
 metadata:
   name: {{ .Values.cnpg.cluster.name }}
   labels:
-    {{- toYaml .Values.cnpg.backups.labels | nindent 4 }}
+    {{- with .Values.cnpg.backups.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
-    {{- toYaml .Values.cnpg.backups.annotations | nindent 4 }}
+    {{- with .Values.cnpg.backups.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   method: plugin
   cluster:

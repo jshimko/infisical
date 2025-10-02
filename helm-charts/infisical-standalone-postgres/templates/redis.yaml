@@ -4,9 +4,13 @@ kind: Redis
 metadata:
   name: {{ .Values.redis.name }}
   labels:
-    {{- toYaml .Values.redis.labels | nindent 4 }}
+    {{- with .Values.redis.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
-    {{- toYaml .Values.redis.annotations | nindent 4 }}
+    {{- with .Values.redis.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 # https://ot-redis-operator.netlify.app/docs/configuration/redis/
 spec:
   podSecurityContext:
