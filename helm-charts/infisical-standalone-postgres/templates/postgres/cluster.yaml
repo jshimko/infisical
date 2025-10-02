@@ -8,9 +8,9 @@ kind: Cluster
 metadata:
   name: {{ .Values.cnpg.cluster.name }}-postgres
   labels:
-    {{- toYaml .Values.cnpg.labels | nindent 4 }}
+    {{- toYaml .Values.cnpg.cluster.labels | nindent 4 }}
   annotations:
-    {{- toYaml .Values.cnpg.annotations | nindent 4 }}
+    {{- toYaml .Values.cnpg.cluster.annotations | nindent 4 }}
 # https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-ClusterSpec
 spec:
   {{- toYaml .Values.cnpg.cluster.spec | nindent 4 }}
@@ -30,9 +30,9 @@ kind: Database
 metadata:
   name: {{ .Values.cnpg.cluster.name }}
   labels:
-    {{- toYaml .Values.cnpg.labels | nindent 4 }}
+    {{- toYaml .Values.cnpg.cluster.labels | nindent 4 }}
   annotations:
-    {{- toYaml .Values.cnpg.annotations | nindent 4 }}
+    {{- toYaml .Values.cnpg.cluster.annotations | nindent 4 }}
 spec:
   name: {{ .Values.cnpg.cluster.name }}
   owner: {{ .Values.cnpg.cluster.name }}

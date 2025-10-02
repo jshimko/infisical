@@ -189,11 +189,10 @@ cnpg:
 
   dbUrlOptions: "?schema=infisical"
 
-  labels: {}
-  annotations: {}
-
   cluster:
     name: infisical
+    labels: {}
+    annotations: {}
     spec:
       instances: 1
 
