@@ -29,6 +29,7 @@ spec:
 
 ---
 
+# https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-DatabaseSpec
 apiVersion: postgresql.cnpg.io/v1
 kind: Database
 metadata:
@@ -42,13 +43,13 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
-  name: {{ .Values.cnpg.cluster.name }}
-  owner: {{ .Values.cnpg.cluster.name }}
+  name: {{ .Values.cnpg.cluster.spec.bootstrap.initdb.database }}
+  owner: {{ .Values.cnpg.cluster.spec.bootstrap.initdb.owner }}
   cluster:
     name: {{ .Values.cnpg.cluster.name }}-postgres
   schemas:
-  - name: {{ .Values.cnpg.cluster.name }}
-    owner: {{ .Values.cnpg.cluster.name }}
+  - name: {{ .Values.cnpg.cluster.spec.bootstrap.initdb.database }}
+    owner: {{ .Values.cnpg.cluster.spec.bootstrap.initdb.database }}
 
 {{- if .Values.cnpg.pooler.enabled }}
 # PGBouncer
@@ -67,7 +68,7 @@ metadata:
     {{- end }}
 spec:
   cluster:
-    name: {{ .Values.cnpg.cluster.name }}
+    name: {{ .Values.cnpg.cluster.name }}-postgres
   instances: {{ .Values.cnpg.pooler.instances }}
   type: {{ .Values.cnpg.pooler.type }}
   pgbouncer:

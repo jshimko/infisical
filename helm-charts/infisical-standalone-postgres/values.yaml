@@ -191,10 +191,17 @@ cnpg:
 
   cluster:
     name: infisical
+
     labels:
     annotations:
+
     spec:
       instances: 1
+
+      bootstrap:
+        initdb:
+          database: infisical
+          owner: infisical
 
       storage:
         size: 1Gi
