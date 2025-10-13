@@ -47,4 +47,12 @@ spec:
           {{- with $infisicalValues.envFrom }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
+          {{- with $infisicalValues.extraVolumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 10 }}
+          {{- end }}
+      {{- with $infisicalValues.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
 {{- end }}
