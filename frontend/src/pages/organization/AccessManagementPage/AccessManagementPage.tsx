@@ -76,13 +76,14 @@ export const AccessManagementPage = () => {
   const hasNoAccess = tabSections.every((tab) => tab.isHidden);
 
   return (
-    <div className="container mx-auto flex flex-col justify-between bg-bunker-800 text-white">
+    <div className="mx-auto flex flex-col justify-between bg-bunker-800 text-white">
       <Helmet>
         <title>{t("common.head-title", { title: t("settings.org.title") })}</title>
       </Helmet>
-      <div className="mx-auto mb-6 w-full max-w-7xl">
+      <div className="mx-auto mb-6 w-full max-w-8xl">
         <PageHeader
-          title="Organization Access Control"
+          scope="org"
+          title="Access Control"
           description="Manage fine-grained access for users, groups, roles, and identities within your organization resources."
         />
         {!currentOrg.shouldUseNewPrivilegeSystem && (
@@ -110,12 +111,12 @@ export const AccessManagementPage = () => {
           isOpen={isUpgradePrivilegeSystemModalOpen}
           onOpenChange={setIsUpgradePrivilegeSystemModalOpen}
         />
-        <Tabs value={selectedTab} onValueChange={updateSelectedTab}>
+        <Tabs orientation="vertical" value={selectedTab} onValueChange={updateSelectedTab}>
           <TabList>
             {tabSections
               .filter((el) => !el.isHidden)
               .map((el) => (
-                <Tab value={el.key} key={`org-access-tab-${el.key}`}>
+                <Tab variant="org" value={el.key} key={`org-access-tab-${el.key}`}>
                   {el.label}
                 </Tab>
               ))}

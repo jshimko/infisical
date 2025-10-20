@@ -176,6 +176,7 @@ import { externalGroupOrgRoleMappingDALFactory } from "@app/services/external-gr
 import { externalGroupOrgRoleMappingServiceFactory } from "@app/services/external-group-org-role-mapping/external-group-org-role-mapping-service";
 import { externalMigrationQueueFactory } from "@app/services/external-migration/external-migration-queue";
 import { externalMigrationServiceFactory } from "@app/services/external-migration/external-migration-service";
+import { vaultExternalMigrationConfigDALFactory } from "@app/services/external-migration/vault-external-migration-config-dal";
 import { folderCheckpointDALFactory } from "@app/services/folder-checkpoint/folder-checkpoint-dal";
 import { folderCheckpointResourcesDALFactory } from "@app/services/folder-checkpoint-resources/folder-checkpoint-resources-dal";
 import { folderCommitDALFactory } from "@app/services/folder-commit/folder-commit-dal";
@@ -186,6 +187,7 @@ import { folderTreeCheckpointDALFactory } from "@app/services/folder-tree-checkp
 import { folderTreeCheckpointResourcesDALFactory } from "@app/services/folder-tree-checkpoint-resources/folder-tree-checkpoint-resources-dal";
 import { groupProjectDALFactory } from "@app/services/group-project/group-project-dal";
 import { groupProjectServiceFactory } from "@app/services/group-project/group-project-service";
+import { healthAlertServiceFactory } from "@app/services/health-alert/health-alert-queue";
 import { identityDALFactory } from "@app/services/identity/identity-dal";
 import { identityMetadataDALFactory } from "@app/services/identity/identity-metadata-dal";
 import { identityOrgDALFactory } from "@app/services/identity/identity-org-dal";
@@ -532,6 +534,8 @@ export const registerRoutes = async (
   const additionalPrivilegeDAL = additionalPrivilegeDALFactory(db);
   const membershipRoleDAL = membershipRoleDALFactory(db);
   const roleDAL = roleDALFactory(db);
+
+  const vaultExternalMigrationConfigDAL = vaultExternalMigrationConfigDALFactory(db);
 
   const eventBusService = eventBusFactory(server.redis);
   const sseService = sseServiceFactory(eventBusService, server.redis);
@@ -1343,7 +1347,8 @@ export const registerRoutes = async (
     projectDAL,
     folderCommitService,
     secretApprovalPolicyService,
-    secretV2BridgeDAL
+    secretV2BridgeDAL,
+    dynamicSecretDAL
   });
 
   const secretImportService = secretImportServiceFactory({
@@ -1782,6 +1787,7 @@ export const registerRoutes = async (
     identityDAL
   });
 
+  // DAILY
   const dailyResourceCleanUp = dailyResourceCleanUpQueueServiceFactory({
     auditLogDAL,
     queueService,
@@ -1796,6 +1802,12 @@ export const registerRoutes = async (
     orgService,
     userNotificationDAL,
     keyValueStoreDAL
+  });
+
+  const healthAlert = healthAlertServiceFactory({
+    gatewayV2Service,
+    queueService,
+    relayService
   });
 
   const dailyReminderQueueService = dailyReminderQueueServiceFactory({
@@ -1871,13 +1883,6 @@ export const registerRoutes = async (
     folderCommitService,
     folderVersionDAL,
     notificationService
-  });
-
-  const migrationService = externalMigrationServiceFactory({
-    externalMigrationQueue,
-    userDAL,
-    permissionService,
-    gatewayService
   });
 
   const externalGroupOrgRoleMappingService = externalGroupOrgRoleMappingServiceFactory({
@@ -2196,6 +2201,18 @@ export const registerRoutes = async (
     kmsService
   });
 
+  const migrationService = externalMigrationServiceFactory({
+    externalMigrationQueue,
+    userDAL,
+    permissionService,
+    gatewayService,
+    kmsService,
+    appConnectionService,
+    vaultExternalMigrationConfigDAL,
+    secretService,
+    auditLogService
+  });
+
   // setup the communication with license key server
   await licenseService.init();
 
@@ -2210,6 +2227,7 @@ export const registerRoutes = async (
   await telemetryQueue.startTelemetryCheck();
   await telemetryQueue.startAggregatedEventsJob();
   await dailyResourceCleanUp.init();
+  await healthAlert.init();
   await pkiSyncCleanup.init();
   await dailyReminderQueueService.startDailyRemindersJob();
   await dailyReminderQueueService.startSecretReminderMigrationJob();
@@ -2368,16 +2386,6 @@ export const registerRoutes = async (
   const configSyncJob = await superAdminService.initializeEnvConfigSync();
   if (configSyncJob) {
     cronJobs.push(configSyncJob);
-  }
-
-  const gatewayHealthcheckNotifyJob = await gatewayV2Service.initializeHealthcheckNotify();
-  if (gatewayHealthcheckNotifyJob) {
-    cronJobs.push(gatewayHealthcheckNotifyJob);
-  }
-
-  const relayHealthcheckNotifyJob = await relayService.initializeHealthcheckNotify();
-  if (relayHealthcheckNotifyJob) {
-    cronJobs.push(relayHealthcheckNotifyJob);
   }
 
   const oauthConfigSyncJob = await initializeOauthConfigSync();

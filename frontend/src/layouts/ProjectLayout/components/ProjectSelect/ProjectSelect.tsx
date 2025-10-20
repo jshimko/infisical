@@ -3,10 +3,10 @@ import { faStar } from "@fortawesome/free-regular-svg-icons";
 import {
   faCaretDown,
   faCheck,
+  faCube,
   faMagnifyingGlass,
   faPlus,
-  faStar as faSolidStar,
-  faTable
+  faStar as faSolidStar
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Link, linkOptions } from "@tanstack/react-router";
@@ -16,6 +16,7 @@ import { createNotification } from "@app/components/notifications";
 import { OrgPermissionCan } from "@app/components/permissions";
 import { NewProjectModal } from "@app/components/projects";
 import {
+  Badge,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -34,9 +35,18 @@ import {
 import { getProjectHomePage } from "@app/helpers/project";
 import { usePopUp } from "@app/hooks";
 import { useGetUserProjects } from "@app/hooks/api";
-import { Project } from "@app/hooks/api/projects/types";
+import { Project, ProjectType } from "@app/hooks/api/projects/types";
 import { useUpdateUserProjectFavorites } from "@app/hooks/api/users/mutation";
 import { useGetUserProjectFavorites } from "@app/hooks/api/users/queries";
+
+const PROJECT_TYPE_NAME: Record<ProjectType, string> = {
+  [ProjectType.SecretManager]: "Secrets Management",
+  [ProjectType.CertificateManager]: "PKI",
+  [ProjectType.SSH]: "SSH",
+  [ProjectType.KMS]: "KMS",
+  [ProjectType.PAM]: "PAM",
+  [ProjectType.SecretScanning]: "Secret Scanning"
+};
 
 export const ProjectSelect = () => {
   const [searchProject, setSearchProject] = useState("");
@@ -98,24 +108,24 @@ export const ProjectSelect = () => {
   }, [projects, projectFavorites, currentWorkspace]);
 
   return (
-    <div className="-mr-2 flex w-full items-center gap-1">
+    <div className="mr-2 flex items-center gap-1 overflow-hidden">
       <DropdownMenu modal={false}>
         <Link
           to={getProjectHomePage(currentWorkspace.type, currentWorkspace.environments)}
           params={{
             projectId: currentWorkspace.id
           }}
+          className="group flex cursor-pointer items-center gap-x-1.5 overflow-hidden hover:text-white"
         >
-          <div className="flex cursor-pointer items-center gap-2 text-sm text-white duration-100 hover:text-primary">
-            <div>
-              <FontAwesomeIcon icon={faTable} className="text-xs text-bunker-300" />
-            </div>
-            <Tooltip content={currentWorkspace.name} className="max-w-96 break-words">
-              <div className="max-w-44 overflow-hidden text-ellipsis whitespace-nowrap">
-                {currentWorkspace?.name}
-              </div>
-            </Tooltip>
-          </div>
+          <p className="inline-block truncate text-mineshaft-200 group-hover:underline">
+            {currentWorkspace?.name}
+          </p>
+          <Badge variant="project" className="cursor-pointer">
+            <FontAwesomeIcon icon={faCube} />
+            <span>
+              {currentWorkspace.type ? PROJECT_TYPE_NAME[currentWorkspace.type] : "Project"}
+            </span>
+          </Badge>
         </Link>
         <DropdownMenuTrigger asChild>
           <div>

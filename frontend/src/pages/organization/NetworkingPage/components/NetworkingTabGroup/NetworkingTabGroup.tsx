@@ -19,10 +19,10 @@ export const NetworkingTabGroup = () => {
   const [selectedTab, setSelectedTab] = useState(search.selectedTab || tabs[0].key);
 
   return (
-    <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+    <Tabs orientation="vertical" value={selectedTab} onValueChange={setSelectedTab}>
       <TabList>
         {tabs.map((tab) => (
-          <Tab value={tab.key} key={tab.key}>
+          <Tab variant="org" value={tab.key} key={tab.key}>
             {tab.name}
           </Tab>
         ))}
