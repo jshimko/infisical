@@ -251,7 +251,7 @@ redis:
   # https://ot-redis-operator.netlify.app/docs/crd-reference/api-reference/#redisspec
   kubernetesConfig:
     # https://quay.io/repository/opstree/redis?tab=tags&tag=latest
-    image: quay.io/opstree/redis:v8.2.1
+    image: quay.io/opstree/redis:v8.2.2
     imagePullPolicy: IfNotPresent
     resources:
       requests:
