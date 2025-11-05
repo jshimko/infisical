@@ -23,7 +23,6 @@ import { motion } from "framer-motion";
 import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
 import {
-  Badge,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -44,7 +43,7 @@ import {
   Tooltip,
   Tr
 } from "@app/components/v2";
-import { BadgeProps } from "@app/components/v2/Badge/Badge";
+import { Badge, TBadgeProps } from "@app/components/v3";
 import {
   ProjectPermissionActions,
   ProjectPermissionCmekActions,
@@ -72,7 +71,7 @@ import { DeleteCmekModal } from "./DeleteCmekModal";
 
 const getStatusBadgeProps = (
   isDisabled: boolean
-): { variant: BadgeProps["variant"]; label: string } => {
+): { variant: TBadgeProps["variant"]; label: string } => {
   if (isDisabled) {
     return {
       variant: "danger",
@@ -153,28 +152,16 @@ export const CmekTable = () => {
   const updateCmek = useUpdateCmek();
 
   const handleDisableCmek = async ({ id: keyId, isDisabled }: TCmek) => {
-    try {
-      await updateCmek.mutateAsync({
-        keyId,
-        projectId,
-        isDisabled: !isDisabled
-      });
+    await updateCmek.mutateAsync({
+      keyId,
+      projectId,
+      isDisabled: !isDisabled
+    });
 
-      createNotification({
-        text: `Key successfully ${isDisabled ? "enabled" : "disabled"}`,
-        type: "success"
-      });
-    } catch (err) {
-      console.error(err);
-      const error = err as any;
-      const text =
-        error?.response?.data?.message ?? `Failed to ${isDisabled ? "enable" : "disable"} key`;
-
-      createNotification({
-        text,
-        type: "error"
-      });
-    }
+    createNotification({
+      text: `Key successfully ${isDisabled ? "enabled" : "disabled"}`,
+      type: "success"
+    });
   };
 
   const cannotEditKey = permission.cannot(

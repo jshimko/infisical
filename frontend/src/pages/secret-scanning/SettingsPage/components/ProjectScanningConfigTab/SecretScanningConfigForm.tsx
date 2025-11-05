@@ -1,12 +1,11 @@
 import { Controller, useForm } from "react-hook-form";
-import { faArrowUpRightFromSquare, faBookOpen } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
 import { Button, FormControl, TextArea } from "@app/components/v2";
+import { DocumentationLinkBadge } from "@app/components/v3";
 import { ProjectPermissionSub } from "@app/context";
 import { ProjectPermissionSecretScanningConfigActions } from "@app/context/ProjectPermissionContext/types";
 import {
@@ -39,22 +38,15 @@ export const SecretScanningConfigForm = ({ config }: Props) => {
   });
 
   const onSubmit = async ({ content }: FormType) => {
-    try {
-      await updateConfig.mutateAsync({
-        projectId: config.projectId,
-        content: content || null
-      });
+    await updateConfig.mutateAsync({
+      projectId: config.projectId,
+      content: content || null
+    });
 
-      createNotification({
-        type: "success",
-        text: "Configuration successfully updated"
-      });
-    } catch {
-      createNotification({
-        type: "error",
-        text: "Failed to update Configuration"
-      });
-    }
+    createNotification({
+      type: "success",
+      text: "Configuration successfully updated"
+    });
   };
 
   return (
@@ -62,21 +54,7 @@ export const SecretScanningConfigForm = ({ config }: Props) => {
       <div className="mb-4">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-medium text-mineshaft-100">Project Configuration</h2>
-          <a
-            target="_blank"
-            href="https://infisical.com/docs/documentation/platform/secret-scanning/overview#configuration"
-            className="mt-[0.02rem]"
-            rel="noopener noreferrer"
-          >
-            <div className="inline-block rounded-md bg-yellow/20 px-1.5 text-sm text-yellow opacity-80 hover:opacity-100">
-              <FontAwesomeIcon icon={faBookOpen} className="mr-1 mb-[0.03rem] text-[12px]" />
-              <span>Docs</span>
-              <FontAwesomeIcon
-                icon={faArrowUpRightFromSquare}
-                className="mb-[0.07rem] ml-1 text-[10px]"
-              />
-            </div>
-          </a>
+          <DocumentationLinkBadge href="https://infisical.com/docs/documentation/platform/secret-scanning/usage#configuration" />
         </div>
         <p className="leading-5 text-mineshaft-400">
           Configure rules and exceptions to customize scanning

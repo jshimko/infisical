@@ -62,7 +62,11 @@ export const ROUTE_PATHS = Object.freeze({
         "/organization/app-connections/$appConnection/oauth/callback",
         "/_authenticate/_inject-org-details/_org-layout/organization/app-connections/$appConnection/oauth/callback"
       )
-    }
+    },
+    NetworkingPage: setRoute(
+      "/organization/networking",
+      "/_authenticate/_inject-org-details/_org-layout/organization/networking"
+    )
   },
   SecretManager: {
     ApprovalPage: setRoute(
@@ -296,10 +300,6 @@ export const ROUTE_PATHS = Object.freeze({
     SubscribersPage: setRoute(
       "/projects/cert-management/$projectId/subscribers",
       "/_authenticate/_inject-org-details/_org-layout/projects/cert-management/$projectId/_cert-manager-layout/subscribers"
-    ),
-    CertificatesPage: setRoute(
-      "/projects/cert-management/$projectId/certificates",
-      "/_authenticate/_inject-org-details/_org-layout/projects/cert-management/$projectId/_cert-manager-layout/certificates"
     ),
     CertificateAuthoritiesPage: setRoute(
       "/projects/cert-management/$projectId/certificate-authorities",

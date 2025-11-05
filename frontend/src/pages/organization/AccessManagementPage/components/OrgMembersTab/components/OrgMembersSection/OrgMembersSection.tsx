@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { faBan, faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
+import { faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { BanIcon } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import { UpgradePlanModal } from "@app/components/license/UpgradePlanModal";
 import { createNotification } from "@app/components/notifications";
 import { OrgPermissionCan } from "@app/components/permissions";
 import {
-  Badge,
   Button,
   DeleteActionModal,
   EmailServiceSetupModal,
@@ -15,6 +15,7 @@ import {
   ModalContent,
   Tooltip
 } from "@app/components/v2";
+import { Badge, DocumentationLinkBadge } from "@app/components/v3";
 import {
   OrgPermissionActions,
   OrgPermissionSubjects,
@@ -75,7 +76,7 @@ export const OrgMembersSection = () => {
 
     if (!isMoreIdentitiesAllowed && !isEnterprise) {
       handlePopUpOpen("upgradePlan", {
-        description: "You can add more members if you upgrade your Infisical plan."
+        text: "You have reached the maximum number of members allowed on your current plan. Upgrade to Infisical Pro plan to add more members."
       });
       return;
     }
@@ -84,46 +85,30 @@ export const OrgMembersSection = () => {
   };
 
   const onDeactivateMemberSubmit = async (orgMembershipId: string) => {
-    try {
-      await updateOrgMembership({
-        organizationId: orgId,
-        membershipId: orgMembershipId,
-        isActive: false
-      });
+    await updateOrgMembership({
+      organizationId: orgId,
+      membershipId: orgMembershipId,
+      isActive: false
+    });
 
-      createNotification({
-        text: "Successfully deactivated user in organization",
-        type: "success"
-      });
-    } catch (err) {
-      console.error(err);
-      createNotification({
-        text: "Failed to deactivate user in organization",
-        type: "error"
-      });
-    }
+    createNotification({
+      text: "Successfully deactivated user in organization",
+      type: "success"
+    });
 
     handlePopUpClose("deactivateMember");
   };
 
   const onRemoveMemberSubmit = async (orgMembershipId: string) => {
-    try {
-      await deleteMutateAsync({
-        orgId,
-        membershipId: orgMembershipId
-      });
+    await deleteMutateAsync({
+      orgId,
+      membershipId: orgMembershipId
+    });
 
-      createNotification({
-        text: "Successfully removed user from org",
-        type: "success"
-      });
-    } catch (err) {
-      console.error(err);
-      createNotification({
-        text: "Failed to remove user from the organization",
-        type: "error"
-      });
-    }
+    createNotification({
+      text: "Successfully removed user from org",
+      type: "success"
+    });
 
     handlePopUpClose("removeMember");
   };
@@ -131,27 +116,20 @@ export const OrgMembersSection = () => {
   const { data: members = [] } = useGetOrgUsers(orgId);
 
   const handleRemoveMembers = async (selectedMembers: OrgUser[]) => {
-    try {
-      await deleteBatchMutateAsync({
-        orgId,
-        membershipIds: selectedMembers
-          .filter((member) => member.user.id !== userId)
-          .map((member) => member.id)
-      });
+    await deleteBatchMutateAsync({
+      orgId,
+      membershipIds: selectedMembers
+        .filter((member) => member.user.id !== userId)
+        .map((member) => member.id)
+    });
 
-      createNotification({
-        text: "Successfully removed users from organization",
-        type: "success"
-      });
+    createNotification({
+      text: "Successfully removed users from organization",
+      type: "success"
+    });
 
-      setSelectedMemberIds([]);
-      handlePopUpClose("removeMembers");
-    } catch {
-      createNotification({
-        text: "Failed to remove users from the organization",
-        type: "error"
-      });
-    }
+    setSelectedMemberIds([]);
+    handlePopUpClose("removeMembers");
   };
 
   return (
@@ -207,7 +185,10 @@ export const OrgMembersSection = () => {
       </div>
       <div className="mb-6 rounded-lg border border-mineshaft-600 bg-mineshaft-900 p-4">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-xl font-medium text-mineshaft-100">Users</p>
+          <div className="flex items-center gap-x-2">
+            <p className="text-xl font-medium text-mineshaft-100">Users</p>
+            <DocumentationLinkBadge href="https://infisical.com/docs/documentation/platform/identities/user-identities" />
+          </div>
           <OrgPermissionCan I={OrgPermissionActions.Create} a={OrgPermissionSubjects.Member}>
             {(isAllowed) => (
               <Button
@@ -303,15 +284,10 @@ export const OrgMembersSection = () => {
                       </p>
                       {userId === member.user.id && (
                         <Tooltip content="You cannot remove yourself from this organization">
-                          <div className="inline-block">
-                            <Badge
-                              variant="danger"
-                              className="mt-[0.05rem] ml-1 inline-flex w-min items-center gap-1.5 whitespace-nowrap"
-                            >
-                              <FontAwesomeIcon icon={faBan} />
-                              <span>Ignored</span>
-                            </Badge>
-                          </div>
+                          <Badge variant="danger" className="ml-2">
+                            <BanIcon />
+                            Ignored
+                          </Badge>
                         </Tooltip>
                       )}
                     </div>
@@ -324,7 +300,7 @@ export const OrgMembersSection = () => {
         <UpgradePlanModal
           isOpen={popUp.upgradePlan.isOpen}
           onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}
-          text={(popUp.upgradePlan?.data as { description: string })?.description}
+          text={popUp.upgradePlan?.data?.text}
         />
         <EmailServiceSetupModal
           isOpen={popUp.setUpEmail?.isOpen}

@@ -11,19 +11,18 @@ import {
   faMagnifyingGlass,
   faSearch,
   faUsers,
-  faUserShield,
   faUserSlash,
   faUserXmark
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useNavigate } from "@tanstack/react-router";
+import { UserCogIcon } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import { createNotification } from "@app/components/notifications";
 import { LastLoginSection } from "@app/components/organization/LastLoginSection";
 import { OrgPermissionCan } from "@app/components/permissions";
 import {
-  Badge,
   Button,
   Checkbox,
   DropdownMenu,
@@ -50,6 +49,7 @@ import {
   Tooltip,
   Tr
 } from "@app/components/v2";
+import { Badge } from "@app/components/v3";
 import {
   OrgPermissionActions,
   OrgPermissionSubjects,
@@ -82,7 +82,7 @@ type Props = {
     data?: {
       orgMembershipId?: string;
       username?: string;
-      description?: string;
+      text?: string;
       selectedOrgMemberships?: OrgUser[];
     }
   ) => void;
@@ -127,34 +127,26 @@ export const OrgMembersTable = ({
   const onRoleChange = async (membershipId: string, role: string) => {
     if (!currentOrg?.id) return;
 
-    try {
-      // TODO: replace hardcoding default role
-      const isCustomRole = !["admin", "member", "no-access"].includes(role);
+    // TODO: replace hardcoding default role
+    const isCustomRole = !["admin", "member", "no-access"].includes(role);
 
-      if (isCustomRole && subscription && !subscription?.rbac) {
-        handlePopUpOpen("upgradePlan", {
-          description: "You can assign custom roles to members if you upgrade your Infisical plan."
-        });
-        return;
-      }
-
-      await updateOrgMembership({
-        organizationId: currentOrg?.id,
-        membershipId,
-        role
+    if (isCustomRole && subscription && !subscription?.rbac) {
+      handlePopUpOpen("upgradePlan", {
+        text: "Your current plan does not include access to assigning custom roles to members. To unlock this feature, please upgrade to Infisical Pro plan."
       });
-
-      createNotification({
-        text: "Successfully updated user role",
-        type: "success"
-      });
-    } catch (error) {
-      console.error(error);
-      createNotification({
-        text: "Failed to update user role",
-        type: "error"
-      });
+      return;
     }
+
+    await updateOrgMembership({
+      organizationId: currentOrg?.id,
+      membershipId,
+      role
+    });
+
+    createNotification({
+      text: "Successfully updated user role",
+      type: "success"
+    });
   };
 
   const onResendInvite = async (membershipId: string) => {
@@ -172,12 +164,6 @@ export const OrgMembersTable = ({
       createNotification({
         text: "Successfully resent org invitation",
         type: "success"
-      });
-    } catch (err) {
-      console.error(err);
-      createNotification({
-        text: "Failed to resend org invitation",
-        type: "error"
       });
     } finally {
       setResendInviteId(null);
@@ -519,17 +505,17 @@ export const OrgMembersTable = ({
                       <Td
                         className={twMerge("group max-w-0", isActive ? "" : "text-mineshaft-400")}
                       >
-                        <div className="flex items-center">
+                        <div className="flex items-center gap-x-2">
                           <p className="truncate">
                             {name ?? <span className="text-mineshaft-400">Not Set</span>}
                           </p>
                           {u.superAdmin && (
-                            <Badge variant="primary" className="ml-2 w-min whitespace-nowrap">
-                              <span className="mr-1 hidden xl:inline">Server Admin</span>
-                              <Tooltip content="Server Admin">
-                                <FontAwesomeIcon className="xl:hidden" icon={faUserShield} />
-                              </Tooltip>
-                            </Badge>
+                            <Tooltip content="Server Admin">
+                              <Badge variant="info">
+                                <UserCogIcon />
+                                <span className="hidden xl:inline">Server Admin</span>
+                              </Badge>
+                            </Tooltip>
                           )}
                           {lastLoginAuthMethod && lastLoginTime && (
                             <Tooltip

@@ -97,8 +97,8 @@ const formSchema = z
       const valMs = ms(val);
       if (valMs < 60 * 1000)
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be a greater than 1min" });
-      if (valMs > 24 * 60 * 60 * 1000)
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than a day" });
+      if (valMs > ms("10y"))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than 10 years" });
     }),
     maxTTL: z
       .string()
@@ -108,8 +108,8 @@ const formSchema = z
         const valMs = ms(val);
         if (valMs < 60 * 1000)
           ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be a greater than 1min" });
-        if (valMs > 24 * 60 * 60 * 1000)
-          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than a day" });
+        if (valMs > ms("10y"))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than 10 years" });
       }),
     newName: slugSchema().optional(),
     usernameTemplate: z.string().trim().optional()
@@ -189,38 +189,29 @@ export const EditDynamicSecretKubernetesForm = ({
     // wait till previous request is finished
     if (updateDynamicSecret.isPending) return;
     const isDefaultUsernameTemplate = formData.usernameTemplate === "{{randomUsername}}";
-    try {
-      await updateDynamicSecret.mutateAsync({
-        name: dynamicSecret.name,
-        path: secretPath,
-        projectSlug,
-        environmentSlug: environment,
-        data: {
-          inputs: {
-            ...formData.inputs,
-            url: formData.inputs.url || undefined
-          },
-          newName: formData.newName === dynamicSecret.name ? undefined : formData.newName,
-          defaultTTL: formData.defaultTTL,
-          maxTTL: formData.maxTTL,
-          usernameTemplate:
-            !formData.usernameTemplate || isDefaultUsernameTemplate
-              ? null
-              : formData.usernameTemplate
-        }
-      });
+    await updateDynamicSecret.mutateAsync({
+      name: dynamicSecret.name,
+      path: secretPath,
+      projectSlug,
+      environmentSlug: environment,
+      data: {
+        inputs: {
+          ...formData.inputs,
+          url: formData.inputs.url || undefined
+        },
+        newName: formData.newName === dynamicSecret.name ? undefined : formData.newName,
+        defaultTTL: formData.defaultTTL,
+        maxTTL: formData.maxTTL,
+        usernameTemplate:
+          !formData.usernameTemplate || isDefaultUsernameTemplate ? null : formData.usernameTemplate
+      }
+    });
 
-      onClose();
-      createNotification({
-        type: "success",
-        text: "Successfully updated dynamic secret"
-      });
-    } catch (err) {
-      createNotification({
-        type: "error",
-        text: err instanceof Error ? err.message : "Failed to update dynamic secret"
-      });
-    }
+    onClose();
+    createNotification({
+      type: "success",
+      text: "Successfully updated dynamic secret"
+    });
   };
 
   return (

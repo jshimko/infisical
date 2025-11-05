@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   faArrowDownAZ,
   faBorderAll,
-  faCheck,
   faCheckCircle,
   faFolderOpen,
   faList,
@@ -11,13 +10,12 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useNavigate } from "@tanstack/react-router";
+import { CheckIcon } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
-import { createNotification } from "@app/components/notifications";
 import { OrgPermissionCan } from "@app/components/permissions";
 import { RequestProjectAccessModal } from "@app/components/projects/RequestProjectAccessModal";
 import {
-  Badge,
   Button,
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +29,7 @@ import {
   Skeleton,
   Tooltip
 } from "@app/components/v2";
+import { Badge } from "@app/components/v3";
 import { OrgPermissionActions, OrgPermissionSubjects } from "@app/context";
 import { OrgPermissionAdminConsoleAction } from "@app/context/OrgPermissionContext/types";
 import { getProjectHomePage, getProjectLottieIcon, getProjectTitle } from "@app/helpers/project";
@@ -103,22 +102,15 @@ export const AllProjectView = ({
     projectId: string,
     environments: ProjectEnv[]
   ) => {
-    try {
-      await orgAdminAccessProject.mutateAsync({
+    await orgAdminAccessProject.mutateAsync({
+      projectId
+    });
+    await navigate({
+      to: getProjectHomePage(type, environments),
+      params: {
         projectId
-      });
-      await navigate({
-        to: getProjectHomePage(type, environments),
-        params: {
-          projectId
-        }
-      });
-    } catch {
-      createNotification({
-        text: "Failed to access project",
-        type: "error"
-      });
-    }
+      }
+    });
   };
 
   useResetPageHelper({
@@ -308,9 +300,9 @@ export const AllProjectView = ({
                 </div>
               </div>
               {workspace.isMember ? (
-                <Badge className="flex items-center" variant="success">
-                  <FontAwesomeIcon icon={faCheck} className="mr-1" />
-                  <span>Joined</span>
+                <Badge variant="info">
+                  <CheckIcon />
+                  Joined
                 </Badge>
               ) : (
                 <OrgPermissionCan

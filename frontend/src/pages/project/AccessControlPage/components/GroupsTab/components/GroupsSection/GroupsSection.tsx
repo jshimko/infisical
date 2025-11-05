@@ -5,6 +5,7 @@ import { UpgradePlanModal } from "@app/components/license/UpgradePlanModal";
 import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
 import { Button, DeleteActionModal } from "@app/components/v2";
+import { DocumentationLinkBadge } from "@app/components/v3";
 import {
   ProjectPermissionActions,
   ProjectPermissionSub,
@@ -32,8 +33,8 @@ export const GroupsSection = () => {
   const handleAddGroupModal = () => {
     if (!subscription?.groups) {
       handlePopUpOpen("upgradePlan", {
-        description:
-          "You can manage users more efficiently with groups if you upgrade your Infisical plan to an Enterprise license."
+        text: "Managing groups can be unlocked if you upgrade to Infisical Enterprise plan.",
+        isEnterpriseFeature: true
       });
     } else {
       handlePopUpOpen("group");
@@ -41,34 +42,26 @@ export const GroupsSection = () => {
   };
 
   const onRemoveGroupSubmit = async (groupId: string) => {
-    try {
-      await deleteMutateAsync({
-        groupId,
-        projectId: currentProject?.id || ""
-      });
+    await deleteMutateAsync({
+      groupId,
+      projectId: currentProject?.id || ""
+    });
 
-      createNotification({
-        text: "Successfully removed identity from project",
-        type: "success"
-      });
+    createNotification({
+      text: "Successfully removed identity from project",
+      type: "success"
+    });
 
-      handlePopUpClose("deleteGroup");
-    } catch (err) {
-      console.error(err);
-      const error = err as any;
-      const text = error?.response?.data?.message ?? "Failed to remove group from project";
-
-      createNotification({
-        text,
-        type: "error"
-      });
-    }
+    handlePopUpClose("deleteGroup");
   };
 
   return (
     <div className="mb-6 rounded-lg border border-mineshaft-600 bg-mineshaft-900 p-4">
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-xl font-medium text-mineshaft-100">User Groups</p>
+        <div className="flex items-center gap-x-2">
+          <p className="text-xl font-medium text-mineshaft-100">User Groups</p>
+          <DocumentationLinkBadge href="https://infisical.com/docs/documentation/platform/groups#user-groups" />
+        </div>
         <ProjectPermissionCan I={ProjectPermissionActions.Create} a={ProjectPermissionSub.Groups}>
           {(isAllowed) => (
             <Button
@@ -99,7 +92,8 @@ export const GroupsSection = () => {
       <UpgradePlanModal
         isOpen={popUp.upgradePlan.isOpen}
         onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}
-        text={(popUp.upgradePlan?.data as { description: string })?.description}
+        text={popUp.upgradePlan?.data?.text}
+        isEnterpriseFeature={popUp.upgradePlan?.data?.isEnterpriseFeature}
       />
     </div>
   );

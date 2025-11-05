@@ -13,7 +13,7 @@ import {
   SelectItem,
   TextArea
 } from "@app/components/v2";
-import { SECRET_SCANNING_FINDING_STATUS_ICON_MAP } from "@app/helpers/secretScanningV2";
+import { SECRET_SCANNING_FINDING_STATUS_MAP } from "@app/helpers/secretScanningV2";
 import {
   SecretScanningFindingStatus,
   TSecretScanningFinding,
@@ -55,39 +55,32 @@ const Content = ({ findings, onComplete }: ContentProps) => {
   const onSubmit = async (data: FormType) => {
     if (!data.status) return;
 
-    try {
-      if (findings.length > 1) {
-        await updateMultipleFindings.mutateAsync(
-          findings.map((f) => ({
-            ...data,
-            status: data.status!,
-            findingId: f.id,
-            projectId: f.projectId
-          }))
-        );
-      } else {
-        await updateMultipleFindings.mutateAsync([
-          {
-            ...data,
-            status: data.status,
-            findingId: findings[0].id,
-            projectId: findings[0].projectId
-          }
-        ]);
-      }
-
-      createNotification({
-        type: "success",
-        text: `Finding status${single ? "" : "es"} successfully updated`
-      });
-
-      onComplete();
-    } catch {
-      createNotification({
-        type: "error",
-        text: `Failed to update finding status${single ? "" : "es"}`
-      });
+    if (findings.length > 1) {
+      await updateMultipleFindings.mutateAsync(
+        findings.map((f) => ({
+          ...data,
+          status: data.status!,
+          findingId: f.id,
+          projectId: f.projectId
+        }))
+      );
+    } else {
+      await updateMultipleFindings.mutateAsync([
+        {
+          ...data,
+          status: data.status,
+          findingId: findings[0].id,
+          projectId: findings[0].projectId
+        }
+      ]);
     }
+
+    createNotification({
+      type: "success",
+      text: `Finding status${single ? "" : "es"} successfully updated`
+    });
+
+    onComplete();
   };
 
   return (
@@ -105,9 +98,9 @@ const Content = ({ findings, onComplete }: ContentProps) => {
                 className="w-full border border-mineshaft-500 capitalize"
                 position="popper"
                 dropdownContainerClassName="max-w-none"
-                icon={value ? SECRET_SCANNING_FINDING_STATUS_ICON_MAP[value].icon : undefined}
+                LucideIcon={value ? SECRET_SCANNING_FINDING_STATUS_MAP[value].Icon : undefined}
                 iconClassName={
-                  value ? SECRET_SCANNING_FINDING_STATUS_ICON_MAP[value].className : undefined
+                  value ? SECRET_SCANNING_FINDING_STATUS_MAP[value].className : undefined
                 }
               >
                 {Object.values(SecretScanningFindingStatus).map((status) => {

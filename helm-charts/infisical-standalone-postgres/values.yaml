@@ -10,15 +10,6 @@ infisical:
   # -- Sets the name of the deployment within this chart
   name: infisical
 
-  # -- The public URL of the Infisical service (full URL with protocol and optional port is required)
-  siteUrl: http://localhost:8080
-
-  # -- Automatically generates a Kubernetes secret containing the required Infisical secrets
-  autoGenerateSecrets: true
-
-  # -- Automatically migrates new database schema when deploying
-  autoDatabaseSchemaMigration: true
-
   autoBootstrap:
     # -- Enable auto-bootstrap of the Infisical instance
     enabled: false

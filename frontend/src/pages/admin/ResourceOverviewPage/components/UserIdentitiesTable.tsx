@@ -9,16 +9,15 @@ import {
   faUsers,
   faUserShield,
   faUserXmark,
-  faWarning,
   faXmark
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { AlertTriangleIcon, UserCogIcon } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import { UpgradePlanModal } from "@app/components/license/UpgradePlanModal";
 import { createNotification } from "@app/components/notifications";
 import {
-  Badge,
   Button,
   Checkbox,
   DeleteActionModal,
@@ -41,6 +40,7 @@ import {
   Tooltip,
   Tr
 } from "@app/components/v2";
+import { Badge } from "@app/components/v3";
 import { useSubscription, useUser } from "@app/context";
 import {
   getUserTablePreference,
@@ -57,9 +57,6 @@ import {
 } from "@app/hooks/api";
 import { User } from "@app/hooks/api/users/types";
 import { UsePopUpState } from "@app/hooks/usePopUp";
-
-const addServerAdminUpgradePlanMessage = "Granting another user Server Admin permissions";
-const removeServerAdminUpgradePlanMessage = "Removing Server Admin permissions from user";
 
 const UserPanelTable = ({
   handlePopUpOpen,
@@ -84,7 +81,7 @@ const UserPanelTable = ({
     data?: {
       username: string;
       id: string;
-      message?: string;
+      text?: string;
     }
   ) => void;
   isPending: boolean;
@@ -218,7 +215,8 @@ const UserPanelTable = ({
                             {name ?? <span className="text-mineshaft-400">Not Set</span>}
                           </p>
                           {superAdmin && (
-                            <Badge variant="primary" className="ml-2 whitespace-nowrap">
+                            <Badge variant="info" className="ml-2">
+                              <UserCogIcon />
                               Server Admin
                             </Badge>
                           )}
@@ -259,7 +257,7 @@ const UserPanelTable = ({
                                       handlePopUpOpen("upgradePlan", {
                                         username,
                                         id,
-                                        message: addServerAdminUpgradePlanMessage
+                                        text: "Your current plan does not allow setting additional server admins. To unlock this feature, please upgrade to Infisical Pro plan."
                                       });
                                       return;
                                     }
@@ -287,7 +285,7 @@ const UserPanelTable = ({
                                       handlePopUpOpen("upgradePlan", {
                                         username,
                                         id,
-                                        message: removeServerAdminUpgradePlanMessage
+                                        text: "Your current plan does not allow removing server admins. To unlock this feature, please upgrade to Infisical Pro plan."
                                       });
                                       return;
                                     }
@@ -366,18 +364,11 @@ export const UserIdentitiesTable = () => {
   const handleRemoveUser = async () => {
     const { id } = popUp?.removeUser?.data as { id: string; username: string };
 
-    try {
-      await deleteUser(id);
-      createNotification({
-        type: "success",
-        text: "Successfully deleted user"
-      });
-    } catch {
-      createNotification({
-        type: "error",
-        text: "Error deleting user"
-      });
-    }
+    await deleteUser(id);
+    createNotification({
+      type: "success",
+      text: "Successfully deleted user"
+    });
 
     handlePopUpClose("removeUser");
   };
@@ -385,18 +376,11 @@ export const UserIdentitiesTable = () => {
   const handleGrantServerAdminAccess = async () => {
     const { id } = popUp?.upgradeToServerAdmin?.data as { id: string; username: string };
 
-    try {
-      await grantAdminAccess(id);
-      createNotification({
-        type: "success",
-        text: "Successfully granted server admin access to user"
-      });
-    } catch {
-      createNotification({
-        type: "error",
-        text: "Error granting server admin access to user"
-      });
-    }
+    await grantAdminAccess(id);
+    createNotification({
+      type: "success",
+      text: "Successfully granted server admin access to user"
+    });
 
     handlePopUpClose("upgradeToServerAdmin");
   };
@@ -404,39 +388,25 @@ export const UserIdentitiesTable = () => {
   const handleRemoveServerAdminAccess = async () => {
     const { id } = popUp?.removeServerAdmin?.data as { id: string; username: string };
 
-    try {
-      await removeAdminAccess(id);
-      createNotification({
-        type: "success",
-        text: "Successfully removed server admin access from user"
-      });
-    } catch {
-      createNotification({
-        type: "error",
-        text: "Error removing server admin access from user"
-      });
-    }
+    await removeAdminAccess(id);
+    createNotification({
+      type: "success",
+      text: "Successfully removed server admin access from user"
+    });
 
     handlePopUpClose("removeServerAdmin");
   };
 
   const handleRemoveUsers = async () => {
-    try {
-      await deleteUsers(selectedUsers.map((user) => user.id));
+    await deleteUsers(selectedUsers.map((user) => user.id));
 
-      createNotification({
-        text: "Successfully removed users",
-        type: "success"
-      });
+    createNotification({
+      text: "Successfully removed users",
+      type: "success"
+    });
 
-      setSelectedUsers([]);
-      handlePopUpClose("removeUsers");
-    } catch {
-      createNotification({
-        text: "Failed to remove users",
-        type: "error"
-      });
-    }
+    setSelectedUsers([]);
+    handlePopUpClose("removeUsers");
   };
 
   return (
@@ -529,7 +499,7 @@ export const UserIdentitiesTable = () => {
         <UpgradePlanModal
           isOpen={popUp.upgradePlan.isOpen}
           onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}
-          text={`${popUp?.upgradePlan?.data?.message} is only available on Infisical's Pro plan and above.`}
+          text={popUp.upgradePlan.data?.text}
         />
         <DeleteActionModal
           isOpen={popUp.removeUsers.isOpen}
@@ -548,7 +518,7 @@ export const UserIdentitiesTable = () => {
                 const email = user.email ?? user.username;
                 return (
                   <li key={user.id}>
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-x-1">
                       <p>
                         {user.firstName || user.lastName ? (
                           <>
@@ -561,15 +531,10 @@ export const UserIdentitiesTable = () => {
                       </p>
                       {userId === user.id && (
                         <Tooltip content="Are you sure you want to remove yourself from this instance?">
-                          <div className="inline-block">
-                            <Badge
-                              variant="primary"
-                              className="mt-[0.05rem] ml-1 inline-flex w-min items-center gap-1.5 whitespace-nowrap"
-                            >
-                              <FontAwesomeIcon icon={faWarning} />
-                              <span>Deleting Yourself</span>
-                            </Badge>
-                          </div>
+                          <Badge variant="danger">
+                            <AlertTriangleIcon />
+                            Deleting Yourself
+                          </Badge>
                         </Tooltip>
                       )}
                     </div>

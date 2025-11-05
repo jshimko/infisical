@@ -241,8 +241,8 @@ const formSchema = z.object({
     const valMs = ms(val);
     if (valMs < 60 * 1000)
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be a greater than 1min" });
-    if (valMs > 24 * 60 * 60 * 1000)
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than a day" });
+    if (valMs > ms("10y"))
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than 10 years" });
   }),
   maxTTL: z
     .string()
@@ -252,8 +252,8 @@ const formSchema = z.object({
       const valMs = ms(val);
       if (valMs < 60 * 1000)
         ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be a greater than 1min" });
-      if (valMs > 24 * 60 * 60 * 1000)
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than a day" });
+      if (valMs > ms("10y"))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "TTL must be less than 10 years" });
     })
     .nullable(),
   newName: slugSchema().optional(),
@@ -386,37 +386,30 @@ export const EditDynamicSecretCouchbaseForm = ({
         })()
       : transformedInputs;
 
-    try {
-      await updateDynamicSecret.mutateAsync({
-        name: dynamicSecret.name,
-        path: secretPath,
-        projectSlug,
-        environmentSlug: environment,
-        data: {
-          defaultTTL,
-          maxTTL: maxTTL || undefined,
-          newName: newName === dynamicSecret.name ? undefined : newName,
-          metadata,
-          usernameTemplate:
-            !usernameTemplate || usernameTemplate === "{{randomUsername}}"
-              ? undefined
-              : usernameTemplate,
-          inputs: finalInputs
-        }
-      });
+    await updateDynamicSecret.mutateAsync({
+      name: dynamicSecret.name,
+      path: secretPath,
+      projectSlug,
+      environmentSlug: environment,
+      data: {
+        defaultTTL,
+        maxTTL: maxTTL || undefined,
+        newName: newName === dynamicSecret.name ? undefined : newName,
+        metadata,
+        usernameTemplate:
+          !usernameTemplate || usernameTemplate === "{{randomUsername}}"
+            ? undefined
+            : usernameTemplate,
+        inputs: finalInputs
+      }
+    });
 
-      createNotification({
-        type: "success",
-        text: "Successfully updated dynamic secret"
-      });
+    createNotification({
+      type: "success",
+      text: "Successfully updated dynamic secret"
+    });
 
-      onClose();
-    } catch (err) {
-      createNotification({
-        type: "error",
-        text: `Failed to update dynamic secret: ${err}`
-      });
-    }
+    onClose();
   };
 
   return (

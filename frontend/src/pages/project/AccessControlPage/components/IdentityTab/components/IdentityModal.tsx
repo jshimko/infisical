@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { components, OptionProps } from "react-select";
 import { faCheckCircle } from "@fortawesome/free-regular-svg-icons";
-import { faGlobe } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "@tanstack/react-router";
@@ -10,7 +9,6 @@ import { z } from "zod";
 
 import { createNotification } from "@app/components/notifications";
 import {
-  Badge,
   Button,
   FilterableSelect,
   FormControl,
@@ -19,6 +17,7 @@ import {
   ModalContent,
   Spinner
 } from "@app/components/v2";
+import { Badge, OrgIcon } from "@app/components/v3";
 import { useOrganization, useProject } from "@app/context";
 import {
   useAddIdentityToWorkspace,
@@ -50,9 +49,9 @@ const Option = ({
       <div className="flex flex-row items-center justify-between">
         <p className="truncate">{children}</p>
         {props.data.isManagedByRootOrg && (
-          <Badge variant="org" className="ml-auto cursor-pointer">
-            <FontAwesomeIcon icon={faGlobe} />
-            Managed by Root Org
+          <Badge variant="org" className="ml-auto">
+            <OrgIcon />
+            Organization
           </Badge>
         )}
         {isSelected && (
@@ -105,40 +104,29 @@ const Content = ({ popUp, handlePopUpToggle }: Props) => {
   });
 
   const onFormSubmit = async ({ identity, role }: FormData) => {
-    try {
-      await addIdentityToWorkspaceMutateAsync({
-        projectId,
-        identityId: identity.id,
-        role: role.slug || undefined
-      });
+    await addIdentityToWorkspaceMutateAsync({
+      projectId,
+      identityId: identity.id,
+      role: role.slug || undefined
+    });
 
-      createNotification({
-        text: "Successfully added identity to project",
-        type: "success"
-      });
+    createNotification({
+      text: "Successfully added identity to project",
+      type: "success"
+    });
 
-      const nextAvailableMembership = filteredIdentityMembershipOrgs.filter(
-        (membership) => membership.identity.id !== identity.id
-      )[0];
+    const nextAvailableMembership = filteredIdentityMembershipOrgs.filter(
+      (membership) => membership.identity.id !== identity.id
+    )[0];
 
-      // prevents combobox from displaying previously added identity
-      reset({
-        identity: {
-          name: nextAvailableMembership?.identity.name,
-          id: nextAvailableMembership?.identity.id
-        }
-      });
-      handlePopUpToggle("identity", false);
-    } catch (err) {
-      console.error(err);
-      const error = err as any;
-      const text = error?.response?.data?.message ?? "Failed to add identity to project";
-
-      createNotification({
-        text,
-        type: "error"
-      });
-    }
+    // prevents combobox from displaying previously added identity
+    reset({
+      identity: {
+        name: nextAvailableMembership?.identity.name,
+        id: nextAvailableMembership?.identity.id
+      }
+    });
+    handlePopUpToggle("identity", false);
   };
 
   if (isMembershipsLoading || isRolesLoading)

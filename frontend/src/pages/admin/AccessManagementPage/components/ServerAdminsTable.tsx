@@ -7,16 +7,15 @@ import {
   faTrash,
   faUsers,
   faUserXmark,
-  faWarning,
   faXmark
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { AlertTriangleIcon } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import { UpgradePlanModal } from "@app/components/license/UpgradePlanModal";
 import { createNotification } from "@app/components/notifications";
 import {
-  Badge,
   Button,
   Checkbox,
   DeleteActionModal,
@@ -38,6 +37,7 @@ import {
   Tooltip,
   Tr
 } from "@app/components/v2";
+import { Badge } from "@app/components/v3";
 import { useSubscription, useUser } from "@app/context";
 import {
   getUserTablePreference,
@@ -303,18 +303,11 @@ export const ServerAdminsTable = () => {
   const handleRemoveUser = async () => {
     const { id } = popUp?.removeUser?.data as { id: string; username: string };
 
-    try {
-      await deleteUser(id);
-      createNotification({
-        type: "success",
-        text: "Successfully deleted user"
-      });
-    } catch {
-      createNotification({
-        type: "error",
-        text: "Error deleting user"
-      });
-    }
+    await deleteUser(id);
+    createNotification({
+      type: "success",
+      text: "Successfully deleted user"
+    });
 
     handlePopUpClose("removeUser");
   };
@@ -322,39 +315,25 @@ export const ServerAdminsTable = () => {
   const handleRemoveServerAdminAccess = async () => {
     const { id } = popUp?.removeServerAdmin?.data as { id: string; username: string };
 
-    try {
-      await removeAdminAccess(id);
-      createNotification({
-        type: "success",
-        text: "Successfully removed server admin access from user"
-      });
-    } catch {
-      createNotification({
-        type: "error",
-        text: "Error removing server admin access from user"
-      });
-    }
+    await removeAdminAccess(id);
+    createNotification({
+      type: "success",
+      text: "Successfully removed server admin access from user"
+    });
 
     handlePopUpClose("removeServerAdmin");
   };
 
   const handleRemoveUsers = async () => {
-    try {
-      await deleteUsers(selectedUsers.map((user) => user.id));
+    await deleteUsers(selectedUsers.map((user) => user.id));
 
-      createNotification({
-        text: "Successfully removed users",
-        type: "success"
-      });
+    createNotification({
+      text: "Successfully removed users",
+      type: "success"
+    });
 
-      setSelectedUsers([]);
-      handlePopUpClose("removeUsers");
-    } catch {
-      createNotification({
-        text: "Failed to remove users",
-        type: "error"
-      });
-    }
+    setSelectedUsers([]);
+    handlePopUpClose("removeUsers");
   };
 
   return (
@@ -432,7 +411,7 @@ export const ServerAdminsTable = () => {
         <UpgradePlanModal
           isOpen={popUp.upgradePlan.isOpen}
           onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}
-          text={`${popUp?.upgradePlan?.data?.message} is only available on Infisical's Pro plan and above.`}
+          text="Your current plan does not allow removing server admins. To unlock this feature, please upgrade to Infisical Pro plan."
         />
         <DeleteActionModal
           isOpen={popUp.removeUsers.isOpen}
@@ -451,7 +430,7 @@ export const ServerAdminsTable = () => {
                 const email = user.email ?? user.username;
                 return (
                   <li key={user.id}>
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-x-1">
                       <p>
                         {user.firstName || user.lastName ? (
                           <>
@@ -464,15 +443,10 @@ export const ServerAdminsTable = () => {
                       </p>
                       {userId === user.id && (
                         <Tooltip content="Are you sure you want to remove yourself from this instance?">
-                          <div className="inline-block">
-                            <Badge
-                              variant="primary"
-                              className="mt-[0.05rem] ml-1 inline-flex w-min items-center gap-1.5 whitespace-nowrap"
-                            >
-                              <FontAwesomeIcon icon={faWarning} />
-                              <span>Deleting Yourself</span>
-                            </Badge>
-                          </div>
+                          <Badge variant="danger">
+                            <AlertTriangleIcon />
+                            Deleting Yourself
+                          </Badge>
                         </Tooltip>
                       )}
                     </div>

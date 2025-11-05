@@ -7,10 +7,10 @@ import {
   faXmark
 } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { ServerCogIcon } from "lucide-react";
 
 import { createNotification } from "@app/components/notifications";
 import {
-  Badge,
   DeleteActionModal,
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +29,7 @@ import {
   THead,
   Tr
 } from "@app/components/v2";
+import { Badge } from "@app/components/v3";
 import {
   getUserTablePreference,
   PreferenceKey,
@@ -110,7 +111,8 @@ const IdentityPanelTable = ({
                     <Td>
                       {name}
                       {isInstanceAdmin && (
-                        <Badge variant="primary" className="ml-2">
+                        <Badge variant="info" className="ml-2">
+                          <ServerCogIcon />
                           Server Admin
                         </Badge>
                       )}
@@ -183,18 +185,11 @@ export const MachineIdentitiesTable = () => {
   const handleRemoveServerAdmin = async () => {
     const { id } = popUp?.removeServerAdmin?.data as { id: string; name: string };
 
-    try {
-      await deleteIdentitySuperAdminAccess(id);
-      createNotification({
-        type: "success",
-        text: "Successfully removed server admin permissions"
-      });
-    } catch {
-      createNotification({
-        type: "error",
-        text: "Error removing server admin permissions"
-      });
-    }
+    await deleteIdentitySuperAdminAccess(id);
+    createNotification({
+      type: "success",
+      text: "Successfully removed server admin permissions"
+    });
 
     handlePopUpClose("removeServerAdmin");
   };

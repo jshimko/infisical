@@ -111,6 +111,7 @@ type TCertificateDetails = {
 
 export const CertificateIssuanceModal = ({ popUp, handlePopUpToggle, profileId }: Props) => {
   const [certificateDetails, setCertificateDetails] = useState<TCertificateDetails | null>(null);
+  const [shouldShowSubjectSection, setShouldShowSubjectSection] = useState(true);
   const { currentProject } = useProject();
 
   const inputSerialNumber =
@@ -121,25 +122,16 @@ export const CertificateIssuanceModal = ({ popUp, handlePopUpToggle, profileId }
 
   const { data: profilesData } = useListCertificateProfiles({
     projectId: currentProject?.id || "",
-    includeMetrics: false,
     enrollmentType: "api"
   });
 
-  const { mutateAsync: createCertificate } = useCreateCertificateV3();
-
-  const selectedProfileId = useMemo(() => {
-    const form = document.querySelector('select[name="profileId"]') as HTMLSelectElement;
-    return form?.value || profileId || "";
-  }, [profileId]);
-
-  const selectedProfile = useMemo(
-    () => profilesData?.certificateProfiles?.find((p) => p.id === selectedProfileId),
-    [profilesData?.certificateProfiles, selectedProfileId]
-  );
-
-  const { data: templateData } = useGetCertificateTemplateV2ById({
-    templateId: selectedProfile?.certificateTemplateId || ""
+  const { mutateAsync: createCertificate } = useCreateCertificateV3({
+    projectId: currentProject?.id
   });
+
+  const formResolver = useMemo(() => {
+    return zodResolver(createSchema(shouldShowSubjectSection));
+  }, [shouldShowSubjectSection]);
 
   const {
     control,
@@ -150,7 +142,7 @@ export const CertificateIssuanceModal = ({ popUp, handlePopUpToggle, profileId }
     formState,
     formState: { isSubmitting }
   } = useForm<FormData>({
-    resolver: zodResolver(createSchema((templateData?.subject?.length || 0) > 0)),
+    resolver: formResolver,
     defaultValues: {
       profileId: profileId || "",
       subjectAttributes: [],
@@ -169,6 +161,16 @@ export const CertificateIssuanceModal = ({ popUp, handlePopUpToggle, profileId }
     [profilesData?.certificateProfiles, actualSelectedProfileId]
   );
 
+  const { data: templateData } = useGetCertificateTemplateV2ById({
+    templateId: actualSelectedProfile?.certificateTemplateId || ""
+  });
+
+  useEffect(() => {
+    if (templateData !== undefined) {
+      setShouldShowSubjectSection((templateData?.subject?.length || 0) > 0);
+    }
+  }, [templateData]);
+
   const {
     constraints,
     filteredKeyUsages,
@@ -186,6 +188,7 @@ export const CertificateIssuanceModal = ({ popUp, handlePopUpToggle, profileId }
 
   const resetAllState = useCallback(() => {
     setCertificateDetails(null);
+    setShouldShowSubjectSection(true);
     resetConstraints();
     reset();
   }, [reset, resetConstraints]);
@@ -240,84 +243,72 @@ export const CertificateIssuanceModal = ({ popUp, handlePopUpToggle, profileId }
       keyUsages,
       extendedKeyUsages
     }: FormData) => {
-      try {
-        if (!currentProject?.slug) {
-          createNotification({
-            text: "Project not found. Please refresh and try again.",
-            type: "error"
-          });
-          return;
-        }
-
-        if (!formProfileId) {
-          createNotification({
-            text: "Please select a certificate profile.",
-            type: "error"
-          });
-          return;
-        }
-
-        let commonName = "";
-        if (
-          constraints.shouldShowSubjectSection &&
-          subjectAttributes &&
-          subjectAttributes.length > 0
-        ) {
-          commonName = getAttributeValue(subjectAttributes, "common_name");
-          if (!commonName.trim()) {
-            createNotification({
-              text: "Common name is required.",
-              type: "error"
-            });
-            return;
-          }
-        }
-
-        const certificateRequest: any = {
-          profileId: formProfileId,
-          projectSlug: currentProject.slug,
-          ttl,
-          signatureAlgorithm,
-          keyAlgorithm,
-          keyUsages: filterUsages(keyUsages) as CertKeyUsage[],
-          extendedKeyUsages: filterUsages(extendedKeyUsages) as CertExtendedKeyUsage[]
-        };
-
-        if (constraints.shouldShowSubjectSection && commonName) {
-          certificateRequest.commonName = commonName;
-        }
-        if (constraints.shouldShowSanSection && subjectAltNames && subjectAltNames.length > 0) {
-          const formattedSans = formatSubjectAltNames(subjectAltNames);
-          if (formattedSans && formattedSans.length > 0) {
-            certificateRequest.altNames = formattedSans;
-          }
-        }
-
-        const { serialNumber, certificate, certificateChain, privateKey } =
-          await createCertificate(certificateRequest);
-
-        setCertificateDetails({
-          serialNumber,
-          certificate,
-          certificateChain,
-          privateKey
-        });
-
+      if (!currentProject?.slug) {
         createNotification({
-          text: "Successfully created certificate",
-          type: "success"
-        });
-      } catch (err) {
-        console.error("Certificate creation failed:", err);
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : "An unexpected error occurred while creating the certificate";
-        createNotification({
-          text: `Failed to create certificate: ${errorMessage}`,
+          text: "Project not found. Please refresh and try again.",
           type: "error"
         });
+        return;
       }
+
+      if (!formProfileId) {
+        createNotification({
+          text: "Please select a certificate profile.",
+          type: "error"
+        });
+        return;
+      }
+
+      let commonName = "";
+      if (
+        constraints.shouldShowSubjectSection &&
+        subjectAttributes &&
+        subjectAttributes.length > 0
+      ) {
+        commonName = getAttributeValue(subjectAttributes, "common_name");
+        if (!commonName.trim()) {
+          createNotification({
+            text: "Common name is required.",
+            type: "error"
+          });
+          return;
+        }
+      }
+
+      const certificateRequest: any = {
+        profileId: formProfileId,
+        projectSlug: currentProject.slug,
+        ttl,
+        signatureAlgorithm,
+        keyAlgorithm,
+        keyUsages: filterUsages(keyUsages) as CertKeyUsage[],
+        extendedKeyUsages: filterUsages(extendedKeyUsages) as CertExtendedKeyUsage[]
+      };
+
+      if (constraints.shouldShowSubjectSection && commonName) {
+        certificateRequest.commonName = commonName;
+      }
+      if (constraints.shouldShowSanSection && subjectAltNames && subjectAltNames.length > 0) {
+        const formattedSans = formatSubjectAltNames(subjectAltNames);
+        if (formattedSans && formattedSans.length > 0) {
+          certificateRequest.altNames = formattedSans;
+        }
+      }
+
+      const { serialNumber, certificate, certificateChain, privateKey } =
+        await createCertificate(certificateRequest);
+
+      setCertificateDetails({
+        serialNumber,
+        certificate,
+        certificateChain,
+        privateKey
+      });
+
+      createNotification({
+        text: "Successfully created certificate",
+        type: "success"
+      });
     },
     [
       currentProject?.slug,

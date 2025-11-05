@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
+import { faQuestionCircle } from "@fortawesome/free-solid-svg-icons";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
@@ -13,7 +15,8 @@ import {
   ModalContent,
   Select,
   SelectItem,
-  TextArea
+  TextArea,
+  Tooltip
 } from "@app/components/v2";
 import { useProject } from "@app/context";
 import { useListCasByProjectId } from "@app/hooks/api/ca/queries";
@@ -67,7 +70,7 @@ const createSchema = z
     apiConfig: z
       .object({
         autoRenew: z.boolean().optional(),
-        autoRenewDays: z.number().min(1).max(365).optional()
+        renewBeforeDays: z.number().min(1).max(365).optional()
       })
       .optional()
   })
@@ -115,7 +118,7 @@ const editSchema = z
     apiConfig: z
       .object({
         autoRenew: z.boolean().optional(),
-        autoRenewDays: z.number().min(1).max(365).optional()
+        renewBeforeDays: z.number().min(1).max(365).optional()
       })
       .optional()
   })
@@ -183,7 +186,7 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
             profile.enrollmentType === "api"
               ? {
                   autoRenew: profile.apiConfig?.autoRenew || false,
-                  autoRenewDays: profile.apiConfig?.autoRenewDays || 30
+                  renewBeforeDays: profile.apiConfig?.renewBeforeDays || 30
                 }
               : undefined
         }
@@ -195,7 +198,7 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
           certificateTemplateId: "",
           apiConfig: {
             autoRenew: false,
-            autoRenewDays: 30
+            renewBeforeDays: 30
           }
         }
   });
@@ -225,7 +228,7 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
           profile.enrollmentType === "api"
             ? {
                 autoRenew: profile.apiConfig?.autoRenew || false,
-                autoRenewDays: profile.apiConfig?.autoRenewDays || 30
+                renewBeforeDays: profile.apiConfig?.renewBeforeDays || 30
               }
             : undefined
       });
@@ -233,64 +236,56 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
   }, [isEdit, profile, reset]);
 
   const onFormSubmit = async (data: FormData) => {
-    try {
-      if (!currentProject?.id && !isEdit) return;
+    if (!currentProject?.id && !isEdit) return;
 
-      if (isEdit) {
-        const updateData: TUpdateCertificateProfileDTO = {
-          profileId: profile.id,
-          slug: data.slug,
-          description: data.description
-        };
+    if (isEdit) {
+      const updateData: TUpdateCertificateProfileDTO = {
+        profileId: profile.id,
+        slug: data.slug,
+        description: data.description
+      };
 
-        if (data.enrollmentType === "est" && data.estConfig) {
-          updateData.estConfig = data.estConfig;
-        } else if (data.enrollmentType === "api" && data.apiConfig) {
-          updateData.apiConfig = data.apiConfig;
-        }
-
-        await updateProfile.mutateAsync(updateData);
-      } else {
-        if (!currentProject?.id) {
-          throw new Error("Project ID is required for creating a profile");
-        }
-
-        const createData: TCreateCertificateProfileDTO = {
-          projectId: currentProject.id,
-          slug: data.slug,
-          description: data.description,
-          enrollmentType: data.enrollmentType,
-          caId: data.certificateAuthorityId,
-          certificateTemplateId: data.certificateTemplateId
-        };
-
-        if (data.enrollmentType === "est" && data.estConfig) {
-          createData.estConfig = {
-            passphrase: data.estConfig.passphrase,
-            caChain: data.estConfig.caChain || undefined,
-            disableBootstrapCaValidation: data.estConfig.disableBootstrapCaValidation
-          };
-        } else if (data.enrollmentType === "api" && data.apiConfig) {
-          createData.apiConfig = data.apiConfig;
-        }
-
-        await createProfile.mutateAsync(createData);
+      if (data.enrollmentType === "est" && data.estConfig) {
+        updateData.estConfig = data.estConfig;
+      } else if (data.enrollmentType === "api" && data.apiConfig) {
+        updateData.apiConfig = data.apiConfig;
       }
 
-      createNotification({
-        text: `Certificate profile ${isEdit ? "updated" : "created"} successfully`,
-        type: "success"
-      });
+      await updateProfile.mutateAsync(updateData);
+    } else {
+      if (!currentProject?.id) {
+        throw new Error("Project ID is required for creating a profile");
+      }
 
-      reset();
-      onClose();
-    } catch (error) {
-      console.error(`Error ${isEdit ? "updating" : "creating"} profile:`, error);
-      createNotification({
-        text: `Failed to ${isEdit ? "update" : "create"} certificate profile`,
-        type: "error"
-      });
+      const createData: TCreateCertificateProfileDTO = {
+        projectId: currentProject.id,
+        slug: data.slug,
+        description: data.description,
+        enrollmentType: data.enrollmentType,
+        caId: data.certificateAuthorityId,
+        certificateTemplateId: data.certificateTemplateId
+      };
+
+      if (data.enrollmentType === "est" && data.estConfig) {
+        createData.estConfig = {
+          passphrase: data.estConfig.passphrase,
+          caChain: data.estConfig.caChain || undefined,
+          disableBootstrapCaValidation: data.estConfig.disableBootstrapCaValidation
+        };
+      } else if (data.enrollmentType === "api" && data.apiConfig) {
+        createData.apiConfig = data.apiConfig;
+      }
+
+      await createProfile.mutateAsync(createData);
     }
+
+    createNotification({
+      text: `Certificate profile ${isEdit ? "updated" : "created"} successfully`,
+      type: "success"
+    });
+
+    reset();
+    onClose();
   };
 
   return (
@@ -389,7 +384,7 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
                     } else {
                       setValue("apiConfig", {
                         autoRenew: false,
-                        autoRenewDays: 30
+                        renewBeforeDays: 30
                       });
                       setValue("estConfig", undefined);
                     }
@@ -415,7 +410,7 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
             name="enrollmentType"
             render={({ field: { onChange, ...field }, fieldState: { error } }) => (
               <FormControl
-                label="Enrollment Type"
+                label="Enrollment Method"
                 isRequired
                 isError={Boolean(error)}
                 errorText={error?.message}
@@ -433,7 +428,7 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
                       setValue("estConfig", undefined);
                       setValue("apiConfig", {
                         autoRenew: false,
-                        autoRenewDays: 30
+                        renewBeforeDays: 30
                       });
                     }
                     onChange(value);
@@ -535,9 +530,18 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
                 name="apiConfig.autoRenew"
                 render={({ field: { value, onChange }, fieldState: { error } }) => (
                   <FormControl isError={Boolean(error)} errorText={error?.message}>
-                    <Checkbox id="autoRenew" isChecked={value} onCheckedChange={onChange}>
-                      Enable Auto-Renewal
-                    </Checkbox>
+                    <div className="flex items-center gap-2">
+                      <Checkbox id="autoRenew" isChecked={value} onCheckedChange={onChange}>
+                        Enable Auto-Renewal By Default
+                      </Checkbox>
+                      <Tooltip content="If enabled, certificates issued against this profile will auto-renew at specified days before expiration.">
+                        <FontAwesomeIcon
+                          icon={faQuestionCircle}
+                          className="cursor-help text-mineshaft-400 hover:text-mineshaft-300"
+                          size="sm"
+                        />
+                      </Tooltip>
+                    </div>
                   </FormControl>
                 )}
               />
@@ -548,10 +552,10 @@ export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }
             <div className="mb-4 space-y-4">
               <Controller
                 control={control}
-                name="apiConfig.autoRenewDays"
+                name="apiConfig.renewBeforeDays"
                 render={({ field, fieldState: { error } }) => (
                   <FormControl
-                    label="Auto-Renewal Days"
+                    label="Auto-Renewal Days Before Expiration"
                     isError={Boolean(error)}
                     errorText={error?.message}
                   >

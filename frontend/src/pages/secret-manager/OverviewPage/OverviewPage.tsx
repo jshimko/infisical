@@ -277,7 +277,11 @@ export const OverviewPage = () => {
   });
 
   const isFilteredByResources = Object.values(filter).some(Boolean);
-  const { isPending: isOverviewLoading, data: overview } = useGetProjectSecretsOverview(
+  const {
+    isPending: isOverviewLoading,
+    data: overview,
+    isFetching: isOverviewFetching
+  } = useGetProjectSecretsOverview(
     {
       projectId,
       environments: visibleEnvs.map((env) => env.slug),
@@ -484,55 +488,47 @@ export const OverviewPage = () => {
   };
 
   const handleSecretCreate = async (env: string, key: string, value: string) => {
-    try {
-      // create folder if not existing
-      if (secretPath !== "/") {
-        // /hello/world -> [hello","world"]
-        const pathSegment = secretPath.split("/").filter(Boolean);
-        const parentPath = `/${pathSegment.slice(0, -1).join("/")}`;
-        const folderName = pathSegment.at(-1);
-        const canCreateFolder = permission.can(
-          ProjectPermissionActions.Create,
-          subject(ProjectPermissionSub.SecretFolders, {
-            environment: env,
-            secretPath: parentPath
-          })
-        );
-        if (folderName && parentPath && canCreateFolder) {
-          await getOrCreateFolder({
-            projectId,
-            path: parentPath,
-            environment: env,
-            name: folderName
-          });
-        }
+    // create folder if not existing
+    if (secretPath !== "/") {
+      // /hello/world -> [hello","world"]
+      const pathSegment = secretPath.split("/").filter(Boolean);
+      const parentPath = `/${pathSegment.slice(0, -1).join("/")}`;
+      const folderName = pathSegment.at(-1);
+      const canCreateFolder = permission.can(
+        ProjectPermissionActions.Create,
+        subject(ProjectPermissionSub.SecretFolders, {
+          environment: env,
+          secretPath: parentPath
+        })
+      );
+      if (folderName && parentPath && canCreateFolder) {
+        await getOrCreateFolder({
+          projectId,
+          path: parentPath,
+          environment: env,
+          name: folderName
+        });
       }
-      const result = await createSecretV3({
-        environment: env,
-        projectId,
-        secretPath,
-        secretKey: key,
-        secretValue: value,
-        secretComment: "",
-        type: SecretType.Shared
-      });
+    }
+    const result = await createSecretV3({
+      environment: env,
+      projectId,
+      secretPath,
+      secretKey: key,
+      secretValue: value,
+      secretComment: "",
+      type: SecretType.Shared
+    });
 
-      if ("approval" in result) {
-        createNotification({
-          type: "info",
-          text: "Requested change has been sent for review"
-        });
-      } else {
-        createNotification({
-          type: "success",
-          text: "Successfully created secret"
-        });
-      }
-    } catch (error) {
-      console.log(error);
+    if ("approval" in result) {
       createNotification({
-        type: "error",
-        text: "Failed to create secret"
+        type: "info",
+        text: "Requested change has been sent for review"
+      });
+    } else {
+      createNotification({
+        type: "success",
+        text: "Successfully created secret"
       });
     }
   };
@@ -561,63 +557,47 @@ export const OverviewPage = () => {
       secretValue = undefined;
     }
 
-    try {
-      const result = await updateSecretV3({
-        environment: env,
-        projectId,
-        secretPath,
-        secretKey: key,
-        secretValue,
-        type
-      });
+    const result = await updateSecretV3({
+      environment: env,
+      projectId,
+      secretPath,
+      secretKey: key,
+      secretValue,
+      type
+    });
 
-      if ("approval" in result) {
-        createNotification({
-          type: "info",
-          text: "Requested change has been sent for review"
-        });
-      } else {
-        createNotification({
-          type: "success",
-          text: "Successfully updated secret"
-        });
-      }
-    } catch (error) {
-      console.log(error);
+    if ("approval" in result) {
       createNotification({
-        type: "error",
-        text: "Failed to update secret"
+        type: "info",
+        text: "Requested change has been sent for review"
+      });
+    } else {
+      createNotification({
+        type: "success",
+        text: "Successfully updated secret"
       });
     }
   };
 
   const handleSecretDelete = async (env: string, key: string, secretId?: string) => {
-    try {
-      const result = await deleteSecretV3({
-        environment: env,
-        projectId,
-        secretPath,
-        secretKey: key,
-        secretId,
-        type: SecretType.Shared
-      });
+    const result = await deleteSecretV3({
+      environment: env,
+      projectId,
+      secretPath,
+      secretKey: key,
+      secretId,
+      type: SecretType.Shared
+    });
 
-      if ("approval" in result) {
-        createNotification({
-          type: "info",
-          text: "Requested change has been sent for review"
-        });
-      } else {
-        createNotification({
-          type: "success",
-          text: "Successfully deleted secret"
-        });
-      }
-    } catch (error) {
-      console.log(error);
+    if ("approval" in result) {
       createNotification({
-        type: "error",
-        text: "Failed to delete secret"
+        type: "info",
+        text: "Requested change has been sent for review"
+      });
+    } else {
+      createNotification({
+        type: "success",
+        text: "Successfully deleted secret"
       });
     }
   };
@@ -631,6 +611,8 @@ export const OverviewPage = () => {
   };
 
   const handleFolderClick = (path: string) => {
+    if (isOverviewFetching) return;
+
     // store for breadcrumb nav to restore previously used filters
     setFilterHistory((prev) => {
       const curr = new Map(prev);
@@ -1172,7 +1154,10 @@ export const OverviewPage = () => {
                               handlePopUpClose("misc");
                               return;
                             }
-                            handlePopUpOpen("upgradePlan");
+                            handlePopUpOpen("upgradePlan", {
+                              isEnterpriseFeature: true,
+                              text: "Adding dynamic secrets can be unlocked if you upgrade to Infisical Enterprise plan."
+                            });
                           }}
                           isDisabled={userAvailableDynamicSecretEnvs.length === 0}
                           variant="outline_bg"
@@ -1195,7 +1180,9 @@ export const OverviewPage = () => {
                               handlePopUpClose("misc");
                               return;
                             }
-                            handlePopUpOpen("upgradePlan");
+                            handlePopUpOpen("upgradePlan", {
+                              text: "Adding secret rotations can be unlocked if you upgrade to Infisical Pro plan."
+                            });
                           }}
                           isDisabled={userAvailableSecretRotationEnvs.length === 0}
                           variant="outline_bg"
@@ -1679,11 +1666,8 @@ export const OverviewPage = () => {
         <UpgradePlanModal
           isOpen={popUp.upgradePlan.isOpen}
           onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}
-          text={
-            subscription.slug === null
-              ? "You can perform this action under an Enterprise license"
-              : "You can perform this action if you switch to Infisical's Team plan"
-          }
+          isEnterpriseFeature={popUp.upgradePlan.data?.isEnterpriseFeature}
+          text={popUp.upgradePlan.data?.text}
         />
       )}
       <CreateSecretRotationV2Modal

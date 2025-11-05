@@ -3,7 +3,6 @@ import { faStar } from "@fortawesome/free-regular-svg-icons";
 import {
   faCaretDown,
   faCheck,
-  faCube,
   faMagnifyingGlass,
   faPlus,
   faStar as faSolidStar
@@ -12,11 +11,9 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { Link, linkOptions } from "@tanstack/react-router";
 
 import { UpgradePlanModal } from "@app/components/license/UpgradePlanModal";
-import { createNotification } from "@app/components/notifications";
 import { OrgPermissionCan } from "@app/components/permissions";
 import { NewProjectModal } from "@app/components/projects";
 import {
-  Badge,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -25,6 +22,7 @@ import {
   Input,
   Tooltip
 } from "@app/components/v2";
+import { Badge, ProjectIcon } from "@app/components/v3";
 import {
   OrgPermissionActions,
   OrgPermissionSubjects,
@@ -60,31 +58,17 @@ export const ProjectSelect = () => {
   const { mutateAsync: updateUserProjectFavorites } = useUpdateUserProjectFavorites();
 
   const addProjectToFavorites = async (projectId: string) => {
-    try {
-      await updateUserProjectFavorites({
-        orgId: currentOrg!.id,
-        projectFavorites: [...(projectFavorites || []), projectId]
-      });
-    } catch {
-      createNotification({
-        text: "Failed to add project to favorites.",
-        type: "error"
-      });
-    }
+    await updateUserProjectFavorites({
+      orgId: currentOrg!.id,
+      projectFavorites: [...(projectFavorites || []), projectId]
+    });
   };
 
   const removeProjectFromFavorites = async (projectId: string) => {
-    try {
-      await updateUserProjectFavorites({
-        orgId: currentOrg!.id,
-        projectFavorites: [...(projectFavorites || []).filter((entry) => entry !== projectId)]
-      });
-    } catch {
-      createNotification({
-        text: "Failed to remove project from favorites.",
-        type: "error"
-      });
-    }
+    await updateUserProjectFavorites({
+      orgId: currentOrg!.id,
+      projectFavorites: [...(projectFavorites || []).filter((entry) => entry !== projectId)]
+    });
   };
 
   const isAddingProjectsAllowed = subscription?.workspaceLimit
@@ -120,11 +104,9 @@ export const ProjectSelect = () => {
           <p className="inline-block truncate text-mineshaft-200 group-hover:underline">
             {currentWorkspace?.name}
           </p>
-          <Badge variant="project" className="cursor-pointer">
-            <FontAwesomeIcon icon={faCube} />
-            <span>
-              {currentWorkspace.type ? PROJECT_TYPE_NAME[currentWorkspace.type] : "Project"}
-            </span>
+          <Badge variant="project">
+            <ProjectIcon />
+            {currentWorkspace.type ? PROJECT_TYPE_NAME[currentWorkspace.type] : "Project"}
           </Badge>
         </Link>
         <DropdownMenuTrigger asChild>
@@ -243,7 +225,7 @@ export const ProjectSelect = () => {
       <UpgradePlanModal
         isOpen={popUp.upgradePlan.isOpen}
         onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}
-        text="You have exceeded the number of projects allowed on the free plan."
+        text="You’ve reached the maximum number of projects available on the Free plan. Upgrade to the Infisical Pro plan to create more projects."
       />
       <NewProjectModal
         isOpen={popUp.addNewWs.isOpen}
