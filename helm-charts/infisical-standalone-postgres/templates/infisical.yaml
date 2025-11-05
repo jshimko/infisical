@@ -43,7 +43,7 @@ spec:
       {{- end }}
       {{- if .Values.infisical.image.imagePullSecrets }}
       imagePullSecrets:
-        {{- toYaml $infisicalValues.image.imagePullSecrets | nindent 6 }}
+        {{- toYaml .Values.infisical.image.imagePullSecrets | nindent 6 }}
     {{- end }}
       containers:
       - name: {{ template "infisical.name" . }}-{{ .Values.infisical.name }}
