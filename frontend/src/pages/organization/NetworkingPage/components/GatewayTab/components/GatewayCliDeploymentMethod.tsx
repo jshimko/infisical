@@ -80,7 +80,7 @@ export const GatewayCliDeploymentMethod = () => {
   const [relay, setRelay] = useState<null | {
     id: string;
     name: string;
-  }>(null);
+  }>({ id: "_auto", name: "Auto Select Relay" });
   const [identity, setIdentity] = useState<null | {
     id: string;
     name: string;
@@ -183,9 +183,8 @@ export const GatewayCliDeploymentMethod = () => {
   };
 
   const command = useMemo(() => {
-    return `infisical gateway start --name=${name} --relay=${
-      relay?.name || ""
-    } --domain=${siteURL} --token=${identityToken}`;
+    const relayPart = relay?.id !== "_auto" ? ` --relay=${relay?.name || ""}` : "";
+    return `sudo infisical gateway start --name=${name}${relayPart} --domain=${siteURL} --token=${identityToken}`;
   }, [name, relay, identityToken, siteURL]);
 
   if (step === "command") {
@@ -257,6 +256,10 @@ export const GatewayCliDeploymentMethod = () => {
         isLoading={isRelaysLoading}
         options={[
           {
+            id: "_auto",
+            name: "Auto Select Relay"
+          },
+          {
             id: "_create",
             name: "Deploy New Relay"
           },
@@ -298,7 +301,7 @@ export const GatewayCliDeploymentMethod = () => {
         <>
           <FormLabel
             label="Identity Token"
-            tooltipText="The identity token that your relay will use for authentication."
+            tooltipText="The identity token that your gateway will use for authentication."
             className="mt-4"
           />
           <Input

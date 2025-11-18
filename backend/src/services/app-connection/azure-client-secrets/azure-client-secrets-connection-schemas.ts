@@ -8,6 +8,7 @@ import {
   GenericUpdateAppConnectionFieldsSchema
 } from "@app/services/app-connection/app-connection-schemas";
 
+import { APP_CONNECTION_NAME_MAP } from "../app-connection-maps";
 import { AzureClientSecretsConnectionMethod } from "./azure-client-secrets-connection-enums";
 
 export const AzureClientSecretsConnectionOAuthInputCredentialsSchema = z.object({
@@ -48,10 +49,44 @@ export const AzureClientSecretsConnectionClientSecretInputCredentialsSchema = z.
     .describe(AppConnections.CREDENTIALS.AZURE_CLIENT_SECRETS.tenantId)
 });
 
+export const AzureClientSecretsConnectionCertificateInputCredentialsSchema = z.object({
+  tenantId: z
+    .string()
+    .uuid()
+    .trim()
+    .min(1, "Tenant ID required")
+    .describe(AppConnections.CREDENTIALS.AZURE_CLIENT_SECRETS.tenantId),
+  clientId: z
+    .string()
+    .uuid()
+    .trim()
+    .min(1, "Client ID required")
+    .describe(AppConnections.CREDENTIALS.AZURE_CLIENT_SECRETS.clientId),
+  certificateBody: z
+    .string()
+    .trim()
+    .min(1, "Certificate body required")
+    .describe(AppConnections.CREDENTIALS.AZURE_CLIENT_SECRETS.certificateBody),
+  privateKey: z
+    .string()
+    .trim()
+    .min(1, "Private Key required")
+    .describe(AppConnections.CREDENTIALS.AZURE_CLIENT_SECRETS.privateKey)
+});
+
 export const AzureClientSecretsConnectionClientSecretOutputCredentialsSchema = z.object({
   clientId: z.string(),
   clientSecret: z.string(),
   tenantId: z.string(),
+  accessToken: z.string(),
+  expiresAt: z.number()
+});
+
+export const AzureClientSecretsConnectionCertificateOutputCredentialsSchema = z.object({
+  clientId: z.string(),
+  tenantId: z.string(),
+  certificateBody: z.string(),
+  privateKey: z.string(),
   accessToken: z.string(),
   expiresAt: z.number()
 });
@@ -72,6 +107,14 @@ export const ValidateAzureClientSecretsConnectionCredentialsSchema = z.discrimin
     credentials: AzureClientSecretsConnectionClientSecretInputCredentialsSchema.describe(
       AppConnections.CREATE(AppConnection.AzureClientSecrets).credentials
     )
+  }),
+  z.object({
+    method: z
+      .literal(AzureClientSecretsConnectionMethod.Certificate)
+      .describe(AppConnections.CREATE(AppConnection.AzureClientSecrets).method),
+    credentials: AzureClientSecretsConnectionCertificateInputCredentialsSchema.describe(
+      AppConnections.CREATE(AppConnection.AzureClientSecrets).credentials
+    )
   })
 ]);
 
@@ -84,7 +127,8 @@ export const UpdateAzureClientSecretsConnectionSchema = z
     credentials: z
       .union([
         AzureClientSecretsConnectionOAuthInputCredentialsSchema,
-        AzureClientSecretsConnectionClientSecretInputCredentialsSchema
+        AzureClientSecretsConnectionClientSecretInputCredentialsSchema,
+        AzureClientSecretsConnectionCertificateInputCredentialsSchema
       ])
       .optional()
       .describe(AppConnections.UPDATE(AppConnection.AzureClientSecrets).credentials)
@@ -105,6 +149,10 @@ export const AzureClientSecretsConnectionSchema = z.intersection(
     z.object({
       method: z.literal(AzureClientSecretsConnectionMethod.ClientSecret),
       credentials: AzureClientSecretsConnectionClientSecretOutputCredentialsSchema
+    }),
+    z.object({
+      method: z.literal(AzureClientSecretsConnectionMethod.Certificate),
+      credentials: AzureClientSecretsConnectionCertificateOutputCredentialsSchema
     })
   ])
 );
@@ -115,19 +163,30 @@ export const SanitizedAzureClientSecretsConnectionSchema = z.discriminatedUnion(
     credentials: AzureClientSecretsConnectionOAuthOutputCredentialsSchema.pick({
       tenantId: true
     })
-  }),
+  }).describe(JSON.stringify({ title: `${APP_CONNECTION_NAME_MAP[AppConnection.AzureClientSecrets]} (OAuth)` })),
   BaseAzureClientSecretsConnectionSchema.extend({
     method: z.literal(AzureClientSecretsConnectionMethod.ClientSecret),
     credentials: AzureClientSecretsConnectionClientSecretOutputCredentialsSchema.pick({
       clientId: true,
       tenantId: true
     })
-  })
+  }).describe(
+    JSON.stringify({ title: `${APP_CONNECTION_NAME_MAP[AppConnection.AzureClientSecrets]} (Client Secret)` })
+  ),
+  BaseAzureClientSecretsConnectionSchema.extend({
+    method: z.literal(AzureClientSecretsConnectionMethod.Certificate),
+    credentials: AzureClientSecretsConnectionCertificateOutputCredentialsSchema.pick({
+      tenantId: true,
+      clientId: true
+    })
+  }).describe(JSON.stringify({ title: `${APP_CONNECTION_NAME_MAP[AppConnection.AzureClientSecrets]} (Certificate)` }))
 ]);
 
-export const AzureClientSecretsConnectionListItemSchema = z.object({
-  name: z.literal("Azure Client Secrets"),
-  app: z.literal(AppConnection.AzureClientSecrets),
-  methods: z.nativeEnum(AzureClientSecretsConnectionMethod).array(),
-  oauthClientId: z.string().optional()
-});
+export const AzureClientSecretsConnectionListItemSchema = z
+  .object({
+    name: z.literal("Azure Client Secrets"),
+    app: z.literal(AppConnection.AzureClientSecrets),
+    methods: z.nativeEnum(AzureClientSecretsConnectionMethod).array(),
+    oauthClientId: z.string().optional()
+  })
+  .describe(JSON.stringify({ title: APP_CONNECTION_NAME_MAP[AppConnection.AzureClientSecrets] }));
