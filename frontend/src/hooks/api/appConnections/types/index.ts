@@ -15,6 +15,7 @@ import { TChefConnection } from "./chef-connection";
 import { TCloudflareConnection } from "./cloudflare-connection";
 import { TDatabricksConnection } from "./databricks-connection";
 import { TDigitalOceanConnection } from "./digital-ocean";
+import { TDNSMadeEasyConnection } from "./dns-made-easy-connection";
 import { TFlyioConnection } from "./flyio-connection";
 import { TGcpConnection } from "./gcp-connection";
 import { TGitHubConnection } from "./github-connection";
@@ -25,6 +26,7 @@ import { THerokuConnection } from "./heroku-connection";
 import { THumanitecConnection } from "./humanitec-connection";
 import { TLaravelForgeConnection } from "./laravel-forge-connection";
 import { TLdapConnection } from "./ldap-connection";
+import { TMongoDBConnection } from "./mongodb-connection";
 import { TMsSqlConnection } from "./mssql-connection";
 import { TMySqlConnection } from "./mysql-connection";
 import { TNetlifyConnection } from "./netlify-connection";
@@ -57,6 +59,7 @@ export * from "./checkly-connection";
 export * from "./chef-connection";
 export * from "./cloudflare-connection";
 export * from "./databricks-connection";
+export * from "./dns-made-easy-connection";
 export * from "./flyio-connection";
 export * from "./gcp-connection";
 export * from "./github-connection";
@@ -67,6 +70,7 @@ export * from "./heroku-connection";
 export * from "./humanitec-connection";
 export * from "./laravel-forge-connection";
 export * from "./ldap-connection";
+export * from "./mongodb-connection";
 export * from "./mssql-connection";
 export * from "./mysql-connection";
 export * from "./netlify-connection";
@@ -127,7 +131,9 @@ export type TAppConnection =
   | TNorthflankConnection
   | TOktaConnection
   | TRedisConnection
-  | TChefConnection;
+  | TMongoDBConnection
+  | TChefConnection
+  | TDNSMadeEasyConnection;
 
 export type TAvailableAppConnection = Pick<TAppConnection, "name" | "id" | "projectId">;
 

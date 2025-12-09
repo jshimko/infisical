@@ -24,6 +24,7 @@ import { ChefConnectionForm } from "./ChefConnectionForm";
 import { CloudflareConnectionForm } from "./CloudflareConnectionForm";
 import { DatabricksConnectionForm } from "./DatabricksConnectionForm";
 import { DigitalOceanConnectionForm } from "./DigitalOceanConnectionForm";
+import { DNSMadeEasyConnectionForm } from "./DNSMadeEasyConnectionForm";
 import { FlyioConnectionForm } from "./FlyioConnectionForm";
 import { GcpConnectionForm } from "./GcpConnectionForm";
 import { GitHubConnectionForm } from "./GitHubConnectionForm";
@@ -34,6 +35,7 @@ import { HerokuConnectionForm } from "./HerokuAppConnectionForm";
 import { HumanitecConnectionForm } from "./HumanitecConnectionForm";
 import { LaravelForgeConnectionForm } from "./LaravelForgeConnectionForm";
 import { LdapConnectionForm } from "./LdapConnectionForm";
+import { MongoDBConnectionForm } from "./MongoDBConnectionForm";
 import { MsSqlConnectionForm } from "./MsSqlConnectionForm";
 import { MySqlConnectionForm } from "./MySqlConnectionForm";
 import { NetlifyConnectionForm } from "./NetlifyConnectionForm";
@@ -148,6 +150,8 @@ const CreateForm = ({ app, onComplete, projectId }: CreateFormProps) => {
       return <GitLabConnectionForm onSubmit={onSubmit} projectId={projectId} />;
     case AppConnection.Cloudflare:
       return <CloudflareConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.DNSMadeEasy:
+      return <DNSMadeEasyConnectionForm onSubmit={onSubmit} />;
     case AppConnection.Bitbucket:
       return <BitbucketConnectionForm onSubmit={onSubmit} />;
     case AppConnection.Zabbix:
@@ -170,6 +174,8 @@ const CreateForm = ({ app, onComplete, projectId }: CreateFormProps) => {
       return <OktaConnectionForm onSubmit={onSubmit} />;
     case AppConnection.Redis:
       return <RedisConnectionForm onSubmit={onSubmit} />;
+    case AppConnection.MongoDB:
+      return <MongoDBConnectionForm onSubmit={onSubmit} />;
     default:
       throw new Error(`Unhandled App ${app}`);
   }
@@ -306,6 +312,8 @@ const UpdateForm = ({ appConnection, onComplete }: UpdateFormProps) => {
       );
     case AppConnection.Cloudflare:
       return <CloudflareConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
+    case AppConnection.DNSMadeEasy:
+      return <DNSMadeEasyConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.Bitbucket:
       return <BitbucketConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.Zabbix:
@@ -326,6 +334,8 @@ const UpdateForm = ({ appConnection, onComplete }: UpdateFormProps) => {
       return <OktaConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     case AppConnection.Redis:
       return <RedisConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
+    case AppConnection.MongoDB:
+      return <MongoDBConnectionForm onSubmit={onSubmit} appConnection={appConnection} />;
     default:
       throw new Error(`Unhandled App ${(appConnection as TAppConnection).app}`);
   }

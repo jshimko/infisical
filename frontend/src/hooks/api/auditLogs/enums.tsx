@@ -254,6 +254,7 @@ export enum EventType {
   UPDATE_IDENTITY_PROJECT_MEMBERSHIP = "update-identity-project-membership",
   DELETE_IDENTITY_PROJECT_MEMBERSHIP = "delete-identity-project-membership",
 
+  PAM_SESSION_CREDENTIALS_GET = "pam-session-credentials-get",
   PAM_SESSION_START = "pam-session-start",
   PAM_SESSION_LOGS_UPDATE = "pam-session-logs-update",
   PAM_SESSION_END = "pam-session-end",
@@ -281,5 +282,20 @@ export enum EventType {
   ISSUE_CERTIFICATE_FROM_PROFILE = "issue-certificate-from-profile",
   SIGN_CERTIFICATE_FROM_PROFILE = "sign-certificate-from-profile",
   ORDER_CERTIFICATE_FROM_PROFILE = "order-certificate-from-profile",
-  GET_CERTIFICATE_PROFILE_LATEST_ACTIVE_BUNDLE = "get-certificate-profile-latest-active-bundle"
+  GET_CERTIFICATE_PROFILE_LATEST_ACTIVE_BUNDLE = "get-certificate-profile-latest-active-bundle",
+
+  APPROVAL_POLICY_CREATE = "approval-policy-create",
+  APPROVAL_POLICY_UPDATE = "approval-policy-update",
+  APPROVAL_POLICY_DELETE = "approval-policy-delete",
+  APPROVAL_POLICY_LIST = "approval-policy-list",
+  APPROVAL_POLICY_GET = "approval-policy-get",
+  APPROVAL_REQUEST_GET = "approval-request-get",
+  APPROVAL_REQUEST_LIST = "approval-request-list",
+  APPROVAL_REQUEST_CREATE = "approval-request-create",
+  APPROVAL_REQUEST_APPROVE = "approval-request-approve",
+  APPROVAL_REQUEST_REJECT = "approval-request-reject",
+  APPROVAL_REQUEST_CANCEL = "approval-request-cancel",
+  APPROVAL_REQUEST_GRANT_LIST = "approval-request-grant-list",
+  APPROVAL_REQUEST_GRANT_GET = "approval-request-grant-get",
+  APPROVAL_REQUEST_GRANT_REVOKE = "approval-request-grant-revoke"
 }

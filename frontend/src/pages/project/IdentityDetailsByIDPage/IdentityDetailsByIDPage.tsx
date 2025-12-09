@@ -51,7 +51,7 @@ const Page = () => {
     select: (el) => el.identityId as string
   });
   const { currentProject, projectId } = useProject();
-  const { currentOrg, isSubOrganization } = useOrganization();
+  const { currentOrg } = useOrganization();
 
   const { data: identityMembershipDetails, isPending: isMembershipDetailsLoading } =
     useGetProjectIdentityMembershipV2(projectId, identityId);
@@ -60,8 +60,6 @@ const Page = () => {
     useDeleteProjectIdentityMembership();
 
   const isProjectIdentity = Boolean(identityMembershipDetails?.identity.projectId);
-  const isNonScopedIdentity =
-    !isProjectIdentity && currentOrg.id !== identityMembershipDetails?.identity?.orgId;
 
   const {
     data: identity,
@@ -92,10 +90,12 @@ const Page = () => {
         onSuccess: () => {
           createNotification({
             type: "success",
-            text: "Identity privilege assumption has started"
+            text: "Machine identity privilege assumption has started"
           });
-          const url = `${getProjectHomePage(currentProject.type, currentProject.environments)}${isSubOrganization && isNonScopedIdentity ? `?subOrganization=${currentOrg.slug}` : ""}`;
-          window.location.href = url.replace("$projectId", currentProject.id);
+          const url = getProjectHomePage(currentProject.type, currentProject.environments);
+          window.location.assign(
+            url.replace("$orgId", currentOrg.id).replace("$projectId", currentProject.id)
+          );
         }
       }
     );
@@ -107,14 +107,15 @@ const Page = () => {
       projectId
     });
     createNotification({
-      text: "Successfully removed identity from project",
+      text: "Successfully removed machine identity from project",
       type: "success"
     });
     handlePopUpClose("deleteIdentity");
     navigate({
       to: `${getProjectBaseURL(currentProject.type)}/access-management` as const,
       params: {
-        projectId
+        projectId,
+        orgId: currentOrg.id
       },
       search: {
         selectedTab: "identities"
@@ -137,7 +138,8 @@ const Page = () => {
           <Link
             to={`${getProjectBaseURL(currentProject.type)}/access-management`}
             params={{
-              projectId
+              projectId,
+              orgId: currentOrg.id
             }}
             search={{
               selectedTab: ProjectAccessControlTabs.Identities
@@ -145,12 +147,12 @@ const Page = () => {
             className="mb-4 flex items-center gap-x-2 text-sm text-mineshaft-400"
           >
             <FontAwesomeIcon icon={faChevronLeft} />
-            Identities
+            Project Machine Identities
           </Link>
           <PageHeader
             scope={currentProject.type}
             title={identityMembershipDetails?.identity?.name}
-            description={`Identity ${isProjectIdentity ? "created" : "added"} on ${identityMembershipDetails?.createdAt && formatRelative(new Date(identityMembershipDetails?.createdAt || ""), new Date())}`}
+            description={`Machine identity ${isProjectIdentity ? "created" : "added"} on ${identityMembershipDetails?.createdAt && formatRelative(new Date(identityMembershipDetails?.createdAt || ""), new Date())}`}
             className={!isProjectIdentity ? "mb-4" : undefined}
           >
             <div className="flex items-center gap-2">
@@ -173,7 +175,7 @@ const Page = () => {
                   identityId: identityMembershipDetails?.identity.id
                 })}
                 renderTooltip
-                allowedLabel="Assume privileges of the user"
+                allowedLabel="Assume privileges of the machine identity"
                 passThrough={false}
               >
                 {(isAllowed) => (
@@ -205,7 +207,7 @@ const Page = () => {
                       isLoading={isDeletingIdentity}
                       onClick={() => handlePopUpOpen("deleteIdentity")}
                     >
-                      Remove Identity
+                      Remove Machine Identity
                     </Button>
                   )}
                 </ProjectPermissionCan>
@@ -215,7 +217,7 @@ const Page = () => {
           {!isProjectIdentity && (
             <Alert hideTitle iconClassName="text-info" className="mb-4 border-info/50 bg-info/10">
               <AlertDescription>
-                This identity is managed by your organization.{" "}
+                This machine identity is managed by your organization.{" "}
                 <OrgPermissionCan
                   I={OrgPermissionIdentityActions.Read}
                   an={OrgPermissionSubjects.Identity}
@@ -223,13 +225,14 @@ const Page = () => {
                   {(isAllowed) =>
                     isAllowed ? (
                       <Link
-                        to="/organization/identities/$identityId"
+                        to="/organizations/$orgId/identities/$identityId"
                         params={{
-                          identityId
+                          identityId,
+                          orgId: currentOrg.id
                         }}
                       >
                         <span className="cursor-pointer text-info underline underline-offset-2">
-                          Click here to manage identity.
+                          Click here to manage machine identity.
                         </span>
                       </Link>
                     ) : null
@@ -281,15 +284,15 @@ const Page = () => {
           <ConfirmActionModal
             isOpen={popUp.assumePrivileges.isOpen}
             confirmKey="assume"
-            title="Do you want to assume privileges of this identity?"
-            subTitle="This will set your privileges to those of the identity for the next hour."
+            title="Do you want to assume privileges of this machine identity?"
+            subTitle="This will set your privileges to those of the machine identity for the next hour."
             onChange={(isOpen) => handlePopUpToggle("assumePrivileges", isOpen)}
             onConfirmed={handleAssumePrivileges}
             buttonText="Confirm"
           />
         </>
       ) : (
-        <EmptyState title="Error: Unable to find the identity." className="py-12" />
+        <EmptyState title="Error: Unable to find the machine identity." className="py-12" />
       )}
     </div>
   );

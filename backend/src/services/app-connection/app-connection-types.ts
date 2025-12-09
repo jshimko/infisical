@@ -107,6 +107,12 @@ import {
   TValidateDigitalOceanCredentialsSchema
 } from "./digital-ocean";
 import {
+  TDNSMadeEasyConnection,
+  TDNSMadeEasyConnectionConfig,
+  TDNSMadeEasyConnectionInput,
+  TValidateDNSMadeEasyConnectionCredentialsSchema
+} from "./dns-made-easy/dns-made-easy-connection-types";
+import {
   TFlyioConnection,
   TFlyioConnectionConfig,
   TFlyioConnectionInput,
@@ -166,6 +172,12 @@ import {
   TLdapConnectionInput,
   TValidateLdapConnectionCredentialsSchema
 } from "./ldap";
+import {
+  TMongoDBConnection,
+  TMongoDBConnectionConfig,
+  TMongoDBConnectionInput,
+  TValidateMongoDBConnectionCredentialsSchema
+} from "./mongodb";
 import { TMsSqlConnection, TMsSqlConnectionInput, TValidateMsSqlConnectionCredentialsSchema } from "./mssql";
 import { TMySqlConnection, TMySqlConnectionInput, TValidateMySqlConnectionCredentialsSchema } from "./mysql";
 import {
@@ -279,6 +291,7 @@ export type TAppConnection = { id: string } & (
   | TGitLabConnection
   | TCloudflareConnection
   | TBitbucketConnection
+  | TDNSMadeEasyConnection
   | TZabbixConnection
   | TRailwayConnection
   | TChecklyConnection
@@ -288,6 +301,7 @@ export type TAppConnection = { id: string } & (
   | TNorthflankConnection
   | TOktaConnection
   | TRedisConnection
+  | TMongoDBConnection
   | TChefConnection
 );
 
@@ -328,6 +342,7 @@ export type TAppConnectionInput = { id: string } & (
   | TGitLabConnectionInput
   | TCloudflareConnectionInput
   | TBitbucketConnectionInput
+  | TDNSMadeEasyConnectionInput
   | TZabbixConnectionInput
   | TRailwayConnectionInput
   | TChecklyConnectionInput
@@ -337,6 +352,7 @@ export type TAppConnectionInput = { id: string } & (
   | TNorthflankConnectionInput
   | TOktaConnectionInput
   | TRedisConnectionInput
+  | TMongoDBConnectionInput
   | TChefConnectionInput
 );
 
@@ -395,6 +411,7 @@ export type TAppConnectionConfig =
   | TGitLabConnectionConfig
   | TCloudflareConnectionConfig
   | TBitbucketConnectionConfig
+  | TDNSMadeEasyConnectionConfig
   | TZabbixConnectionConfig
   | TRailwayConnectionConfig
   | TChecklyConnectionConfig
@@ -404,6 +421,7 @@ export type TAppConnectionConfig =
   | TNorthflankConnectionConfig
   | TOktaConnectionConfig
   | TRedisConnectionConfig
+  | TMongoDBConnectionConfig
   | TChefConnectionConfig;
 
 export type TValidateAppConnectionCredentialsSchema =
@@ -439,6 +457,7 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateGitLabConnectionCredentialsSchema
   | TValidateCloudflareConnectionCredentialsSchema
   | TValidateBitbucketConnectionCredentialsSchema
+  | TValidateDNSMadeEasyConnectionCredentialsSchema
   | TValidateZabbixConnectionCredentialsSchema
   | TValidateRailwayConnectionCredentialsSchema
   | TValidateChecklyConnectionCredentialsSchema
@@ -448,6 +467,7 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateNorthflankConnectionCredentialsSchema
   | TValidateOktaConnectionCredentialsSchema
   | TValidateRedisConnectionCredentialsSchema
+  | TValidateMongoDBConnectionCredentialsSchema
   | TValidateChefConnectionCredentialsSchema;
 
 export type TListAwsConnectionKmsKeys = {

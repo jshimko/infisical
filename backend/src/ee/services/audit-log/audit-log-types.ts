@@ -186,6 +186,7 @@ export enum EventType {
   CREATE_TOKEN_IDENTITY_TOKEN_AUTH = "create-token-identity-token-auth",
   UPDATE_TOKEN_IDENTITY_TOKEN_AUTH = "update-token-identity-token-auth",
   GET_TOKENS_IDENTITY_TOKEN_AUTH = "get-tokens-identity-token-auth",
+  GET_TOKEN_IDENTITY_TOKEN_AUTH = "get-token-identity-token-auth",
 
   ADD_IDENTITY_TOKEN_AUTH = "add-identity-token-auth",
   UPDATE_IDENTITY_TOKEN_AUTH = "update-identity-token-auth",
@@ -367,6 +368,7 @@ export enum EventType {
   ORG_ADMIN_BYPASS_SSO = "org-admin-bypassed-sso",
   USER_LOGIN = "user-login",
   SELECT_ORGANIZATION = "select-organization",
+  SELECT_SUB_ORGANIZATION = "select-sub-organization",
   CREATE_CERTIFICATE_TEMPLATE = "create-certificate-template",
   UPDATE_CERTIFICATE_TEMPLATE = "update-certificate-template",
   DELETE_CERTIFICATE_TEMPLATE = "delete-certificate-template",
@@ -387,6 +389,9 @@ export enum EventType {
   GET_CERTIFICATE_PROFILE_LATEST_ACTIVE_BUNDLE = "get-certificate-profile-latest-active-bundle",
   UPDATE_CERTIFICATE_RENEWAL_CONFIG = "update-certificate-renewal-config",
   DISABLE_CERTIFICATE_RENEWAL_CONFIG = "disable-certificate-renewal-config",
+  CREATE_CERTIFICATE_REQUEST = "create-certificate-request",
+  GET_CERTIFICATE_REQUEST = "get-certificate-request",
+  GET_CERTIFICATE_FROM_REQUEST = "get-certificate-from-request",
   ATTEMPT_CREATE_SLACK_INTEGRATION = "attempt-create-slack-integration",
   ATTEMPT_REINSTALL_SLACK_INTEGRATION = "attempt-reinstall-slack-integration",
   GET_PROJECT_SLACK_CONFIG = "get-project-slack-config",
@@ -535,6 +540,7 @@ export enum EventType {
   DASHBOARD_GET_SECRET_VALUE = "dashboard-get-secret-value",
   DASHBOARD_GET_SECRET_VERSION_VALUE = "dashboard-get-secret-version-value",
 
+  PAM_SESSION_CREDENTIALS_GET = "pam-session-credentials-get",
   PAM_SESSION_START = "pam-session-start",
   PAM_SESSION_LOGS_UPDATE = "pam-session-logs-update",
   PAM_SESSION_END = "pam-session-end",
@@ -554,7 +560,21 @@ export enum EventType {
   PAM_RESOURCE_GET = "pam-resource-get",
   PAM_RESOURCE_CREATE = "pam-resource-create",
   PAM_RESOURCE_UPDATE = "pam-resource-update",
-  PAM_RESOURCE_DELETE = "pam-resource-delete"
+  PAM_RESOURCE_DELETE = "pam-resource-delete",
+  APPROVAL_POLICY_CREATE = "approval-policy-create",
+  APPROVAL_POLICY_UPDATE = "approval-policy-update",
+  APPROVAL_POLICY_DELETE = "approval-policy-delete",
+  APPROVAL_POLICY_LIST = "approval-policy-list",
+  APPROVAL_POLICY_GET = "approval-policy-get",
+  APPROVAL_REQUEST_GET = "approval-request-get",
+  APPROVAL_REQUEST_LIST = "approval-request-list",
+  APPROVAL_REQUEST_CREATE = "approval-request-create",
+  APPROVAL_REQUEST_APPROVE = "approval-request-approve",
+  APPROVAL_REQUEST_REJECT = "approval-request-reject",
+  APPROVAL_REQUEST_CANCEL = "approval-request-cancel",
+  APPROVAL_REQUEST_GRANT_LIST = "approval-request-grant-list",
+  APPROVAL_REQUEST_GRANT_GET = "approval-request-grant-get",
+  APPROVAL_REQUEST_GRANT_REVOKE = "approval-request-grant-revoke"
 }
 
 export const filterableSecretEvents: EventType[] = [
@@ -1026,6 +1046,15 @@ interface GetTokensIdentityTokenAuthEvent {
   type: EventType.GET_TOKENS_IDENTITY_TOKEN_AUTH;
   metadata: {
     identityId: string;
+  };
+}
+
+interface GetTokenIdentityTokenAuthEvent {
+  type: EventType.GET_TOKEN_IDENTITY_TOKEN_AUTH;
+  metadata: {
+    identityId: string;
+    identityName: string;
+    tokenId: string;
   };
 }
 
@@ -2676,6 +2705,15 @@ interface SelectOrganizationEvent {
   };
 }
 
+interface SelectSubOrganizationEvent {
+  type: EventType.SELECT_SUB_ORGANIZATION;
+  metadata: {
+    organizationId: string;
+    organizationName: string;
+    rootOrganizationId: string;
+  };
+}
+
 interface CreateCertificateTemplateEstConfig {
   type: EventType.CREATE_CERTIFICATE_TEMPLATE_EST_CONFIG;
   metadata: {
@@ -2776,6 +2814,7 @@ interface CreateCertificateProfile {
     name: string;
     projectId: string;
     enrollmentType: string;
+    issuerType: string;
   };
 }
 
@@ -2834,7 +2873,6 @@ interface OrderCertificateFromProfile {
   type: EventType.ORDER_CERTIFICATE_FROM_PROFILE;
   metadata: {
     certificateProfileId: string;
-    orderId: string;
     profileName: string;
   };
 }
@@ -3978,6 +4016,14 @@ interface OrgRoleDeleteEvent {
   };
 }
 
+interface PamSessionCredentialsGetEvent {
+  type: EventType.PAM_SESSION_CREDENTIALS_GET;
+  metadata: {
+    sessionId: string;
+    accountName: string;
+  };
+}
+
 interface PamSessionStartEvent {
   type: EventType.PAM_SESSION_START;
   metadata: {
@@ -4054,6 +4100,7 @@ interface PamAccountAccessEvent {
   type: EventType.PAM_ACCOUNT_ACCESS;
   metadata: {
     accountId: string;
+    accountPath: string;
     accountName: string;
     duration?: string;
   };
@@ -4136,7 +4183,7 @@ interface PamResourceCreateEvent {
   type: EventType.PAM_RESOURCE_CREATE;
   metadata: {
     resourceType: string;
-    gatewayId: string;
+    gatewayId?: string;
     name: string;
   };
 }
@@ -4173,6 +4220,151 @@ interface DisableCertificateRenewalConfigEvent {
   metadata: {
     certificateId: string;
     commonName: string;
+  };
+}
+
+interface CreateCertificateRequestEvent {
+  type: EventType.CREATE_CERTIFICATE_REQUEST;
+  metadata: {
+    certificateRequestId: string;
+    profileId?: string;
+    caId?: string;
+    commonName?: string;
+  };
+}
+
+interface GetCertificateRequestEvent {
+  type: EventType.GET_CERTIFICATE_REQUEST;
+  metadata: {
+    certificateRequestId: string;
+  };
+}
+
+interface GetCertificateFromRequestEvent {
+  type: EventType.GET_CERTIFICATE_FROM_REQUEST;
+  metadata: {
+    certificateRequestId: string;
+    certificateId?: string;
+  };
+}
+
+interface ApprovalPolicyCreateEvent {
+  type: EventType.APPROVAL_POLICY_CREATE;
+  metadata: {
+    policyType: string;
+    name: string;
+  };
+}
+
+interface ApprovalPolicyUpdateEvent {
+  type: EventType.APPROVAL_POLICY_UPDATE;
+  metadata: {
+    policyType: string;
+    policyId: string;
+    name: string;
+  };
+}
+
+interface ApprovalPolicyDeleteEvent {
+  type: EventType.APPROVAL_POLICY_DELETE;
+  metadata: {
+    policyType: string;
+    policyId: string;
+  };
+}
+
+interface ApprovalPolicyListEvent {
+  type: EventType.APPROVAL_POLICY_LIST;
+  metadata: {
+    policyType: string;
+    count: number;
+  };
+}
+
+interface ApprovalPolicyGetEvent {
+  type: EventType.APPROVAL_POLICY_GET;
+  metadata: {
+    policyType: string;
+    policyId: string;
+    name: string;
+  };
+}
+
+interface ApprovalRequestGetEvent {
+  type: EventType.APPROVAL_REQUEST_GET;
+  metadata: {
+    policyType: string;
+    requestId: string;
+    status: string;
+  };
+}
+
+interface ApprovalRequestListEvent {
+  type: EventType.APPROVAL_REQUEST_LIST;
+  metadata: {
+    policyType: string;
+    count: number;
+  };
+}
+
+interface ApprovalRequestCreateEvent {
+  type: EventType.APPROVAL_REQUEST_CREATE;
+  metadata: {
+    policyType: string;
+    justification?: string;
+    requestDuration: string;
+  };
+}
+
+interface ApprovalRequestApproveEvent {
+  type: EventType.APPROVAL_REQUEST_APPROVE;
+  metadata: {
+    policyType: string;
+    requestId: string;
+    comment?: string;
+  };
+}
+
+interface ApprovalRequestRejectEvent {
+  type: EventType.APPROVAL_REQUEST_REJECT;
+  metadata: {
+    policyType: string;
+    requestId: string;
+    comment?: string;
+  };
+}
+
+interface ApprovalRequestCancelEvent {
+  type: EventType.APPROVAL_REQUEST_CANCEL;
+  metadata: {
+    policyType: string;
+    requestId: string;
+  };
+}
+
+interface ApprovalRequestGrantListEvent {
+  type: EventType.APPROVAL_REQUEST_GRANT_LIST;
+  metadata: {
+    policyType: string;
+    count: number;
+  };
+}
+
+interface ApprovalRequestGrantGetEvent {
+  type: EventType.APPROVAL_REQUEST_GRANT_GET;
+  metadata: {
+    policyType: string;
+    grantId: string;
+    status: string;
+  };
+}
+
+interface ApprovalRequestGrantRevokeEvent {
+  type: EventType.APPROVAL_REQUEST_GRANT_REVOKE;
+  metadata: {
+    policyType: string;
+    grantId: string;
+    revocationReason?: string;
   };
 }
 
@@ -4214,6 +4406,7 @@ export type Event =
   | CreateTokenIdentityTokenAuthEvent
   | UpdateTokenIdentityTokenAuthEvent
   | GetTokensIdentityTokenAuthEvent
+  | GetTokenIdentityTokenAuthEvent
   | AddIdentityTokenAuthEvent
   | UpdateIdentityTokenAuthEvent
   | GetIdentityTokenAuthEvent
@@ -4531,6 +4724,7 @@ export type Event =
   | OrgRoleCreateEvent
   | OrgRoleUpdateEvent
   | OrgRoleDeleteEvent
+  | PamSessionCredentialsGetEvent
   | PamSessionStartEvent
   | PamSessionLogsUpdateEvent
   | PamSessionEndEvent
@@ -4553,7 +4747,25 @@ export type Event =
   | PamResourceDeleteEvent
   | UpdateCertificateRenewalConfigEvent
   | DisableCertificateRenewalConfigEvent
+  | CreateCertificateRequestEvent
+  | GetCertificateRequestEvent
+  | GetCertificateFromRequestEvent
   | AutomatedRenewCertificate
   | AutomatedRenewCertificateFailed
   | UserLoginEvent
-  | SelectOrganizationEvent;
+  | SelectOrganizationEvent
+  | SelectSubOrganizationEvent
+  | ApprovalPolicyCreateEvent
+  | ApprovalPolicyUpdateEvent
+  | ApprovalPolicyDeleteEvent
+  | ApprovalPolicyListEvent
+  | ApprovalPolicyGetEvent
+  | ApprovalRequestGetEvent
+  | ApprovalRequestListEvent
+  | ApprovalRequestCreateEvent
+  | ApprovalRequestApproveEvent
+  | ApprovalRequestRejectEvent
+  | ApprovalRequestCancelEvent
+  | ApprovalRequestGrantListEvent
+  | ApprovalRequestGrantGetEvent
+  | ApprovalRequestGrantRevokeEvent;

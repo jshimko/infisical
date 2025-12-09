@@ -42,7 +42,7 @@ export const Page = () => {
     strict: false,
     select: (el) => el.membershipId as string
   });
-  const { currentOrg, isSubOrganization } = useOrganization();
+  const { currentOrg } = useOrganization();
   const { currentProject, projectId } = useProject();
 
   const { data: membershipDetails, isPending: isMembershipDetailsLoading } =
@@ -73,8 +73,10 @@ export const Page = () => {
             text: "User privilege assumption has started"
           });
 
-          const url = `${getProjectHomePage(currentProject.type, currentProject.environments)}${isSubOrganization ? `?subOrganization=${currentOrg.slug}` : ""}`;
-          window.location.href = url.replace("$projectId", currentProject.id);
+          const url = getProjectHomePage(currentProject.type, currentProject.environments);
+          window.location.assign(
+            url.replace("$orgId", currentOrg.id).replace("$projectId", currentProject.id)
+          );
         }
       }
     );
@@ -95,7 +97,8 @@ export const Page = () => {
     navigate({
       to: `${getProjectBaseURL(currentProject.type)}/access-management` as const,
       params: {
-        projectId: currentProject.id
+        projectId: currentProject.id,
+        orgId: currentOrg.id
       }
     });
     handlePopUpClose("removeMember");
@@ -116,7 +119,8 @@ export const Page = () => {
           <Link
             to={`${getProjectBaseURL(currentProject.type)}/access-management`}
             params={{
-              projectId: currentProject.id
+              projectId: currentProject.id,
+              orgId: currentOrg.id
             }}
             search={{
               selectedTab: ProjectAccessControlTabs.Member
@@ -124,7 +128,7 @@ export const Page = () => {
             className="mb-4 flex items-center gap-x-2 text-sm text-mineshaft-400"
           >
             <FontAwesomeIcon icon={faChevronLeft} />
-            Users
+            Project Users
           </Link>
           <PageHeader
             scope={currentProject.type}

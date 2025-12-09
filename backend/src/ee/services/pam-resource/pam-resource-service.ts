@@ -20,7 +20,7 @@ import {
   encryptResourceConnectionDetails,
   listResourceOptions
 } from "./pam-resource-fns";
-import { TCreateResourceDTO, TUpdateResourceDTO } from "./pam-resource-types";
+import { TCreateResourceDTO, TListResourcesDTO, TUpdateResourceDTO } from "./pam-resource-types";
 
 type TPamResourceServiceFactoryDep = {
   pamResourceDAL: TPamResourceDALFactory;
@@ -92,7 +92,8 @@ export const pamResourceServiceFactory = ({
       resourceType,
       connectionDetails,
       gatewayId,
-      gatewayV2Service
+      gatewayV2Service,
+      projectId
     );
 
     const validatedConnectionDetails = await factory.validateConnection();
@@ -162,7 +163,8 @@ export const pamResourceServiceFactory = ({
         resource.resourceType as PamResource,
         connectionDetails,
         resource.gatewayId,
-        gatewayV2Service
+        gatewayV2Service,
+        resource.projectId
       );
       const validatedConnectionDetails = await factory.validateConnection();
       const encryptedConnectionDetails = await encryptResourceConnectionDetails({
@@ -189,22 +191,22 @@ export const pamResourceServiceFactory = ({
           resource.resourceType as PamResource,
           decryptedConnectionDetails,
           resource.gatewayId,
-          gatewayV2Service
+          gatewayV2Service,
+          resource.projectId
         );
 
-        // Logic to prevent overwriting unedited censored values
-        const finalCredentials = { ...rotationAccountCredentials };
-        if (
-          resource.encryptedRotationAccountCredentials &&
-          rotationAccountCredentials.password === "__INFISICAL_UNCHANGED__"
-        ) {
+        let finalCredentials = { ...rotationAccountCredentials };
+        if (resource.encryptedRotationAccountCredentials) {
           const decryptedCredentials = await decryptAccountCredentials({
             encryptedCredentials: resource.encryptedRotationAccountCredentials,
             projectId: resource.projectId,
             kmsService
           });
 
-          finalCredentials.password = decryptedCredentials.password;
+          finalCredentials = await factory.handleOverwritePreventionForCensoredValues(
+            rotationAccountCredentials,
+            decryptedCredentials
+          );
         }
 
         try {
@@ -268,22 +270,23 @@ export const pamResourceServiceFactory = ({
     }
   };
 
-  const list = async (projectId: string, actor: OrgServiceActor) => {
+  const list = async ({ projectId, actor, actorId, actorAuthMethod, actorOrgId, ...params }: TListResourcesDTO) => {
     const { permission } = await permissionService.getProjectPermission({
-      actor: actor.type,
-      actorAuthMethod: actor.authMethod,
-      actorId: actor.id,
-      actorOrgId: actor.orgId,
+      actor,
+      actorId,
+      actorAuthMethod,
+      actorOrgId,
       projectId,
       actionProjectType: ActionProjectType.PAM
     });
 
     ForbiddenError.from(permission).throwUnlessCan(ProjectPermissionActions.Read, ProjectPermissionSub.PamResources);
 
-    const resources = await pamResourceDAL.find({ projectId });
+    const { resources, totalCount } = await pamResourceDAL.findByProjectId({ projectId, ...params });
 
     return {
-      resources: await Promise.all(resources.map((resource) => decryptResource(resource, projectId, kmsService)))
+      resources: await Promise.all(resources.map((resource) => decryptResource(resource, projectId, kmsService))),
+      totalCount
     };
   };
 
