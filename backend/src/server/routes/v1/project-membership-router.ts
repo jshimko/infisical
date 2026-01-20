@@ -2,7 +2,6 @@ import { z } from "zod";
 
 import {
   AccessScope,
-  OrgMembershipRole,
   ProjectMembershipRole,
   ProjectMembershipsSchema,
   ProjectUserMembershipRolesSchema,
@@ -95,6 +94,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
       rateLimit: readLimit
     },
     schema: {
+      operationId: "getProjectMembership",
       description: "Return project user membership",
       security: [
         {
@@ -170,6 +170,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
     },
     schema: {
       hide: false,
+      operationId: "getProjectMembershipByUsername",
       tags: [ApiDocsTags.ProjectUsers],
       description: "Return project user memberships",
       security: [
@@ -232,6 +233,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
     },
     schema: {
       hide: false,
+      operationId: "inviteProjectMembers",
       tags: [ApiDocsTags.ProjectUsers],
       description: "Invite members to project",
       security: [
@@ -275,7 +277,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
           orgId: req.permission.orgId
         },
         data: {
-          roles: [{ isTemporary: false, role: OrgMembershipRole.NoAccess }],
+          roles: [],
           usernames: usernamesAndEmails
         }
       });
@@ -324,6 +326,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
     },
     schema: {
       hide: false,
+      operationId: "updateProjectMembership",
       tags: [ApiDocsTags.ProjectUsers],
       description: "Update project user membership",
       security: [
@@ -397,6 +400,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
     },
     schema: {
       hide: false,
+      operationId: "removeProjectMembers",
       tags: [ApiDocsTags.ProjectUsers],
       description: "Remove members from project",
       security: [
@@ -471,6 +475,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
       rateLimit: writeLimit
     },
     schema: {
+      operationId: "deleteProjectMembership",
       description: "Delete project user membership",
       security: [
         {
@@ -536,6 +541,7 @@ export const registerProjectMembershipRouter = async (server: FastifyZodProvider
       rateLimit: writeLimit
     },
     schema: {
+      operationId: "leaveProject",
       params: z.object({
         projectId: z.string().trim()
       }),

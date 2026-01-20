@@ -32,12 +32,14 @@ import { TMySqlConnection } from "./mysql-connection";
 import { TNetlifyConnection } from "./netlify-connection";
 import { TNorthflankConnection } from "./northflank-connection";
 import { TOCIConnection } from "./oci-connection";
+import { TOctopusDeployConnection } from "./octopus-deploy-connection";
 import { TOktaConnection } from "./okta-connection";
 import { TOracleDBConnection } from "./oracledb-connection";
 import { TPostgresConnection } from "./postgres-connection";
 import { TRailwayConnection } from "./railway-connection";
 import { TRedisConnection } from "./redis-connection";
 import { TRenderConnection } from "./render-connection";
+import { TSshConnection } from "./ssh-connection";
 import { TSupabaseConnection } from "./supabase-connection";
 import { TTeamCityConnection } from "./teamcity-connection";
 import { TTerraformCloudConnection } from "./terraform-cloud-connection";
@@ -76,12 +78,14 @@ export * from "./mysql-connection";
 export * from "./netlify-connection";
 export * from "./northflank-connection";
 export * from "./oci-connection";
+export * from "./octopus-deploy-connection";
 export * from "./okta-connection";
 export * from "./oracledb-connection";
 export * from "./postgres-connection";
 export * from "./railway-connection";
 export * from "./redis-connection";
 export * from "./render-connection";
+export * from "./ssh-connection";
 export * from "./supabase-connection";
 export * from "./teamcity-connection";
 export * from "./terraform-cloud-connection";
@@ -117,6 +121,7 @@ export type TAppConnection =
   | TOnePassConnection
   | THerokuConnection
   | TLaravelForgeConnection
+  | TOctopusDeployConnection
   | TRenderConnection
   | TFlyioConnection
   | TGitLabConnection
@@ -133,7 +138,8 @@ export type TAppConnection =
   | TRedisConnection
   | TMongoDBConnection
   | TChefConnection
-  | TDNSMadeEasyConnection;
+  | TDNSMadeEasyConnection
+  | TSshConnection;
 
 export type TAvailableAppConnection = Pick<TAppConnection, "name" | "id" | "projectId">;
 

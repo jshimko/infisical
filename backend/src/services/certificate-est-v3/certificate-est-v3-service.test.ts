@@ -78,41 +78,6 @@ vi.mock("@app/services/certificate-authority/certificate-authority-validators", 
   })
 }));
 
-vi.mock("@app/services/certificate-common/certificate-constants", () => ({
-  mapLegacyKeyUsageToStandard: vi.fn((usage: string) => {
-    const mapping: Record<string, string> = {
-      digitalSignature: "digital_signature",
-      keyEncipherment: "key_encipherment",
-      keyCertSign: "key_cert_sign"
-    };
-    return mapping[usage] || usage;
-  }),
-  mapLegacyExtendedKeyUsageToStandard: vi.fn((usage: string) => {
-    const mapping: Record<string, string> = {
-      clientAuth: "client_auth",
-      serverAuth: "server_auth",
-      codeSigning: "code_signing"
-    };
-    return mapping[usage] || usage;
-  }),
-  CertKeyUsageType: {
-    DIGITAL_SIGNATURE: "digital_signature",
-    KEY_ENCIPHERMENT: "key_encipherment",
-    KEY_CERT_SIGN: "key_cert_sign"
-  },
-  CertExtendedKeyUsageType: {
-    CLIENT_AUTH: "client_auth",
-    SERVER_AUTH: "server_auth",
-    CODE_SIGNING: "code_signing"
-  },
-  CertSubjectAlternativeNameType: {
-    DNS_NAME: "dns_name",
-    IP_ADDRESS: "ip_address",
-    RFC822_NAME: "rfc822_name",
-    UNIFORM_RESOURCE_IDENTIFIER: "uniform_resource_identifier"
-  }
-}));
-
 vi.mock("@app/services/certificate/certificate-types", () => ({
   mapLegacyAltNameType: vi.fn((type: string) => {
     const mapping: Record<string, string> = {
@@ -167,8 +132,17 @@ describe("CertificateEstV3Service Security Fix", () => {
     signCertFromCa: vi.fn()
   };
 
-  const mockCertificateTemplateV2Service = {
+  const mockCertificatePolicyService = {
     validateCertificateRequest: vi.fn()
+  };
+
+  const mockCertificatePolicyDAL = {
+    findById: vi.fn().mockResolvedValue({
+      id: "policy-123",
+      basicConstraints: null,
+      subject: [],
+      sans: []
+    })
   };
 
   const mockCertificateAuthorityDAL = {
@@ -208,9 +182,13 @@ describe("CertificateEstV3Service Security Fix", () => {
     id: "profile-123",
     projectId: "project-123",
     caId: "ca-123",
-    certificateTemplateId: "template-v2-123",
+    certificatePolicyId: "policy-123",
+    slug: "test-profile",
     enrollmentType: EnrollmentType.EST,
-    estConfigId: "est-config-123"
+    issuerType: "ca" as const,
+    estConfigId: "est-config-123",
+    createdAt: new Date(),
+    updatedAt: new Date()
   };
 
   const mockEstConfig = {
@@ -232,7 +210,8 @@ describe("CertificateEstV3Service Security Fix", () => {
 
     service = certificateEstV3ServiceFactory({
       internalCertificateAuthorityService: mockInternalCertificateAuthorityService,
-      certificateTemplateV2Service: mockCertificateTemplateV2Service,
+      certificatePolicyService: mockCertificatePolicyService,
+      certificatePolicyDAL: mockCertificatePolicyDAL,
       certificateAuthorityDAL: mockCertificateAuthorityDAL,
       certificateAuthorityCertDAL: mockCertificateAuthorityCertDAL,
       projectDAL: mockProjectDAL,
@@ -341,7 +320,7 @@ describe("CertificateEstV3Service Security Fix", () => {
         subject: "CN=test.example.com,O=Test Organization,OU=IT Department,L=San Francisco,ST=California,C=US"
       });
 
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: true,
         errors: [],
         warnings: []
@@ -357,8 +336,8 @@ describe("CertificateEstV3Service Security Fix", () => {
         sslClientCert: ""
       });
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalledWith(
-        "template-v2-123",
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalledWith(
+        "policy-123",
         expect.objectContaining({
           commonName: "test.example.com",
           organization: "Test Organization",
@@ -375,7 +354,7 @@ describe("CertificateEstV3Service Security Fix", () => {
         keyUsages: ["digital_signature", "key_encipherment"]
       });
 
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: true,
         errors: [],
         warnings: []
@@ -391,8 +370,8 @@ describe("CertificateEstV3Service Security Fix", () => {
         sslClientCert: ""
       });
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalledWith(
-        "template-v2-123",
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalledWith(
+        "policy-123",
         expect.objectContaining({
           keyUsages: expect.arrayContaining(["digital_signature", "key_encipherment"])
         })
@@ -404,7 +383,7 @@ describe("CertificateEstV3Service Security Fix", () => {
         extendedKeyUsages: ["client_auth", "server_auth"]
       });
 
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: true,
         errors: [],
         warnings: []
@@ -420,8 +399,8 @@ describe("CertificateEstV3Service Security Fix", () => {
         sslClientCert: ""
       });
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalledWith(
-        "template-v2-123",
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalledWith(
+        "policy-123",
         expect.objectContaining({
           extendedKeyUsages: expect.arrayContaining(["client_auth", "server_auth"])
         })
@@ -445,7 +424,7 @@ describe("CertificateEstV3Service Security Fix", () => {
         ]
       }));
 
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: true,
         errors: [],
         warnings: []
@@ -461,8 +440,8 @@ describe("CertificateEstV3Service Security Fix", () => {
         sslClientCert: ""
       });
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalledWith(
-        "template-v2-123",
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalledWith(
+        "policy-123",
         expect.objectContaining({
           subjectAlternativeNames: expect.arrayContaining([
             expect.objectContaining({
@@ -483,7 +462,7 @@ describe("CertificateEstV3Service Security Fix", () => {
     const basicCSR = createMockCSR();
 
     it("should enforce template validation and reject invalid requests", async () => {
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: false,
         errors: ["Common name 'test.example.com' is not allowed", "Key usage 'digital_signature' is denied"],
         warnings: []
@@ -501,7 +480,7 @@ describe("CertificateEstV3Service Security Fix", () => {
     });
 
     it("should allow valid requests that pass template validation", async () => {
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: true,
         errors: [],
         warnings: []
@@ -517,20 +496,21 @@ describe("CertificateEstV3Service Security Fix", () => {
         sslClientCert: ""
       });
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalledWith(
-        "template-v2-123",
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalledWith(
+        "policy-123",
         expect.any(Object)
       );
       expect(mockInternalCertificateAuthorityService.signCertFromCa).toHaveBeenCalledWith({
         isInternal: true,
         caId: "ca-123",
         csr: basicCSR,
-        isFromProfile: true
+        isFromProfile: true,
+        basicConstraints: undefined
       });
     });
 
     it("should validate template for both simpleEnrollByProfile and simpleReenrollByProfile", async () => {
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: false,
         errors: ["SAN value 'evil.com' is denied"],
         warnings: []
@@ -544,7 +524,7 @@ describe("CertificateEstV3Service Security Fix", () => {
         })
       ).rejects.toThrow(BadRequestError);
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalled();
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalled();
       expect(mockInternalCertificateAuthorityService.signCertFromCa).not.toHaveBeenCalled();
     });
   });
@@ -560,7 +540,7 @@ describe("CertificateEstV3Service Security Fix", () => {
     });
 
     it("should block attempts to bypass subject attribute policies", async () => {
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: false,
         errors: ["Organization 'Evil Corp' is denied", "Country 'XX' is not allowed"],
         warnings: []
@@ -574,8 +554,8 @@ describe("CertificateEstV3Service Security Fix", () => {
         })
       ).rejects.toThrow(BadRequestError);
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalledWith(
-        "template-v2-123",
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalledWith(
+        "policy-123",
         expect.objectContaining({
           commonName: "evil.com",
           organization: "Evil Corp",
@@ -585,7 +565,7 @@ describe("CertificateEstV3Service Security Fix", () => {
     });
 
     it("should block attempts to bypass key usage policies", async () => {
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: false,
         errors: ["Key usage 'key_cert_sign' is denied - certificate authority privileges not allowed"],
         warnings: []
@@ -599,8 +579,8 @@ describe("CertificateEstV3Service Security Fix", () => {
         })
       ).rejects.toThrow(BadRequestError);
 
-      expect(mockCertificateTemplateV2Service.validateCertificateRequest).toHaveBeenCalledWith(
-        "template-v2-123",
+      expect(mockCertificatePolicyService.validateCertificateRequest).toHaveBeenCalledWith(
+        "policy-123",
         expect.objectContaining({
           keyUsages: expect.arrayContaining(["key_cert_sign"])
         })
@@ -617,7 +597,7 @@ describe("CertificateEstV3Service Security Fix", () => {
         ]
       }));
 
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: false,
         errors: ["SAN value '*.example.com' matches denied wildcard pattern", "SAN value '127.0.0.1' is denied"],
         warnings: []
@@ -664,7 +644,7 @@ describe("CertificateEstV3Service Security Fix", () => {
     });
 
     it("should handle template validation service errors", async () => {
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockRejectedValue(
+      mockCertificatePolicyService.validateCertificateRequest.mockRejectedValue(
         new Error("Template validation service unavailable")
       );
 
@@ -682,7 +662,7 @@ describe("CertificateEstV3Service Security Fix", () => {
     const basicCSR = createMockCSR();
 
     beforeEach(() => {
-      mockCertificateTemplateV2Service.validateCertificateRequest.mockResolvedValue({
+      mockCertificatePolicyService.validateCertificateRequest.mockResolvedValue({
         isValid: true,
         errors: [],
         warnings: []
@@ -704,7 +684,8 @@ describe("CertificateEstV3Service Security Fix", () => {
         isInternal: true,
         caId: "ca-123",
         isFromProfile: true,
-        csr: basicCSR
+        csr: basicCSR,
+        basicConstraints: undefined
       });
     });
 
@@ -719,17 +700,17 @@ describe("CertificateEstV3Service Security Fix", () => {
         sslClientCert: ""
       });
 
-      // Verify it uses caId from profile, not certificateTemplateId
+      // Verify it uses caId from profile, not certificatePolicyId
       expect(mockInternalCertificateAuthorityService.signCertFromCa).toHaveBeenCalledWith(
         expect.objectContaining({
           caId: "ca-123"
         })
       );
 
-      // Verify it does NOT pass certificateTemplateId to avoid v1/v2 confusion
+      // Verify it does NOT pass certificatePolicyId to avoid v1/v2 confusion
       expect(mockInternalCertificateAuthorityService.signCertFromCa).toHaveBeenCalledWith(
         expect.not.objectContaining({
-          certificateTemplateId: expect.anything()
+          certificatePolicyId: expect.anything()
         })
       );
     });

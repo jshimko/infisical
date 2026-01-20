@@ -59,6 +59,16 @@ export const SECRET_ROTATION_MAP: Record<
     name: "MongoDB Credentials",
     image: "MongoDB.png",
     size: 50
+  },
+  [SecretRotation.DatabricksServicePrincipalSecret]: {
+    name: "Databricks Service Principal",
+    image: "Databricks.png",
+    size: 50
+  },
+  [SecretRotation.UnixLinuxLocalAccount]: {
+    name: "Unix/Linux Local Account",
+    image: "SSH.png",
+    size: 50
   }
 };
 
@@ -73,7 +83,9 @@ export const SECRET_ROTATION_CONNECTION_MAP: Record<SecretRotation, AppConnectio
   [SecretRotation.AwsIamUserSecret]: AppConnection.AWS,
   [SecretRotation.OktaClientSecret]: AppConnection.Okta,
   [SecretRotation.RedisCredentials]: AppConnection.Redis,
-  [SecretRotation.MongoDBCredentials]: AppConnection.MongoDB
+  [SecretRotation.MongoDBCredentials]: AppConnection.MongoDB,
+  [SecretRotation.DatabricksServicePrincipalSecret]: AppConnection.Databricks,
+  [SecretRotation.UnixLinuxLocalAccount]: AppConnection.SSH
 };
 
 // if a rotation can potentially have downtime due to rotating a single credential set this to false
@@ -88,7 +100,9 @@ export const IS_ROTATION_DUAL_CREDENTIALS: Record<SecretRotation, boolean> = {
   [SecretRotation.AwsIamUserSecret]: true,
   [SecretRotation.OktaClientSecret]: true,
   [SecretRotation.RedisCredentials]: true,
-  [SecretRotation.MongoDBCredentials]: true
+  [SecretRotation.MongoDBCredentials]: true,
+  [SecretRotation.DatabricksServicePrincipalSecret]: true,
+  [SecretRotation.UnixLinuxLocalAccount]: false
 };
 
 export const getRotateAtLocal = ({ hours, minutes }: TSecretRotationV2["rotateAtUtc"]) => {

@@ -33,11 +33,13 @@ import { registerMsSqlConnectionRouter } from "./mssql-connection-router";
 import { registerMySqlConnectionRouter } from "./mysql-connection-router";
 import { registerNetlifyConnectionRouter } from "./netlify-connection-router";
 import { registerNorthflankConnectionRouter } from "./northflank-connection-router";
+import { registerOctopusDeployConnectionRouter } from "./octopus-deploy-connection-router";
 import { registerOktaConnectionRouter } from "./okta-connection-router";
 import { registerPostgresConnectionRouter } from "./postgres-connection-router";
 import { registerRailwayConnectionRouter } from "./railway-connection-router";
 import { registerRedisConnectionRouter } from "./redis-connection-router";
 import { registerRenderConnectionRouter } from "./render-connection-router";
+import { registerSshConnectionRouter } from "./ssh-connection-router";
 import { registerSupabaseConnectionRouter } from "./supabase-connection-router";
 import { registerTeamCityConnectionRouter } from "./teamcity-connection-router";
 import { registerTerraformCloudConnectionRouter } from "./terraform-cloud-router";
@@ -92,5 +94,7 @@ export const APP_CONNECTION_REGISTER_ROUTER_MAP: Record<AppConnection, (server: 
     [AppConnection.Okta]: registerOktaConnectionRouter,
     [AppConnection.Redis]: registerRedisConnectionRouter,
     [AppConnection.MongoDB]: registerMongoDBConnectionRouter,
-    [AppConnection.Chef]: registerChefConnectionRouter
+    [AppConnection.Chef]: registerChefConnectionRouter,
+    [AppConnection.OctopusDeploy]: registerOctopusDeployConnectionRouter,
+    [AppConnection.SSH]: registerSshConnectionRouter
   };

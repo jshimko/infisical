@@ -21,6 +21,11 @@ export type TCreateCertificateRequestDTO = TProjectPermission & {
   metadata?: string;
   status: CertificateRequestStatus;
   certificateId?: string;
+  acmeOrderId?: string;
+  basicConstraints?: {
+    isCA: boolean;
+    pathLength?: number;
+  };
 };
 
 export type TGetCertificateRequestDTO = TProjectPermission & {
@@ -40,4 +45,16 @@ export type TUpdateCertificateRequestStatusDTO = {
 export type TAttachCertificateToRequestDTO = {
   certificateRequestId: string;
   certificateId: string;
+};
+
+export type TListCertificateRequestsDTO = TProjectPermission & {
+  offset?: number;
+  limit?: number;
+  search?: string;
+  status?: CertificateRequestStatus;
+  fromDate?: Date;
+  toDate?: Date;
+  profileIds?: string[];
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
 };

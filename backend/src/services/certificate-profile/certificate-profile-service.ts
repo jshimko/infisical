@@ -2,7 +2,6 @@ import { ForbiddenError, subject } from "@casl/ability";
 import * as x509 from "@peculiar/x509";
 
 import { ActionProjectType } from "@app/db/schemas";
-import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import {
   ProjectPermissionCertificateActions,
@@ -23,7 +22,7 @@ import { TCertificateSecretDALFactory } from "../certificate/certificate-secret-
 import { TCertificateAuthorityDALFactory } from "../certificate-authority/certificate-authority-dal";
 import { CaType } from "../certificate-authority/certificate-authority-enums";
 import { TExternalCertificateAuthorityDALFactory } from "../certificate-authority/external-certificate-authority-dal";
-import { TCertificateTemplateV2DALFactory } from "../certificate-template-v2/certificate-template-v2-dal";
+import { TCertificatePolicyDALFactory } from "../certificate-policy/certificate-policy-dal";
 import { TAcmeEnrollmentConfigDALFactory } from "../enrollment-config/acme-enrollment-config-dal";
 import { TApiEnrollmentConfigDALFactory } from "../enrollment-config/api-enrollment-config-dal";
 import { TAcmeConfigData, TApiConfigData, TEstConfigData } from "../enrollment-config/enrollment-config-types";
@@ -224,7 +223,7 @@ export type TCertificateProfileCreateData = Omit<
 
 type TCertificateProfileServiceFactoryDep = {
   certificateProfileDAL: TCertificateProfileDALFactory;
-  certificateTemplateV2DAL: TCertificateTemplateV2DALFactory;
+  certificatePolicyDAL: TCertificatePolicyDALFactory;
   apiEnrollmentConfigDAL: TApiEnrollmentConfigDALFactory;
   estEnrollmentConfigDAL: TEstEnrollmentConfigDALFactory;
   acmeEnrollmentConfigDAL: TAcmeEnrollmentConfigDALFactory;
@@ -233,7 +232,6 @@ type TCertificateProfileServiceFactoryDep = {
   certificateAuthorityDAL: Pick<TCertificateAuthorityDALFactory, "findById">;
   externalCertificateAuthorityDAL: Pick<TExternalCertificateAuthorityDALFactory, "findById" | "findOne">;
   permissionService: Pick<TPermissionServiceFactory, "getProjectPermission">;
-  licenseService: Pick<TLicenseServiceFactory, "getPlan">;
   kmsService: Pick<TKmsServiceFactory, "generateKmsKey" | "encryptWithKmsKey" | "decryptWithKmsKey">;
   projectDAL: Pick<TProjectDALFactory, "findProjectBySlug" | "findOne" | "updateById" | "findById" | "transaction">;
 };
@@ -262,7 +260,7 @@ const convertDalToService = (dalResult: Record<string, unknown>): TCertificatePr
 
 export const certificateProfileServiceFactory = ({
   certificateProfileDAL,
-  certificateTemplateV2DAL,
+  certificatePolicyDAL,
   apiEnrollmentConfigDAL,
   estEnrollmentConfigDAL,
   acmeEnrollmentConfigDAL,
@@ -271,7 +269,6 @@ export const certificateProfileServiceFactory = ({
   certificateAuthorityDAL,
   externalCertificateAuthorityDAL,
   permissionService,
-  licenseService,
   kmsService,
   projectDAL
 }: TCertificateProfileServiceFactoryDep) => {
@@ -309,22 +306,16 @@ export const certificateProfileServiceFactory = ({
     if (!project) {
       throw new NotFoundError({ message: "Project not found" });
     }
-    const plan = await licenseService.getPlan(project.orgId);
-    if (!plan.pkiAcme && data.enrollmentType === EnrollmentType.ACME) {
-      throw new BadRequestError({
-        message: "Failed to create certificate profile: Plan restriction. Upgrade plan to continue"
-      });
-    }
 
-    // Validate that certificate template exists and belongs to the same project
-    if (data.certificateTemplateId) {
-      const template = await certificateTemplateV2DAL.findById(data.certificateTemplateId);
-      if (!template) {
-        throw new NotFoundError({ message: "Certificate template not found" });
+    // Validate that certificate policy exists and belongs to the same project
+    if (data.certificatePolicyId) {
+      const policy = await certificatePolicyDAL.findById(data.certificatePolicyId);
+      if (!policy) {
+        throw new NotFoundError({ message: "Certificate policy not found" });
       }
-      if (template.projectId !== projectId) {
+      if (policy.projectId !== projectId) {
         throw new ForbiddenRequestError({
-          message: "Certificate template must belong to the same project"
+          message: "Certificate policy must belong to the same project"
         });
       }
     }
@@ -403,7 +394,13 @@ export const certificateProfileServiceFactory = ({
         apiConfigId = apiConfig.id;
       } else if (data.enrollmentType === EnrollmentType.ACME && data.acmeConfig) {
         const { encryptedEabSecret } = await generateAndEncryptAcmeEabSecret(projectId, kmsService, projectDAL);
-        const acmeConfig = await acmeEnrollmentConfigDAL.create({ encryptedEabSecret }, tx);
+        const acmeConfig = await acmeEnrollmentConfigDAL.create(
+          {
+            skipDnsOwnershipVerification: data.acmeConfig.skipDnsOwnershipVerification ?? false,
+            encryptedEabSecret
+          },
+          tx
+        );
         acmeConfigId = acmeConfig.id;
       }
 
@@ -462,14 +459,14 @@ export const certificateProfileServiceFactory = ({
       })
     );
 
-    if (data.certificateTemplateId) {
-      const template = await certificateTemplateV2DAL.findById(data.certificateTemplateId);
-      if (!template) {
-        throw new NotFoundError({ message: "Certificate template not found" });
+    if (data.certificatePolicyId) {
+      const policy = await certificatePolicyDAL.findById(data.certificatePolicyId);
+      if (!policy) {
+        throw new NotFoundError({ message: "Certificate policy not found" });
       }
-      if (template.projectId !== existingProfile.projectId) {
+      if (policy.projectId !== existingProfile.projectId) {
         throw new ForbiddenRequestError({
-          message: "Certificate template must belong to the same project"
+          message: "Certificate policy must belong to the same project"
         });
       }
     }
@@ -505,7 +502,7 @@ export const certificateProfileServiceFactory = ({
     const updatedData =
       finalIssuerType === IssuerType.SELF_SIGNED && existingProfile.caId ? { ...data, caId: null } : data;
 
-    const { estConfig, apiConfig, ...profileUpdateData } = updatedData;
+    const { estConfig, apiConfig, acmeConfig, ...profileUpdateData } = updatedData;
 
     const updatedProfile = await certificateProfileDAL.transaction(async (tx) => {
       if (estConfig && existingProfile.estConfigId) {
@@ -542,6 +539,16 @@ export const certificateProfileServiceFactory = ({
           {
             autoRenew: apiConfig.autoRenew,
             renewBeforeDays: apiConfig.renewBeforeDays
+          },
+          tx
+        );
+      }
+
+      if (acmeConfig && existingProfile.acmeConfigId) {
+        await acmeEnrollmentConfigDAL.updateById(
+          existingProfile.acmeConfigId,
+          {
+            skipDnsOwnershipVerification: acmeConfig.skipDnsOwnershipVerification ?? false
           },
           tx
         );

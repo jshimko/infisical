@@ -193,6 +193,12 @@ import {
   TValidateNorthflankConnectionCredentialsSchema
 } from "./northflank";
 import {
+  TOctopusDeployConnection,
+  TOctopusDeployConnectionConfig,
+  TOctopusDeployConnectionInput,
+  TValidateOctopusDeployConnectionCredentialsSchema
+} from "./octopus-deploy";
+import {
   TOktaConnection,
   TOktaConnectionConfig,
   TOktaConnectionInput,
@@ -221,6 +227,12 @@ import {
   TRenderConnectionInput,
   TValidateRenderConnectionCredentialsSchema
 } from "./render/render-connection-types";
+import {
+  TSshConnection,
+  TSshConnectionConfig,
+  TSshConnectionInput,
+  TValidateSshConnectionCredentialsSchema
+} from "./ssh";
 import {
   TSupabaseConnection,
   TSupabaseConnectionConfig,
@@ -303,6 +315,8 @@ export type TAppConnection = { id: string } & (
   | TRedisConnection
   | TMongoDBConnection
   | TChefConnection
+  | TOctopusDeployConnection
+  | TSshConnection
 );
 
 export type TAppConnectionRaw = NonNullable<Awaited<ReturnType<TAppConnectionDALFactory["findById"]>>>;
@@ -354,6 +368,8 @@ export type TAppConnectionInput = { id: string } & (
   | TRedisConnectionInput
   | TMongoDBConnectionInput
   | TChefConnectionInput
+  | TOctopusDeployConnectionInput
+  | TSshConnectionInput
 );
 
 export type TSqlConnectionInput =
@@ -422,7 +438,9 @@ export type TAppConnectionConfig =
   | TOktaConnectionConfig
   | TRedisConnectionConfig
   | TMongoDBConnectionConfig
-  | TChefConnectionConfig;
+  | TChefConnectionConfig
+  | TOctopusDeployConnectionConfig
+  | TSshConnectionConfig;
 
 export type TValidateAppConnectionCredentialsSchema =
   | TValidateAwsConnectionCredentialsSchema
@@ -468,7 +486,9 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateOktaConnectionCredentialsSchema
   | TValidateRedisConnectionCredentialsSchema
   | TValidateMongoDBConnectionCredentialsSchema
-  | TValidateChefConnectionCredentialsSchema;
+  | TValidateChefConnectionCredentialsSchema
+  | TValidateOctopusDeployConnectionCredentialsSchema
+  | TValidateSshConnectionCredentialsSchema;
 
 export type TListAwsConnectionKmsKeys = {
   connectionId: string;

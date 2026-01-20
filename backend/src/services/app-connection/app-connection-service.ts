@@ -103,6 +103,8 @@ import { ValidateNetlifyConnectionCredentialsSchema } from "./netlify";
 import { netlifyConnectionService } from "./netlify/netlify-connection-service";
 import { ValidateNorthflankConnectionCredentialsSchema } from "./northflank";
 import { northflankConnectionService } from "./northflank/northflank-connection-service";
+import { ValidateOctopusDeployConnectionCredentialsSchema } from "./octopus-deploy";
+import { octopusDeployConnectionService } from "./octopus-deploy/octopus-deploy-connection-service";
 import { ValidateOktaConnectionCredentialsSchema } from "./okta";
 import { oktaConnectionService } from "./okta/okta-connection-service";
 import { ValidatePostgresConnectionCredentialsSchema } from "./postgres";
@@ -111,6 +113,7 @@ import { railwayConnectionService } from "./railway/railway-connection-service";
 import { ValidateRedisConnectionCredentialsSchema } from "./redis";
 import { ValidateRenderConnectionCredentialsSchema } from "./render/render-connection-schema";
 import { renderConnectionService } from "./render/render-connection-service";
+import { ValidateSshConnectionCredentialsSchema } from "./ssh";
 import { ValidateSupabaseConnectionCredentialsSchema } from "./supabase";
 import { supabaseConnectionService } from "./supabase/supabase-connection-service";
 import { ValidateTeamCityConnectionCredentialsSchema } from "./teamcity";
@@ -182,7 +185,9 @@ const VALIDATE_APP_CONNECTION_CREDENTIALS_MAP: Record<AppConnection, TValidateAp
   [AppConnection.Okta]: ValidateOktaConnectionCredentialsSchema,
   [AppConnection.Redis]: ValidateRedisConnectionCredentialsSchema,
   [AppConnection.MongoDB]: ValidateMongoDBConnectionCredentialsSchema,
-  [AppConnection.Chef]: ValidateChefConnectionCredentialsSchema
+  [AppConnection.Chef]: ValidateChefConnectionCredentialsSchema,
+  [AppConnection.OctopusDeploy]: ValidateOctopusDeployConnectionCredentialsSchema,
+  [AppConnection.SSH]: ValidateSshConnectionCredentialsSchema
 };
 
 export const appConnectionServiceFactory = ({
@@ -391,6 +396,14 @@ export const appConnectionServiceFactory = ({
     }
 
     if (gatewayId) {
+      const plan = await licenseService.getPlan(actor.orgId);
+      if (!plan.gateway) {
+        throw new BadRequestError({
+          message:
+            "Your current plan does not support gateway usage with app connections. Please upgrade your plan or contact Infisical Sales for assistance."
+        });
+      }
+
       ForbiddenError.from(orgPermission).throwUnlessCan(
         OrgPermissionGatewayActions.AttachGateways,
         OrgPermissionSubjects.Gateway
@@ -891,6 +904,7 @@ export const appConnectionServiceFactory = ({
     northflank: northflankConnectionService(connectAppConnectionById),
     okta: oktaConnectionService(connectAppConnectionById),
     laravelForge: laravelForgeConnectionService(connectAppConnectionById),
-    chef: chefConnectionService(connectAppConnectionById, licenseService)
+    chef: chefConnectionService(connectAppConnectionById, licenseService),
+    octopusDeploy: octopusDeployConnectionService(connectAppConnectionById)
   };
 };

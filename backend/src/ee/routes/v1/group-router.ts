@@ -1,17 +1,31 @@
 import { z } from "zod";
 
-import { GroupsSchema, OrgMembershipRole, ProjectsSchema, UsersSchema } from "@app/db/schemas";
+import { GroupsSchema, IdentitiesSchema, OrgMembershipRole, ProjectsSchema, UsersSchema } from "@app/db/schemas";
 import {
-  EFilterReturnedProjects,
-  EFilterReturnedUsers,
-  EGroupProjectsOrderBy
+  FilterMemberType,
+  FilterReturnedMachineIdentities,
+  FilterReturnedProjects,
+  FilterReturnedUsers,
+  GroupMembersOrderBy,
+  GroupProjectsOrderBy
 } from "@app/ee/services/group/group-types";
 import { ApiDocsTags, GROUPS } from "@app/lib/api-docs";
 import { OrderByDirection } from "@app/lib/types";
+import { CharacterType, characterValidator } from "@app/lib/validator/validate-string";
 import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { slugSchema } from "@app/server/lib/schemas";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { AuthMode } from "@app/services/auth/auth-type";
+
+const GroupIdentityResponseSchema = IdentitiesSchema.pick({
+  id: true,
+  name: true
+});
+
+const GroupWithRoleSchema = GroupsSchema.extend({
+  role: z.string(),
+  roleId: z.string().nullish()
+});
 
 export const registerGroupRouter = async (server: FastifyZodProvider) => {
   server.route({
@@ -23,6 +37,7 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "createGroup",
       tags: [ApiDocsTags.Groups],
       body: z.object({
         name: z.string().trim().min(1).max(50).describe(GROUPS.CREATE.name),
@@ -55,12 +70,13 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "getGroupById",
       tags: [ApiDocsTags.Groups],
       params: z.object({
         id: z.string().trim().describe(GROUPS.GET_BY_ID.id)
       }),
       response: {
-        200: GroupsSchema.extend({
+        200: GroupWithRoleSchema.extend({
           customRoleSlug: z.string().nullable()
         })
       }
@@ -87,9 +103,10 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "listGroups",
       tags: [ApiDocsTags.Groups],
       response: {
-        200: GroupsSchema.array()
+        200: GroupWithRoleSchema.array()
       }
     },
     handler: async (req) => {
@@ -114,6 +131,7 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "updateGroup",
       tags: [ApiDocsTags.Groups],
       params: z.object({
         id: z.string().trim().describe(GROUPS.UPDATE.id)
@@ -152,6 +170,7 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "deleteGroup",
       tags: [ApiDocsTags.Groups],
       params: z.object({
         id: z.string().trim().describe(GROUPS.DELETE.id)
@@ -182,6 +201,7 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "listGroupUsers",
       tags: [ApiDocsTags.Groups],
       params: z.object({
         id: z.string().trim().describe(GROUPS.LIST_USERS.id)
@@ -190,8 +210,15 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
         offset: z.coerce.number().min(0).default(0).describe(GROUPS.LIST_USERS.offset),
         limit: z.coerce.number().min(1).max(100).default(10).describe(GROUPS.LIST_USERS.limit),
         username: z.string().trim().optional().describe(GROUPS.LIST_USERS.username),
-        search: z.string().trim().optional().describe(GROUPS.LIST_USERS.search),
-        filter: z.nativeEnum(EFilterReturnedUsers).optional().describe(GROUPS.LIST_USERS.filterUsers)
+        search: z
+          .string()
+          .trim()
+          .refine((val) => characterValidator([CharacterType.AlphaNumeric, CharacterType.Hyphen])(val), {
+            message: "Invalid pattern: only alphanumeric characters, - are allowed."
+          })
+          .optional()
+          .describe(GROUPS.LIST_USERS.search),
+        filter: z.nativeEnum(FilterReturnedUsers).optional().describe(GROUPS.LIST_USERS.filterUsers)
       }),
       response: {
         200: z.object({
@@ -202,12 +229,10 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
             lastName: true,
             id: true
           })
-            .merge(
-              z.object({
-                isPartOfGroup: z.boolean(),
-                joinedGroupAt: z.date().nullable()
-              })
-            )
+            .extend({
+              isPartOfGroup: z.boolean(),
+              joinedGroupAt: z.date().nullable()
+            })
             .array(),
           totalCount: z.number()
         })
@@ -229,6 +254,136 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
 
   server.route({
     method: "GET",
+    url: "/:id/machine-identities",
+    config: {
+      rateLimit: readLimit
+    },
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
+    schema: {
+      hide: false,
+      operationId: "listGroupMachineIdentities",
+      tags: [ApiDocsTags.Groups],
+      params: z.object({
+        id: z.string().trim().describe(GROUPS.LIST_MACHINE_IDENTITIES.id)
+      }),
+      querystring: z.object({
+        offset: z.coerce.number().min(0).default(0).describe(GROUPS.LIST_MACHINE_IDENTITIES.offset),
+        limit: z.coerce.number().min(1).max(100).default(10).describe(GROUPS.LIST_MACHINE_IDENTITIES.limit),
+        search: z
+          .string()
+          .trim()
+          .refine((val) => characterValidator([CharacterType.AlphaNumeric, CharacterType.Hyphen])(val), {
+            message: "Invalid pattern: only alphanumeric characters, - are allowed."
+          })
+          .optional()
+          .describe(GROUPS.LIST_MACHINE_IDENTITIES.search),
+        filter: z
+          .nativeEnum(FilterReturnedMachineIdentities)
+          .optional()
+          .describe(GROUPS.LIST_MACHINE_IDENTITIES.filterMachineIdentities)
+      }),
+      response: {
+        200: z.object({
+          machineIdentities: GroupIdentityResponseSchema.extend({
+            isPartOfGroup: z.boolean(),
+            joinedGroupAt: z.date().nullable()
+          }).array(),
+          totalCount: z.number()
+        })
+      }
+    },
+    handler: async (req) => {
+      const { machineIdentities, totalCount } = await server.services.group.listGroupMachineIdentities({
+        id: req.params.id,
+        actor: req.permission.type,
+        actorId: req.permission.id,
+        actorAuthMethod: req.permission.authMethod,
+        actorOrgId: req.permission.orgId,
+        ...req.query
+      });
+
+      return { machineIdentities, totalCount };
+    }
+  });
+
+  server.route({
+    method: "GET",
+    url: "/:id/members",
+    config: {
+      rateLimit: readLimit
+    },
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
+    schema: {
+      hide: false,
+      operationId: "listGroupMembers",
+      tags: [ApiDocsTags.Groups],
+      params: z.object({
+        id: z.string().trim().describe(GROUPS.LIST_MEMBERS.id)
+      }),
+      querystring: z.object({
+        offset: z.coerce.number().min(0).default(0).describe(GROUPS.LIST_MEMBERS.offset),
+        limit: z.coerce.number().min(1).max(100).default(10).describe(GROUPS.LIST_MEMBERS.limit),
+        search: z
+          .string()
+          .trim()
+          .refine((val) => characterValidator([CharacterType.AlphaNumeric, CharacterType.Hyphen])(val), {
+            message: "Invalid pattern: only alphanumeric characters, - are allowed."
+          })
+          .optional()
+          .describe(GROUPS.LIST_MEMBERS.search),
+        orderBy: z
+          .nativeEnum(GroupMembersOrderBy)
+          .default(GroupMembersOrderBy.Name)
+          .optional()
+          .describe(GROUPS.LIST_MEMBERS.orderBy),
+        orderDirection: z.nativeEnum(OrderByDirection).optional().describe(GROUPS.LIST_MEMBERS.orderDirection),
+        memberTypeFilter: z
+          .union([z.nativeEnum(FilterMemberType), z.array(z.nativeEnum(FilterMemberType))])
+          .optional()
+          .describe(GROUPS.LIST_MEMBERS.memberTypeFilter)
+          .transform((val) => {
+            if (!val) return undefined;
+            return Array.isArray(val) ? val : [val];
+          })
+      }),
+      response: {
+        200: z.object({
+          members: z
+            .discriminatedUnion("type", [
+              z.object({
+                id: z.string(),
+                joinedGroupAt: z.date().nullable(),
+                type: z.literal("user"),
+                user: UsersSchema.pick({ id: true, firstName: true, lastName: true, email: true, username: true })
+              }),
+              z.object({
+                id: z.string(),
+                joinedGroupAt: z.date().nullable(),
+                type: z.literal("machineIdentity"),
+                machineIdentity: GroupIdentityResponseSchema
+              })
+            ])
+            .array(),
+          totalCount: z.number()
+        })
+      }
+    },
+    handler: async (req) => {
+      const { members, totalCount } = await server.services.group.listGroupMembers({
+        id: req.params.id,
+        actor: req.permission.type,
+        actorId: req.permission.id,
+        actorAuthMethod: req.permission.authMethod,
+        actorOrgId: req.permission.orgId,
+        ...req.query
+      });
+
+      return { members, totalCount };
+    }
+  });
+
+  server.route({
+    method: "GET",
     url: "/:id/projects",
     config: {
       rateLimit: readLimit
@@ -236,6 +391,7 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "listGroupProjects",
       tags: [ApiDocsTags.Groups],
       params: z.object({
         id: z.string().trim().describe(GROUPS.LIST_PROJECTS.id)
@@ -243,11 +399,18 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
       querystring: z.object({
         offset: z.coerce.number().min(0).default(0).describe(GROUPS.LIST_PROJECTS.offset),
         limit: z.coerce.number().min(1).max(100).default(10).describe(GROUPS.LIST_PROJECTS.limit),
-        search: z.string().trim().optional().describe(GROUPS.LIST_PROJECTS.search),
-        filter: z.nativeEnum(EFilterReturnedProjects).optional().describe(GROUPS.LIST_PROJECTS.filterProjects),
+        search: z
+          .string()
+          .trim()
+          .refine((val) => characterValidator([CharacterType.AlphaNumeric, CharacterType.Hyphen])(val), {
+            message: "Invalid pattern: only alphanumeric characters, - are allowed."
+          })
+          .optional()
+          .describe(GROUPS.LIST_PROJECTS.search),
+        filter: z.nativeEnum(FilterReturnedProjects).optional().describe(GROUPS.LIST_PROJECTS.filterProjects),
         orderBy: z
-          .nativeEnum(EGroupProjectsOrderBy)
-          .default(EGroupProjectsOrderBy.Name)
+          .nativeEnum(GroupProjectsOrderBy)
+          .default(GroupProjectsOrderBy.Name)
           .describe(GROUPS.LIST_PROJECTS.orderBy),
         orderDirection: z
           .nativeEnum(OrderByDirection)
@@ -263,11 +426,9 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
             description: true,
             type: true
           })
-            .merge(
-              z.object({
-                joinedGroupAt: z.date().nullable()
-              })
-            )
+            .extend({
+              joinedGroupAt: z.date().nullable()
+            })
             .array(),
           totalCount: z.number()
         })
@@ -296,6 +457,7 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "addUserToGroup",
       tags: [ApiDocsTags.Groups],
       params: z.object({
         id: z.string().trim().describe(GROUPS.ADD_USER.id),
@@ -326,6 +488,41 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
   });
 
   server.route({
+    method: "POST",
+    url: "/:id/machine-identities/:machineIdentityId",
+    config: {
+      rateLimit: writeLimit
+    },
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
+    schema: {
+      hide: false,
+      operationId: "addMachineIdentityToGroup",
+      tags: [ApiDocsTags.Groups],
+      params: z.object({
+        id: z.string().trim().describe(GROUPS.ADD_MACHINE_IDENTITY.id),
+        machineIdentityId: z.string().trim().describe(GROUPS.ADD_MACHINE_IDENTITY.machineIdentityId)
+      }),
+      response: {
+        200: z.object({
+          id: z.string()
+        })
+      }
+    },
+    handler: async (req) => {
+      const machineIdentity = await server.services.group.addMachineIdentityToGroup({
+        id: req.params.id,
+        identityId: req.params.machineIdentityId,
+        actor: req.permission.type,
+        actorId: req.permission.id,
+        actorAuthMethod: req.permission.authMethod,
+        actorOrgId: req.permission.orgId
+      });
+
+      return machineIdentity;
+    }
+  });
+
+  server.route({
     method: "DELETE",
     url: "/:id/users/:username",
     config: {
@@ -334,6 +531,7 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
       hide: false,
+      operationId: "removeUserFromGroup",
       tags: [ApiDocsTags.Groups],
       params: z.object({
         id: z.string().trim().describe(GROUPS.DELETE_USER.id),
@@ -360,6 +558,41 @@ export const registerGroupRouter = async (server: FastifyZodProvider) => {
       });
 
       return user;
+    }
+  });
+
+  server.route({
+    method: "DELETE",
+    url: "/:id/machine-identities/:machineIdentityId",
+    config: {
+      rateLimit: writeLimit
+    },
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
+    schema: {
+      hide: false,
+      operationId: "removeMachineIdentityFromGroup",
+      tags: [ApiDocsTags.Groups],
+      params: z.object({
+        id: z.string().trim().describe(GROUPS.DELETE_MACHINE_IDENTITY.id),
+        machineIdentityId: z.string().trim().describe(GROUPS.DELETE_MACHINE_IDENTITY.machineIdentityId)
+      }),
+      response: {
+        200: z.object({
+          id: z.string()
+        })
+      }
+    },
+    handler: async (req) => {
+      const machineIdentity = await server.services.group.removeMachineIdentityFromGroup({
+        id: req.params.id,
+        identityId: req.params.machineIdentityId,
+        actor: req.permission.type,
+        actorId: req.permission.id,
+        actorAuthMethod: req.permission.authMethod,
+        actorOrgId: req.permission.orgId
+      });
+
+      return machineIdentity;
     }
   });
 };

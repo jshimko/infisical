@@ -417,7 +417,8 @@ export const orgServiceFactory = ({
       shareSecretsProductEnabled,
       maxSharedSecretLifetime,
       maxSharedSecretViewLimit,
-      blockDuplicateSecretSyncDestinations
+      blockDuplicateSecretSyncDestinations,
+      secretShareBrandConfig
     }
   }: TUpdateOrgDTO) => {
     const appCfg = getConfig();
@@ -437,8 +438,25 @@ export const orgServiceFactory = ({
         OrgPermissionSubjects.SecretShare
       );
     }
+
+    if (secretShareBrandConfig !== undefined) {
+      ForbiddenError.from(permission).throwUnlessCan(
+        OrgPermissionSecretShareAction.ManageSettings,
+        OrgPermissionSubjects.SecretShare
+      );
+    }
+
     const plan = await licenseService.getPlan(orgId);
     const currentOrg = await orgDAL.findOrgById(actorOrgId);
+
+    if (secretShareBrandConfig !== undefined) {
+      if (!plan.secretShareExternalBranding) {
+        throw new BadRequestError({
+          message:
+            "Failed to update secret share branding due to plan restriction. Upgrade plan to configure custom branding."
+        });
+      }
+    }
 
     if (enforceMfa !== undefined) {
       if (!plan.enforceMfa) {
@@ -602,7 +620,8 @@ export const orgServiceFactory = ({
       shareSecretsProductEnabled,
       maxSharedSecretLifetime,
       maxSharedSecretViewLimit,
-      blockDuplicateSecretSyncDestinations
+      blockDuplicateSecretSyncDestinations,
+      secretShareBrandConfig
     });
     if (!org) throw new NotFoundError({ message: `Organization with ID '${orgId}' not found` });
     return org;
@@ -937,10 +956,25 @@ export const orgServiceFactory = ({
       [`${TableName.Membership}.scopeOrgId` as "scopeOrgId"]: orgId
     });
 
-    if (!orgMembership)
+    if (!orgMembership) {
+      // Check if user is already a member
+      const [acceptedMembership] = await orgDAL.findMembership({
+        [`${TableName.Membership}.actorUserId` as "actorUserId"]: user.id,
+        scope: AccessScope.Organization,
+        status: OrgMembershipStatus.Accepted,
+        [`${TableName.Membership}.scopeOrgId` as "scopeOrgId"]: orgId
+      });
+
+      if (acceptedMembership) {
+        throw new BadRequestError({
+          message: "User is already a member of this organization"
+        });
+      }
+
       throw new NotFoundError({
         message: "No pending invitation found"
       });
+    }
 
     const organization = await orgDAL.findById(orgId);
 

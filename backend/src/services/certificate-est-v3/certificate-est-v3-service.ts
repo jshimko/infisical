@@ -7,11 +7,12 @@ import { TCertificateAuthorityCertDALFactory } from "@app/services/certificate-a
 import { TCertificateAuthorityDALFactory } from "@app/services/certificate-authority/certificate-authority-dal";
 import { getCaCertChain, getCaCertChains } from "@app/services/certificate-authority/certificate-authority-fns";
 import { TInternalCertificateAuthorityServiceFactory } from "@app/services/certificate-authority/internal/internal-certificate-authority-service";
+import { CertPolicyState } from "@app/services/certificate-common/certificate-constants";
 import { extractCertificateRequestFromCSR } from "@app/services/certificate-common/certificate-csr-utils";
 import { mapEnumsForValidation } from "@app/services/certificate-common/certificate-utils";
+import { TCertificatePolicyServiceFactory } from "@app/services/certificate-policy/certificate-policy-service";
 import { TCertificateProfileDALFactory } from "@app/services/certificate-profile/certificate-profile-dal";
 import { EnrollmentType } from "@app/services/certificate-profile/certificate-profile-types";
-import { TCertificateTemplateV2ServiceFactory } from "@app/services/certificate-template-v2/certificate-template-v2-service";
 import { TEstEnrollmentConfigDALFactory } from "@app/services/enrollment-config/est-enrollment-config-dal";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
@@ -19,10 +20,12 @@ import { getProjectKmsCertificateKeyId } from "@app/services/project/project-fns
 
 import { convertRawCertsToPkcs7 } from "../../ee/services/certificate-est/certificate-est-fns";
 import { TLicenseServiceFactory } from "../../ee/services/license/license-service";
+import { TCertificatePolicyDALFactory } from "../certificate-policy/certificate-policy-dal";
 
 type TCertificateEstV3ServiceFactoryDep = {
   internalCertificateAuthorityService: Pick<TInternalCertificateAuthorityServiceFactory, "signCertFromCa">;
-  certificateTemplateV2Service: Pick<TCertificateTemplateV2ServiceFactory, "validateCertificateRequest">;
+  certificatePolicyService: Pick<TCertificatePolicyServiceFactory, "validateCertificateRequest">;
+  certificatePolicyDAL: Pick<TCertificatePolicyDALFactory, "findById">;
   certificateAuthorityDAL: Pick<TCertificateAuthorityDALFactory, "findById" | "findByIdWithAssociatedCa">;
   certificateAuthorityCertDAL: Pick<TCertificateAuthorityCertDALFactory, "find" | "findById">;
   projectDAL: Pick<TProjectDALFactory, "findOne" | "updateById" | "transaction">;
@@ -36,7 +39,8 @@ export type TCertificateEstV3ServiceFactory = ReturnType<typeof certificateEstV3
 
 export const certificateEstV3ServiceFactory = ({
   internalCertificateAuthorityService,
-  certificateTemplateV2Service,
+  certificatePolicyService,
+  certificatePolicyDAL,
   certificateAuthorityCertDAL,
   certificateAuthorityDAL,
   projectDAL,
@@ -132,8 +136,8 @@ export const certificateEstV3ServiceFactory = ({
 
     const certificateRequest = extractCertificateRequestFromCSR(csr);
     const mappedCertificateRequest = mapEnumsForValidation(certificateRequest);
-    const validationResult = await certificateTemplateV2Service.validateCertificateRequest(
-      profile.certificateTemplateId,
+    const validationResult = await certificatePolicyService.validateCertificateRequest(
+      profile.certificatePolicyId,
       mappedCertificateRequest
     );
 
@@ -143,11 +147,36 @@ export const certificateEstV3ServiceFactory = ({
       });
     }
 
+    // Fetch the policy to get basicConstraints for CA certificate support
+    const policy = await certificatePolicyDAL.findById(profile.certificatePolicyId);
+
+    const csrRequestsCA = certificateRequest.basicConstraints?.isCA === true;
+    const policyIsCAState: CertPolicyState =
+      (policy?.basicConstraints?.isCA as CertPolicyState) || CertPolicyState.DENIED;
+
+    if (csrRequestsCA && policyIsCAState === CertPolicyState.DENIED) {
+      throw new BadRequestError({
+        message:
+          "CA certificate issuance is not allowed by this policy. The policy's basicConstraints must be set to 'allowed' or 'required'."
+      });
+    }
+
+    if (policyIsCAState === CertPolicyState.REQUIRED && !csrRequestsCA) {
+      throw new BadRequestError({
+        message:
+          "CA certificate issuance is required by this policy. The CSR must include basicConstraints with CA:TRUE."
+      });
+    }
+
+    const caBasicConstraints = csrRequestsCA ? { maxPathLength: policy?.basicConstraints?.maxPathLength } : undefined;
+
     const { certificate } = await internalCertificateAuthorityService.signCertFromCa({
       isInternal: true,
       caId: profile.caId,
       csr,
-      isFromProfile: true
+      isFromProfile: true,
+      // Pass CA settings to the CA service (undefined for leaf certificates, object for CA certificates)
+      basicConstraints: caBasicConstraints
     });
 
     return convertRawCertsToPkcs7([certificate.rawData]);
@@ -258,8 +287,8 @@ export const certificateEstV3ServiceFactory = ({
 
     const certificateRequest = extractCertificateRequestFromCSR(csr);
     const mappedCertificateRequest = mapEnumsForValidation(certificateRequest);
-    const validationResult = await certificateTemplateV2Service.validateCertificateRequest(
-      profile.certificateTemplateId,
+    const validationResult = await certificatePolicyService.validateCertificateRequest(
+      profile.certificatePolicyId,
       mappedCertificateRequest
     );
 
@@ -269,11 +298,38 @@ export const certificateEstV3ServiceFactory = ({
       });
     }
 
+    // Fetch the policy to get basicConstraints for CA certificate support
+    const policy = await certificatePolicyDAL.findById(profile.certificatePolicyId);
+
+    // Check if the CSR requests CA certificate
+    const csrRequestsCA = certificateRequest.basicConstraints?.isCA === true;
+    const policyIsCAState: CertPolicyState =
+      (policy?.basicConstraints?.isCA as CertPolicyState) || CertPolicyState.DENIED;
+
+    // Validate CA request against policy
+    if (csrRequestsCA && policyIsCAState === CertPolicyState.DENIED) {
+      throw new BadRequestError({
+        message:
+          "CA certificate issuance is not allowed by this policy. The policy's basicConstraints must be set to 'allowed' or 'required'."
+      });
+    }
+
+    if (policyIsCAState === CertPolicyState.REQUIRED && !csrRequestsCA) {
+      throw new BadRequestError({
+        message:
+          "CA certificate issuance is required by this policy. The CSR must include basicConstraints with CA:TRUE."
+      });
+    }
+
+    const caBasicConstraints = csrRequestsCA ? { maxPathLength: policy?.basicConstraints?.maxPathLength } : undefined;
+
     const { certificate } = await internalCertificateAuthorityService.signCertFromCa({
       isInternal: true,
       caId: profile.caId,
       csr,
-      isFromProfile: true
+      isFromProfile: true,
+      // Pass CA settings to the CA service (undefined for leaf certificates, object for CA certificates)
+      basicConstraints: caBasicConstraints
     });
 
     return convertRawCertsToPkcs7([certificate.rawData]);

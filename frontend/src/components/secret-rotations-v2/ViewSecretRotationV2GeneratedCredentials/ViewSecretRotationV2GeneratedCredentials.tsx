@@ -5,6 +5,7 @@ import { format } from "date-fns";
 
 import { ViewAuth0ClientSecretRotationGeneratedCredentials } from "@app/components/secret-rotations-v2/ViewSecretRotationV2GeneratedCredentials/ViewAuth0ClientSecretRotationGeneratedCredentials";
 import { ViewAzureClientSecretRotationGeneratedCredentials } from "@app/components/secret-rotations-v2/ViewSecretRotationV2GeneratedCredentials/ViewAzureClientSecretRotationGeneratedCredentials";
+import { ViewDatabricksServicePrincipalSecretRotationGeneratedCredentials } from "@app/components/secret-rotations-v2/ViewSecretRotationV2GeneratedCredentials/ViewDatabricksServicePrincipalSecretRotationGeneratedCredentials";
 import { ViewLdapPasswordRotationGeneratedCredentials } from "@app/components/secret-rotations-v2/ViewSecretRotationV2GeneratedCredentials/ViewLdapPasswordRotationGeneratedCredentials";
 import { Modal, ModalContent, Spinner } from "@app/components/v2";
 import { NoticeBannerV2 } from "@app/components/v2/NoticeBannerV2/NoticeBannerV2";
@@ -24,6 +25,7 @@ import { ViewSqlCredentialsRotationGeneratedCredentials } from "./shared";
 import { ViewAwsIamUserSecretRotationGeneratedCredentials } from "./ViewAwsIamUserSecretRotationGeneratedCredentials";
 import { ViewOktaClientSecretRotationGeneratedCredentials } from "./ViewOktaClientSecretRotationGeneratedCredentials";
 import { ViewRedisCredentialsRotationGeneratedCredentials } from "./ViewRedisCredentialsRotationGeneratedCredentials";
+import { ViewUnixLinuxLocalAccountRotationGeneratedCredentials } from "./ViewUnixLinuxLocalAccountRotationGeneratedCredentials";
 
 type Props = {
   secretRotation?: TSecretRotationV2;
@@ -112,6 +114,20 @@ const Content = ({ secretRotation }: ContentProps) => {
     case SecretRotation.RedisCredentials:
       Component = (
         <ViewRedisCredentialsRotationGeneratedCredentials
+          generatedCredentialsResponse={generatedCredentialsResponse}
+        />
+      );
+      break;
+    case SecretRotation.DatabricksServicePrincipalSecret:
+      Component = (
+        <ViewDatabricksServicePrincipalSecretRotationGeneratedCredentials
+          generatedCredentialsResponse={generatedCredentialsResponse}
+        />
+      );
+      break;
+    case SecretRotation.UnixLinuxLocalAccount:
+      Component = (
+        <ViewUnixLinuxLocalAccountRotationGeneratedCredentials
           generatedCredentialsResponse={generatedCredentialsResponse}
         />
       );

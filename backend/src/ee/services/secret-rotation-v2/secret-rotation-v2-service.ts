@@ -15,6 +15,7 @@ import {
 } from "@app/ee/services/permission/project-permission";
 import { auth0ClientSecretRotationFactory } from "@app/ee/services/secret-rotation-v2/auth0-client-secret/auth0-client-secret-rotation-fns";
 import { azureClientSecretRotationFactory } from "@app/ee/services/secret-rotation-v2/azure-client-secret/azure-client-secret-rotation-fns";
+import { databricksServicePrincipalSecretRotationFactory } from "@app/ee/services/secret-rotation-v2/databricks-service-principal-secret/databricks-service-principal-secret-rotation-fns";
 import { ldapPasswordRotationFactory } from "@app/ee/services/secret-rotation-v2/ldap-password/ldap-password-rotation-fns";
 import { SecretRotation, SecretRotationStatus } from "@app/ee/services/secret-rotation-v2/secret-rotation-v2-enums";
 import {
@@ -88,6 +89,12 @@ import { mongodbCredentialsRotationFactory } from "./mongodb-credentials/mongodb
 import { oktaClientSecretRotationFactory } from "./okta-client-secret/okta-client-secret-rotation-fns";
 import { redisCredentialsRotationFactory } from "./redis-credentials/redis-credentials-rotation-fns";
 import { TSecretRotationV2DALFactory } from "./secret-rotation-v2-dal";
+import { unixLinuxLocalAccountRotationFactory } from "./unix-linux-local-account-rotation/unix-linux-local-account-rotation-fns";
+import { UnixLinuxLocalAccountRotationMethod } from "./unix-linux-local-account-rotation/unix-linux-local-account-rotation-schemas";
+import {
+  TUnixLinuxLocalAccountRotation,
+  TUnixLinuxLocalAccountRotationGeneratedCredentials
+} from "./unix-linux-local-account-rotation/unix-linux-local-account-rotation-types";
 
 export type TSecretRotationV2ServiceFactoryDep = {
   secretRotationV2DAL: TSecretRotationV2DALFactory;
@@ -136,7 +143,10 @@ const SECRET_ROTATION_FACTORY_MAP: Record<SecretRotation, TRotationFactoryImplem
   [SecretRotation.LdapPassword]: ldapPasswordRotationFactory as TRotationFactoryImplementation,
   [SecretRotation.OktaClientSecret]: oktaClientSecretRotationFactory as TRotationFactoryImplementation,
   [SecretRotation.RedisCredentials]: redisCredentialsRotationFactory as TRotationFactoryImplementation,
-  [SecretRotation.MongoDBCredentials]: mongodbCredentialsRotationFactory as TRotationFactoryImplementation
+  [SecretRotation.MongoDBCredentials]: mongodbCredentialsRotationFactory as TRotationFactoryImplementation,
+  [SecretRotation.DatabricksServicePrincipalSecret]:
+    databricksServicePrincipalSecretRotationFactory as TRotationFactoryImplementation,
+  [SecretRotation.UnixLinuxLocalAccount]: unixLinuxLocalAccountRotationFactory as TRotationFactoryImplementation
 };
 
 export const secretRotationV2ServiceFactory = ({
@@ -1371,6 +1381,169 @@ export const secretRotationV2ServiceFactory = ({
     return secretRotations as TSecretRotationV2[];
   };
 
+  const reconcileUnixLinuxLocalAccountRotation = async (
+    { rotationId }: { rotationId: string },
+    actor: OrgServiceActor
+  ) => {
+    const plan = await licenseService.getPlan(actor.orgId);
+
+    if (!plan.secretRotation)
+      throw new BadRequestError({
+        message:
+          "Failed to reconcile secret rotation due to plan restriction. Upgrade plan to reconcile secret rotations."
+      });
+
+    const secretRotation = await secretRotationV2DAL.findById(rotationId);
+
+    if (!secretRotation)
+      throw new NotFoundError({
+        message: `Could not find Secret Rotation with ID "${rotationId}"`
+      });
+
+    if (secretRotation.type !== SecretRotation.UnixLinuxLocalAccount)
+      throw new BadRequestError({
+        message: "Reconcile operation is only supported for Unix/Linux Local Account rotations"
+      });
+
+    const { projectId, environment, folder, connection, encryptedGeneratedCredentials, parameters, folderId } =
+      secretRotation;
+
+    const { permission } = await permissionService.getProjectPermission({
+      actor: actor.type,
+      actorId: actor.id,
+      actorAuthMethod: actor.authMethod,
+      actorOrgId: actor.orgId,
+      actionProjectType: ActionProjectType.SecretManager,
+      projectId
+    });
+
+    ForbiddenError.from(permission).throwUnlessCan(
+      ProjectPermissionSecretRotationActions.RotateSecrets,
+      subject(ProjectPermissionSub.SecretRotation, {
+        environment: environment.slug,
+        secretPath: folder.path
+      })
+    );
+
+    const unixLinuxParams = parameters as TUnixLinuxLocalAccountRotation["parameters"];
+
+    // Only allow reconcile for self-rotation mode
+    if (unixLinuxParams.rotationMethod !== UnixLinuxLocalAccountRotationMethod.LoginAsTarget) {
+      throw new BadRequestError({
+        message: "Reconcile operation is only supported for self-rotation mode Unix/Linux Local Account rotations"
+      });
+    }
+
+    // Get current generated credentials
+    const generatedCredentials = await decryptSecretRotationCredentials({
+      projectId,
+      encryptedGeneratedCredentials,
+      kmsService
+    });
+
+    const activeCredentials = generatedCredentials[
+      secretRotation.activeIndex
+    ] as TUnixLinuxLocalAccountRotationGeneratedCredentials[number];
+    const appConnection = await decryptAppConnection(connection, kmsService);
+
+    // Use the rotation factory to perform a rotation using the app connection credentials
+    const rotationFactory = SECRET_ROTATION_FACTORY_MAP[SecretRotation.UnixLinuxLocalAccount](
+      {
+        ...secretRotation,
+        // Override rotation method to managed so it uses the app connection credentials
+        parameters: {
+          ...unixLinuxParams,
+          rotationMethod: UnixLinuxLocalAccountRotationMethod.LoginAsRoot
+        },
+        connection: appConnection
+      } as TSecretRotationV2WithConnection,
+      appConnectionDAL,
+      kmsService,
+      gatewayService,
+      gatewayV2Service
+    );
+
+    // Issue new credentials using managed mode (app connection credentials)
+    const updatedRotation = await rotationFactory.issueCredentials(
+      async (newCredentials) => {
+        const unixLinuxCredentials = newCredentials as TUnixLinuxLocalAccountRotationGeneratedCredentials[number];
+        const updatedCredentials = [...generatedCredentials];
+        updatedCredentials[secretRotation.activeIndex] = unixLinuxCredentials;
+
+        const encryptedUpdatedCredentials = await encryptSecretRotationCredentials({
+          projectId,
+          generatedCredentials: updatedCredentials as TSecretRotationV2GeneratedCredentials,
+          kmsService
+        });
+
+        return secretRotationV2DAL.transaction(async (tx) => {
+          const { encryptor } = await kmsService.createCipherPairWithDataKey({
+            type: KmsDataKey.SecretManager,
+            projectId
+          });
+
+          // Update the password secret with the new value
+          const secretsMapping = secretRotation.secretsMapping as TUnixLinuxLocalAccountRotation["secretsMapping"];
+
+          await fnSecretBulkUpdate({
+            folderId,
+            orgId: connection.orgId,
+            tx,
+            inputSecrets: [
+              {
+                filter: {
+                  key: secretsMapping.password,
+                  folderId,
+                  type: SecretType.Shared
+                },
+                data: {
+                  encryptedValue: encryptor({
+                    plainText: Buffer.from(unixLinuxCredentials.password)
+                  }).cipherTextBlob,
+                  references: []
+                }
+              }
+            ],
+            secretDAL: secretV2BridgeDAL,
+            secretVersionDAL: secretVersionV2BridgeDAL,
+            secretVersionTagDAL: secretVersionTagV2BridgeDAL,
+            folderCommitService,
+            actor: { type: ActorType.PLATFORM },
+            secretTagDAL,
+            resourceMetadataDAL
+          });
+
+          return secretRotationV2DAL.updateById(
+            rotationId,
+            {
+              encryptedGeneratedCredentials: encryptedUpdatedCredentials,
+              lastRotatedAt: new Date(),
+              rotationStatus: SecretRotationStatus.Success
+            },
+            tx
+          );
+        });
+      },
+      { password: activeCredentials.password }
+    );
+
+    await secretV2BridgeDAL.invalidateSecretCacheByProjectId(projectId);
+    await snapshotService.performSnapshot(folder.id);
+    await secretQueueService.syncSecrets({
+      orgId: connection.orgId,
+      secretPath: folder.path,
+      projectId,
+      environmentSlug: environment.slug,
+      excludeReplication: true
+    });
+
+    return {
+      message: "Unix/Linux Local Account credentials reconciled successfully",
+      reconciled: true,
+      secretRotation: await expandSecretRotation(updatedRotation, kmsService)
+    };
+  };
+
   return {
     listSecretRotationOptions,
     listSecretRotationsByProjectId,
@@ -1384,6 +1557,7 @@ export const secretRotationV2ServiceFactory = ({
     rotateGeneratedCredentials,
     getDashboardSecretRotationCount,
     getDashboardSecretRotations,
-    getQuickSearchSecretRotations
+    getQuickSearchSecretRotations,
+    reconcileUnixLinuxLocalAccountRotation
   };
 };

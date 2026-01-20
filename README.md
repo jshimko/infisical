@@ -62,7 +62,7 @@ We're on a mission to make security tooling more accessible to everyone, not jus
   CA hierarchy directly within Infisical.
 - **[External CA](https://infisical.com/docs/documentation/platform/pki/ca/external-ca)**: Integrate with third-party certificate authorities such as Let’s Encrypt, DigiCert, Microsoft AD CS, and more to leverage existing PKI infrastructure
   or issue publicly trusted certificates.
-- **[Certificate Lifecycle Management](https://infisical.com/docs/documentation/platform/pki/certificates/overview)**: Create certificate [profiles](https://infisical.com/docs/documentation/platform/pki/certificates/profiles) and [templates](https://infisical.com/docs/documentation/platform/pki/certificates/templates) to control how certificates are issued, including [enrollment methods](https://infisical.com/docs/documentation/platform/pki/enrollment-methods/overview) such as API, ACME, or EST. Manage the full lifecycle from issuance to renewal and [revocation](https://infisical.com/docs/documentation/platform/pki/certificates/certificates#guide-to-revoking-certificates) with CRL and inventory tracking.
+- **[Certificate Lifecycle Management](https://infisical.com/docs/documentation/platform/pki/certificates/overview)**: Create certificate [profiles](https://infisical.com/docs/documentation/platform/pki/certificates/profiles) and [policies](https://infisical.com/docs/documentation/platform/pki/certificates/policies) to control how certificates are issued, including [enrollment methods](https://infisical.com/docs/documentation/platform/pki/enrollment-methods/overview) such as API, ACME, or EST. Manage the full lifecycle from issuance to renewal and [revocation](https://infisical.com/docs/documentation/platform/pki/certificates/certificates#guide-to-revoking-certificates) with CRL and inventory tracking.
 - **[Certificate Syncs](https://infisical.com/docs/documentation/platform/pki/certificate-syncs/overview)**: Sync certificates to external platforms like [AWS Certificate Manager](https://infisical.com/docs/documentation/platform/pki/certificate-syncs/aws-certificate-manager) and [Azure Key Vault](https://infisical.com/docs/documentation/platform/pki/certificate-syncs/azure-key-vault).
 - **[Alerting](https://infisical.com/docs/documentation/platform/pki/alerting)**: Configure alerting for expiring CA and end-entity certificates.
 
@@ -100,13 +100,13 @@ To set up and run Infisical locally, make sure you have Git and Docker installed
 Linux/macOS:
 
 ```console
-git clone https://github.com/Infisical/infisical && cd "$(basename $_ .git)" && cp .env.example .env && docker compose -f docker-compose.prod.yml up
+git clone https://github.com/Infisical/infisical && cd "$(basename $_ .git)" && cp .env.dev.example .env && docker compose -f docker-compose.prod.yml up
 ```
 
 Windows Command Prompt:
 
 ```console
-git clone https://github.com/Infisical/infisical && cd infisical && copy .env.example .env && docker compose -f docker-compose.prod.yml up
+git clone https://github.com/Infisical/infisical && cd infisical && copy .env.dev.example .env && docker compose -f docker-compose.prod.yml up
 ```
 
 Create an account at `http://localhost:80`

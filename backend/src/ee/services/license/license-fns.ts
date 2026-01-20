@@ -113,7 +113,7 @@ export const getDefaultOnPremFeatures = (): TFeatureSet => ({
   eventSubscriptions: false,
   machineIdentityAuthTemplates: false,
   pkiLegacyTemplates: false,
-  pam: false
+  secretShareExternalBranding: false
 });
 
 export const setupLicenseRequestWithStore = (

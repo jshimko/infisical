@@ -1,5 +1,6 @@
 import {
   AccessScope,
+  OrgMembershipRole,
   OrgMembershipStatus,
   ProjectMembershipRole,
   TemporaryPermissionMode,
@@ -19,6 +20,7 @@ import { TAuthTokenServiceFactory } from "../auth-token/auth-token-service";
 import { TMembershipRoleDALFactory } from "../membership/membership-role-dal";
 import { TOrgDALFactory } from "../org/org-dal";
 import { deleteOrgMembershipsFn } from "../org/org-fns";
+import { isCustomOrgRole } from "../org/org-role-fns";
 import { TProjectDALFactory } from "../project/project-dal";
 import { TProjectKeyDALFactory } from "../project-key/project-key-dal";
 import { TRoleDALFactory } from "../role/role-dal";
@@ -157,13 +159,37 @@ export const membershipUserServiceFactory = ({
     const { scopeData, data } = dto;
     const factory = scopeFactory[scopeData.scope];
 
-    const hasNoPermanentRole = data.roles.every((el) => el.isTemporary);
+    const orgDetails = await orgDAL.findById(dto.permission.orgId);
+
+    // If roles array is empty and scope is Organization, use org's default role
+    let rolesToUse = data.roles;
+    if (data.roles.length === 0 && scopeData.scope === AccessScope.Organization) {
+      const defaultMembershipRole = orgDetails.defaultMembershipRole || OrgMembershipRole.NoAccess;
+
+      let defaultRole: string;
+      if (isCustomOrgRole(defaultMembershipRole)) {
+        const customRoles = await roleDAL.find({
+          id: defaultMembershipRole,
+          orgId: dto.permission.orgId
+        });
+        if (customRoles.length === 0) {
+          throw new NotFoundError({ message: "Default custom role not found" });
+        }
+        defaultRole = customRoles[0].slug;
+      } else {
+        defaultRole = defaultMembershipRole;
+      }
+
+      rolesToUse = [{ isTemporary: false, role: defaultRole }];
+    }
+
+    const hasNoPermanentRole = rolesToUse.every((el) => el.isTemporary);
     if (hasNoPermanentRole) {
       throw new BadRequestError({
         message: "User must have at least one permanent role"
       });
     }
-    const isInvalidTemporaryRole = data.roles.some((el) => {
+    const isInvalidTemporaryRole = rolesToUse.some((el) => {
       if (el.isTemporary) {
         if (!el.temporaryAccessStartTime || !el.temporaryRange) {
           return true;
@@ -188,7 +214,6 @@ export const membershipUserServiceFactory = ({
     });
 
     if (existingMemberships.length === users.length) return { memberships: [] };
-    const orgDetails = await orgDAL.findById(dto.permission.orgId);
     const isSubOrganization = Boolean(orgDetails.rootOrgId);
 
     const newMembershipUsers = users.filter((user) => !existingMemberships?.find((el) => el.actorUserId === user.id));
@@ -212,7 +237,7 @@ export const membershipUserServiceFactory = ({
       };
     });
 
-    const customInputRoles = data.roles.filter((el) => factory.isCustomRole(el.role));
+    const customInputRoles = rolesToUse.filter((el) => factory.isCustomRole(el.role));
     const hasCustomRole = customInputRoles.length > 0;
     if (hasCustomRole) {
       const plan = await licenseService.getPlan(scopeData.orgId);
@@ -241,7 +266,7 @@ export const membershipUserServiceFactory = ({
 
       const roleDocs: TMembershipRolesInsert[] = [];
       docs.forEach((membership) => {
-        data.roles.forEach((membershipRole) => {
+        rolesToUse.forEach((membershipRole) => {
           const isCustomRole = Boolean(customRolesGroupBySlug?.[membershipRole.role]?.[0]);
           if (membershipRole.isTemporary) {
             const relativeTimeInMs = membershipRole.temporaryRange ? ms(membershipRole.temporaryRange) : null;

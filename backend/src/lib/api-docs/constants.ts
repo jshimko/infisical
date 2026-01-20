@@ -59,6 +59,7 @@ export enum ApiDocsTags {
   AuditLogs = "Audit Logs",
   PkiCertificateAuthorities = "PKI Certificate Authorities",
   PkiCertificates = "PKI Certificates",
+  PkiCertificatePolicies = "PKI Certificate Policies",
   PkiCertificateTemplates = "PKI Certificate Templates",
   PkiCertificateProfiles = "PKI Certificate Profiles",
   PkiCertificateCollections = "PKI Certificate Collections",
@@ -77,6 +78,7 @@ export enum ApiDocsTags {
   OidcSso = "OIDC SSO",
   SamlSso = "SAML SSO",
   LdapSso = "LDAP SSO",
+  Scim = "SCIM",
   Events = "Event Subscriptions"
 }
 
@@ -106,6 +108,25 @@ export const GROUPS = {
     filterUsers:
       "Whether to filter the list of returned users. 'existingMembers' will only return existing users in the group, 'nonMembers' will only return users not in the group, undefined will return all users in the organization."
   },
+  LIST_MACHINE_IDENTITIES: {
+    id: "The ID of the group to list identities for.",
+    offset: "The offset to start from. If you enter 10, it will start from the 10th identity.",
+    limit: "The number of identities to return.",
+    search: "The text string that machine identity name will be filtered by.",
+    filterMachineIdentities:
+      "Whether to filter the list of returned identities. 'assignedMachineIdentities' will only return identities assigned to the group, 'nonAssignedMachineIdentities' will only return identities not assigned to the group, undefined will return all identities in the organization."
+  },
+  LIST_MEMBERS: {
+    id: "The ID of the group to list members for.",
+    offset: "The offset to start from. If you enter 10, it will start from the 10th member.",
+    limit: "The number of members to return.",
+    search:
+      "The text string that member email(in case of users) or name(in case of machine identities) will be filtered by.",
+    orderBy: "The column to order members by.",
+    orderDirection: "The direction to order members in.",
+    memberTypeFilter:
+      "Filter members by type. Can be a single value ('users' or 'machineIdentities') or an array of values. If not specified, both users and machine identities will be returned."
+  },
   LIST_PROJECTS: {
     id: "The ID of the group to list projects for.",
     offset: "The offset to start from. If you enter 10, it will start from the 10th project.",
@@ -120,12 +141,20 @@ export const GROUPS = {
     id: "The ID of the group to add the user to.",
     username: "The username of the user to add to the group."
   },
+  ADD_MACHINE_IDENTITY: {
+    id: "The ID of the group to add the machine identity to.",
+    machineIdentityId: "The ID of the machine identity to add to the group."
+  },
   GET_BY_ID: {
     id: "The ID of the group to fetch."
   },
   DELETE_USER: {
     id: "The ID of the group to remove the user from.",
     username: "The username of the user to remove from the group."
+  },
+  DELETE_MACHINE_IDENTITY: {
+    id: "The ID of the group to remove the machine identity from.",
+    machineIdentityId: "The ID of the machine identity to remove from the group."
   }
 } as const;
 
@@ -2269,6 +2298,10 @@ export const KMS = {
     keyId: "The ID of the key to get the public key for. The key must be for signing and verifying."
   },
 
+  GET_PRIVATE_KEY: {
+    keyId: "The ID of the key to export the private key or key material for."
+  },
+
   SIGN: {
     keyId: "The ID of the key to sign the data with.",
     data: "The data in string format to be signed (base64 encoded).",
@@ -2522,6 +2555,19 @@ export const AppConnections = {
       orgName: "The short name of the Chef organization to connect to.",
       userName: "The username used to access Chef.",
       privateKey: "The private key used to access Chef."
+    },
+    OCTOPUS_DEPLOY: {
+      instanceUrl: "The Octopus Deploy instance URL to connect to.",
+      apiKey: "The API key used to authenticate with Octopus Deploy."
+    },
+    SSH: {
+      host: "The hostname or IP address of the SSH server.",
+      port: "The port number of the SSH server (default: 22).",
+      username: "The username for SSH authentication.",
+      authMethod: "The authentication method to use (password or ssh-key).",
+      password: "The password for SSH authentication (required when authMethod is 'password').",
+      privateKey: "The private key in PEM format for SSH authentication (required when authMethod is 'ssh-key').",
+      passphrase: "The passphrase for the private key, if encrypted (optional, only for 'ssh-key' authMethod)."
     }
   }
 };
@@ -2682,6 +2728,14 @@ export const SecretSyncs = {
       siteId: "The ID of the Laravel Forge site to sync secrets to.",
       siteName: "The name of the Laravel Forge site to sync secrets to."
     },
+    OCTOPUS_DEPLOY: {
+      spaceId: "The ID of the Octopus Deploy space to sync secrets to.",
+      spaceName: "The name of the Octopus Deploy space to sync secrets to.",
+      projectId: "The ID of the Octopus Deploy project to sync secrets to.",
+      projectName: "The name of the Octopus Deploy project to sync secrets to.",
+      scope: "The Octopus Deploy scope that secrets should be synced to.",
+      scopeValues: "The Octopus Deploy scope values that secrets should be synced to."
+    },
     WINDMILL: {
       workspace: "The Windmill workspace to sync secrets to.",
       path: "The Windmill workspace path to sync secrets to."
@@ -2831,12 +2885,16 @@ export const SecretRotations = {
   ROTATE: (type: SecretRotation) => ({
     rotationId: `The ID of the ${SECRET_ROTATION_NAME_MAP[type]} Rotation to rotate generated credentials for.`
   }),
+  RECONCILE: {
+    rotationId: "The ID of the SSH Password Rotation to reconcile credentials for."
+  },
   PARAMETERS: {
     SQL_CREDENTIALS: {
       username1:
         "The username of the first login to rotate passwords for. This user must already exists in your database.",
       username2:
-        "The username of the second login to rotate passwords for. This user must already exists in your database."
+        "The username of the second login to rotate passwords for. This user must already exists in your database.",
+      rotationStatement: "The SQL template query used for rotation."
     },
     AUTH0_CLIENT_SECRET: {
       clientId: "The client ID of the Auth0 Application to rotate the client secret for."
@@ -2851,6 +2909,12 @@ export const SecretRotations = {
       rotationMethod:
         'Whether the rotation should be performed by the LDAP "connection-principal" or the "target-principal" (defaults to \'connection-principal\').',
       password: 'The password of the provided principal if "parameters.rotationMethod" is set to "target-principal".'
+    },
+    UNIX_LINUX_LOCAL_ACCOUNT: {
+      username: "The username of the Unix/Linux user account to rotate the password for.",
+      rotationMethod:
+        'Whether the rotation should be performed using "self" (the target user\'s own credentials) or "managed" (the SSH connection\'s admin credentials). Defaults to "managed".',
+      password: 'The current password of the target user if "parameters.rotationMethod" is set to "managed".'
     },
     GENERAL: {
       PASSWORD_REQUIREMENTS: {
@@ -2880,6 +2944,16 @@ export const SecretRotations = {
         "The username of the first MongoDB user to rotate passwords for. This user must already exist in your database.",
       username2:
         "The username of the second MongoDB user to rotate passwords for. This user must already exist in your database."
+    },
+    DATABRICKS_SERVICE_PRINCIPAL_SECRET: {
+      servicePrincipalId: "The ID of the Databricks Service Principal to rotate the OAuth secret for.",
+      servicePrincipalName: "The name of the Databricks Service Principal to rotate the OAuth secret for.",
+      clientId: "The client ID of the Databricks Service Principal to rotate the OAuth secret for."
+    },
+    DATABRICKS_SERVICE_ACCOUNT_SECRET: {
+      servicePrincipalId: "The ID of the Databricks Service Principal to rotate the OAuth secret for.",
+      servicePrincipalName: "The name of the Databricks Service Principal to rotate the OAuth secret for.",
+      clientId: "The client ID of the Databricks Service Principal to rotate the OAuth secret for."
     }
   },
   SECRETS_MAPPING: {
@@ -2903,6 +2977,10 @@ export const SecretRotations = {
       dn: "The name of the secret that the Distinguished Name (DN) or User Principal Name (UPN) of the principal will be mapped to.",
       password: "The name of the secret that the rotated password will be mapped to."
     },
+    UNIX_LINUX_LOCAL_ACCOUNT: {
+      username: "The name of the secret that the username will be mapped to.",
+      password: "The name of the secret that the rotated password will be mapped to."
+    },
     AWS_IAM_USER_SECRET: {
       accessKeyId: "The name of the secret that the access key ID will be mapped to.",
       secretAccessKey: "The name of the secret that the rotated secret access key will be mapped to."
@@ -2914,6 +2992,14 @@ export const SecretRotations = {
     MONGODB_CREDENTIALS: {
       username: "The name of the secret that the active username will be mapped to.",
       password: "The name of the secret that the generated password will be mapped to."
+    },
+    DATABRICKS_SERVICE_PRINCIPAL_SECRET: {
+      clientId: "The name of the secret that the client ID will be mapped to.",
+      clientSecret: "The name of the secret that the rotated OAuth client secret will be mapped to."
+    },
+    DATABRICKS_SERVICE_ACCOUNT_SECRET: {
+      clientId: "The name of the secret that the client ID will be mapped to.",
+      clientSecret: "The name of the secret that the rotated OAuth client secret will be mapped to."
     }
   }
 };
@@ -3121,6 +3207,13 @@ export const LdapSso = {
     groupSearchFilter:
       "The template used when constructing the group membership query such as `(&(objectClass=posixGroup)(memberUid={{.Username}}))`. The template can access the following context variables: `[UserDN, UserName]`. The default is `(|(memberUid={{.Username}})(member={{.UserDN}})(uniqueMember={{.UserDN}}))` which is compatible with several common directory schemas.",
     caCert: "The CA certificate to use when verifying the LDAP server certificate."
+  }
+};
+
+export const Scim = {
+  UPDATE_GROUP_ORG_ROLE_MAPPINGS: {
+    groupName: "The name of the group in the SCIM provider.",
+    roleSlug: "The slug of the role that group members should be assigned when provisioned."
   }
 };
 

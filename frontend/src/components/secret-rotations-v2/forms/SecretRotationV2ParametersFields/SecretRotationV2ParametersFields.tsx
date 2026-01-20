@@ -6,10 +6,13 @@ import { TSecretRotationV2Form } from "../schemas";
 import { Auth0ClientSecretRotationParametersFields } from "./Auth0ClientSecretRotationParametersFields";
 import { AwsIamUserSecretRotationParametersFields } from "./AwsIamUserSecretRotationParametersFields";
 import { AzureClientSecretRotationParametersFields } from "./AzureClientSecretRotationParametersFields";
+import { DatabricksServicePrincipalSecretRotationParametersFields } from "./DatabricksServicePrincipalSecretRotationParametersFields";
 import { LdapPasswordRotationParametersFields } from "./LdapPasswordRotationParametersFields";
+import { MongoRotationParametersFields } from "./MongoRotationParametersFields";
 import { OktaClientSecretRotationParametersFields } from "./OktaClientSecretRotationParametersFields";
 import { RedisCredentialsRotationParametersFields } from "./RedisCredentialsRotationParametersFields";
 import { SqlCredentialsRotationParametersFields } from "./shared";
+import { UnixLinuxLocalAccountRotationParametersFields } from "./UnixLinuxLocalAccountRotationParametersFields";
 
 const COMPONENT_MAP: Record<SecretRotation, React.FC> = {
   [SecretRotation.PostgresCredentials]: SqlCredentialsRotationParametersFields,
@@ -22,7 +25,10 @@ const COMPONENT_MAP: Record<SecretRotation, React.FC> = {
   [SecretRotation.AwsIamUserSecret]: AwsIamUserSecretRotationParametersFields,
   [SecretRotation.OktaClientSecret]: OktaClientSecretRotationParametersFields,
   [SecretRotation.RedisCredentials]: RedisCredentialsRotationParametersFields,
-  [SecretRotation.MongoDBCredentials]: SqlCredentialsRotationParametersFields
+  [SecretRotation.MongoDBCredentials]: MongoRotationParametersFields,
+  [SecretRotation.DatabricksServicePrincipalSecret]:
+    DatabricksServicePrincipalSecretRotationParametersFields,
+  [SecretRotation.UnixLinuxLocalAccount]: UnixLinuxLocalAccountRotationParametersFields
 };
 
 export const SecretRotationV2ParametersFields = () => {

@@ -13,9 +13,9 @@ import { registerProjectBotRouter } from "./bot-router";
 import { registerCaRouter } from "./certificate-authority-router";
 import { CERTIFICATE_AUTHORITY_REGISTER_ROUTER_MAP } from "./certificate-authority-routers";
 import { registerGeneralCertificateAuthorityRouter } from "./certificate-authority-routers/general-certificate-authority-router";
+import { registerCertificatePolicyRouter } from "./certificate-policy-router";
 import { registerCertificateProfilesRouter } from "./certificate-profiles-router";
 import { registerCertificateRouter } from "./certificate-router";
-import { registerCertificateTemplateRouter } from "./certificate-template-router";
 import { DEPRECATED_CERTIFICATE_AUTHORITY_REGISTER_ROUTER_MAP } from "./deprecated-certificate-authority-routers";
 import { registerDeprecatedCertRouter } from "./deprecated-certificate-router";
 import { registerDeprecatedCertificateTemplateRouter } from "./deprecated-certificate-template-router";
@@ -169,14 +169,24 @@ export const registerV1Routes = async (server: FastifyZodProvider) => {
         }
       );
       await pkiRouter.register(registerCertificateRouter, { prefix: "/certificates" });
-      await pkiRouter.register(registerCertificateTemplateRouter, { prefix: "/certificate-templates" });
-      await pkiRouter.register(registerCertificateProfilesRouter, { prefix: "/certificate-profiles" });
+      await pkiRouter.register(registerCertificatePolicyRouter, { prefix: "/certificate-policies" });
+      await pkiRouter.register(
+        async (profilesRouter) => {
+          await registerCertificateProfilesRouter(profilesRouter as unknown as FastifyZodProvider);
+        },
+        { prefix: "/certificate-profiles" }
+      );
       await pkiRouter.register(registerPkiAlertRouter, { prefix: "/alerts" });
       await pkiRouter.register(
         async (pkiSyncRouter) => {
-          await pkiSyncRouter.register(registerPkiSyncRouter);
+          await registerPkiSyncRouter(pkiSyncRouter as unknown as FastifyZodProvider);
           for await (const [destination, router] of Object.entries(PKI_SYNC_REGISTER_ROUTER_MAP)) {
-            await pkiSyncRouter.register(router, { prefix: `/${destination}` });
+            await pkiSyncRouter.register(
+              async (destinationRouter) => {
+                await router(destinationRouter as unknown as FastifyZodProvider);
+              },
+              { prefix: `/${destination}` }
+            );
           }
         },
         { prefix: "/syncs" }
@@ -202,15 +212,25 @@ export const registerV1Routes = async (server: FastifyZodProvider) => {
       );
       await pkiRouter.register(registerDeprecatedCertRouter, { prefix: "/certificates" });
       await pkiRouter.register(registerDeprecatedCertificateTemplateRouter, { prefix: "/certificate-templates" });
-      await pkiRouter.register(registerCertificateProfilesRouter, { prefix: "/certificate-profiles" });
+      await pkiRouter.register(
+        async (pkiProfilesRouter) => {
+          await registerCertificateProfilesRouter(pkiProfilesRouter as unknown as FastifyZodProvider, false);
+        },
+        { prefix: "/certificate-profiles" }
+      );
       await pkiRouter.register(registerDeprecatedPkiAlertRouter, { prefix: "/alerts" });
       await pkiRouter.register(registerPkiCollectionRouter, { prefix: "/collections" });
       await pkiRouter.register(registerPkiSubscriberRouter, { prefix: "/subscribers" });
       await pkiRouter.register(
         async (pkiSyncRouter) => {
-          await pkiSyncRouter.register(registerPkiSyncRouter);
+          await registerPkiSyncRouter(pkiSyncRouter as unknown as FastifyZodProvider, false);
           for await (const [destination, router] of Object.entries(PKI_SYNC_REGISTER_ROUTER_MAP)) {
-            await pkiSyncRouter.register(router, { prefix: `/${destination}` });
+            await pkiSyncRouter.register(
+              async (destinationRouter) => {
+                await router(destinationRouter as unknown as FastifyZodProvider, false);
+              },
+              { prefix: `/${destination}` }
+            );
           }
         },
         { prefix: "/syncs" }
@@ -236,7 +256,7 @@ export const registerV1Routes = async (server: FastifyZodProvider) => {
   await server.register(registerUserEngagementRouter, { prefix: "/user-engagement" });
   await server.register(registerDashboardRouter, { prefix: "/dashboard" });
   await server.register(registerCmekRouter, { prefix: "/kms" });
-  await server.register(registerExternalGroupOrgRoleMappingRouter, { prefix: "/external-group-mappings" });
+  await server.register(registerExternalGroupOrgRoleMappingRouter, { prefix: "/scim/group-org-role-mappings" });
 
   await server.register(
     async (appConnectionRouter) => {

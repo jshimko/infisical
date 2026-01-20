@@ -34,6 +34,7 @@ import {
   MongoDBConnectionMethod,
   MsSqlConnectionMethod,
   MySqlConnectionMethod,
+  OctopusDeployConnectionMethod,
   OktaConnectionMethod,
   OnePassConnectionMethod,
   OracleDBConnectionMethod,
@@ -58,6 +59,7 @@ import { NorthflankConnectionMethod } from "@app/hooks/api/appConnections/types/
 import { OCIConnectionMethod } from "@app/hooks/api/appConnections/types/oci-connection";
 import { RailwayConnectionMethod } from "@app/hooks/api/appConnections/types/railway-connection";
 import { RenderConnectionMethod } from "@app/hooks/api/appConnections/types/render-connection";
+import { SshConnectionMethod } from "@app/hooks/api/appConnections/types/ssh-connection";
 import { SupabaseConnectionMethod } from "@app/hooks/api/appConnections/types/supabase-connection";
 
 export const APP_CONNECTION_MAP: Record<
@@ -136,7 +138,9 @@ export const APP_CONNECTION_MAP: Record<
     image: "Laravel Forge.png",
     size: 65
   },
-  [AppConnection.Chef]: { name: "Chef", image: "Chef.png", enterprise: true }
+  [AppConnection.Chef]: { name: "Chef", image: "Chef.png", enterprise: true },
+  [AppConnection.OctopusDeploy]: { name: "Octopus Deploy", image: "Octopus Deploy.png" },
+  [AppConnection.SSH]: { name: "SSH", image: "SSH.png" }
 };
 
 export const getAppConnectionMethodDetails = (method: TAppConnection["method"]) => {
@@ -221,6 +225,12 @@ export const getAppConnectionMethodDetails = (method: TAppConnection["method"]) 
       return { name: "Certificate", icon: faCertificate };
     case DNSMadeEasyConnectionMethod.APIKeySecret:
       return { name: "API Key & Secret", icon: faKey };
+    case OctopusDeployConnectionMethod.ApiKey:
+      return { name: "API Key", icon: faKey };
+    case SshConnectionMethod.Password:
+      return { name: "Password", icon: faLock };
+    case SshConnectionMethod.SshKey:
+      return { name: "SSH Key", icon: faKey };
     default:
       throw new Error(`Unhandled App Connection Method: ${method}`);
   }

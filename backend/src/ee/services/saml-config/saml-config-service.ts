@@ -176,9 +176,7 @@ export const samlConfigServiceFactory = ({
             {
               name: groupName,
               slug: `${groupName.toLowerCase().replace(new RE2("[^a-z0-9]", "g"), "-")}-${Date.now()}`,
-              orgId,
-              role: OrgMembershipRole.NoAccess,
-              roleId: null
+              orgId
             },
             transaction
           );
@@ -610,13 +608,23 @@ export const samlConfigServiceFactory = ({
     } else {
       user = await userDAL.transaction(async (tx) => {
         let newUser: TUsers | undefined;
-        newUser = await userDAL.findOne(
+
+        const usersWithSameEmail = await userDAL.find(
           {
-            email,
-            isEmailVerified: true
+            email: email.toLowerCase()
           },
-          tx
+          {
+            tx
+          }
         );
+
+        const verifiedEmail = usersWithSameEmail.find((el) => el.isEmailVerified);
+        const userWithSameUsername = usersWithSameEmail.find((el) => el.username === email.toLowerCase());
+        if (verifiedEmail) {
+          newUser = verifiedEmail;
+        } else if (userWithSameUsername) {
+          newUser = userWithSameUsername;
+        }
 
         if (!newUser) {
           const uniqueUsername = await normalizeUsername(`${firstName ?? ""}-${lastName ?? ""}`, userDAL);

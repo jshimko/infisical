@@ -43,7 +43,8 @@ export enum ProjectPermissionCmekActions {
   Encrypt = "encrypt",
   Decrypt = "decrypt",
   Sign = "sign",
-  Verify = "verify"
+  Verify = "verify",
+  ExportPrivateKey = "export-private-key"
 }
 
 export enum ProjectPermissionKmipActions {
@@ -129,6 +130,13 @@ export enum ProjectPermissionPkiTemplateActions {
   Delete = "delete",
   IssueCert = "issue-cert",
   ListCerts = "list-certs"
+}
+
+export enum ProjectPermissionCertificatePolicyActions {
+  Read = "read",
+  Create = "create",
+  Edit = "edit",
+  Delete = "delete"
 }
 
 export enum ProjectPermissionCertificateAuthorityActions {
@@ -228,6 +236,14 @@ export enum ProjectPermissionPamSessionActions {
   // Terminate = "terminate"
 }
 
+export enum ProjectPermissionMcpEndpointActions {
+  Read = "read",
+  Create = "create",
+  Edit = "edit",
+  Delete = "delete",
+  Connect = "connect"
+}
+
 export enum ProjectPermissionApprovalRequestActions {
   Read = "read",
   Create = "create"
@@ -258,6 +274,7 @@ export type ConditionalProjectPermissionSubject =
   | ProjectPermissionSub.CertificateAuthorities
   | ProjectPermissionSub.Certificates
   | ProjectPermissionSub.CertificateProfiles
+  | ProjectPermissionSub.CertificatePolicies
   | ProjectPermissionSub.SecretFolders
   | ProjectPermissionSub.SecretImports
   | ProjectPermissionSub.SecretRotation
@@ -335,6 +352,7 @@ export enum ProjectPermissionSub {
   PkiCollections = "pki-collections",
   PkiSubscribers = "pki-subscribers",
   CertificateProfiles = "certificate-profiles",
+  CertificatePolicies = "certificate-policies",
   Kms = "kms",
   Cmek = "cmek",
   SecretSyncs = "secret-syncs",
@@ -350,6 +368,9 @@ export enum ProjectPermissionSub {
   PamResources = "pam-resources",
   PamAccounts = "pam-accounts",
   PamSessions = "pam-sessions",
+  McpEndpoints = "mcp-endpoints",
+  McpServers = "mcp-servers",
+  McpActivityLogs = "mcp-activity-logs",
   ApprovalRequests = "approval-requests",
   ApprovalRequestGrants = "approval-request-grants"
 }
@@ -425,6 +446,10 @@ export type PkiSubscriberSubjectFields = {
 export type PkiTemplateSubjectFields = {
   name: string;
   // (dangtony98): consider adding [commonName] as a subject field in the future
+};
+
+export type CertificatePolicySubjectFields = {
+  name: string;
 };
 
 export type PamAccountSubjectFields = {
@@ -550,6 +575,13 @@ export type ProjectPermissionSet =
             CertificateProfileSubjectFields)
       )
     ]
+  | [
+      ProjectPermissionCertificatePolicyActions,
+      (
+        | ProjectPermissionSub.CertificatePolicies
+        | (ForcedSubject<ProjectPermissionSub.CertificatePolicies> & CertificatePolicySubjectFields)
+      )
+    ]
   | [ProjectPermissionActions, ProjectPermissionSub.PkiAlerts]
   | [ProjectPermissionActions, ProjectPermissionSub.PkiCollections]
   | [ProjectPermissionActions.Delete, ProjectPermissionSub.Project]
@@ -591,6 +623,9 @@ export type ProjectPermissionSet =
     ]
   | [ProjectPermissionPamSessionActions, ProjectPermissionSub.PamSessions]
   | [ProjectPermissionApprovalRequestActions, ProjectPermissionSub.ApprovalRequests]
-  | [ProjectPermissionApprovalRequestGrantActions, ProjectPermissionSub.ApprovalRequestGrants];
+  | [ProjectPermissionApprovalRequestGrantActions, ProjectPermissionSub.ApprovalRequestGrants]
+  | [ProjectPermissionMcpEndpointActions, ProjectPermissionSub.McpEndpoints]
+  | [ProjectPermissionActions, ProjectPermissionSub.McpServers]
+  | [ProjectPermissionActions, ProjectPermissionSub.McpActivityLogs];
 
 export type TProjectPermission = MongoAbility<ProjectPermissionSet>;

@@ -29,10 +29,10 @@ export const PamAccessAccountModal = ({
   const portSuffix = port && port !== "80" && port !== "443" ? `:${port}` : "";
   const siteURL = `${protocol}//${hostname}${portSuffix}`;
 
-  let fullAccountPath = account?.name ?? "";
+  let fullAccountPath = `/${account?.name ?? ""}`;
   if (accountPath) {
     const path = accountPath.replace(/^\/+|\/+$/g, "");
-    fullAccountPath = `${path}/${account?.name ?? ""}`;
+    fullAccountPath = `/${path}/${account?.name ?? ""}`;
   }
 
   const isDurationValid = useMemo(() => duration && ms(duration || "1s") > 0, [duration]);
@@ -83,8 +83,12 @@ export const PamAccessAccountModal = ({
       case PamResourceType.Postgres:
       case PamResourceType.MySQL:
         return `infisical pam db access-account ${fullAccountPath} --project-id ${projectId} --duration ${cliDuration} --domain ${siteURL}`;
+      case PamResourceType.Redis:
+        return `infisical pam redis access-account ${fullAccountPath} --project-id ${projectId} --duration ${cliDuration} --domain ${siteURL}`;
       case PamResourceType.SSH:
         return `infisical pam ssh access-account ${fullAccountPath} --project-id ${projectId} --duration ${cliDuration} --domain ${siteURL}`;
+      case PamResourceType.Kubernetes:
+        return `infisical pam kubernetes access-account ${fullAccountPath} --project-id ${projectId} --duration ${cliDuration} --domain ${siteURL}`;
       default:
         return "";
     }

@@ -69,6 +69,13 @@ export const AppConnectionsBrowser = () => {
       category: "Cloud Providers",
     },
     {
+      name: "SSH",
+      slug: "ssh",
+      path: "/integrations/app-connections/ssh",
+      description: "Learn how to connect your machine using SSH.",
+      category: "Networking & DNS",
+    },
+    {
       name: "GCP",
       slug: "gcp",
       path: "/integrations/app-connections/gcp",
@@ -368,6 +375,13 @@ export const AppConnectionsBrowser = () => {
       path: "/integrations/app-connections/mongodb",
       description: "Learn how to connect your MongoDB to pull secrets from Infisical.",
       category: "Databases"
+    },
+    {
+      name: "Octopus Deploy",
+      slug: "octopus-deploy",
+      path: "/integrations/app-connections/octopus-deploy",
+      description: "Learn how to connect your Octopus Deploy to pull secrets from Infisical.",
+      category: "DevOps Tools",
     }
   ].sort(function (a, b) {
     return a.name.toLowerCase().localeCompare(b.name.toLowerCase());

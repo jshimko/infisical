@@ -148,7 +148,7 @@ export const dynamicSecretLeaseServiceFactory = ({
         if (user) {
           identity.name = extractEmailUsername(user.username);
         }
-      } else if (actor === ActorType.Machine) {
+      } else if (actor === ActorType.IDENTITY) {
         const machineIdentity = await identityDAL.findById(actorId);
         if (machineIdentity) {
           identity.name = machineIdentity.name;
@@ -159,6 +159,7 @@ export const dynamicSecretLeaseServiceFactory = ({
         expireAt: expireAt.getTime(),
         usernameTemplate: dynamicSecretCfg.usernameTemplate,
         identity,
+        dynamicSecret: dynamicSecretCfg,
         metadata: { projectId },
         config
       });
@@ -179,7 +180,14 @@ export const dynamicSecretLeaseServiceFactory = ({
     });
 
     await dynamicSecretQueueService.setLeaseRevocation(dynamicSecretLease.id, dynamicSecretCfg.id, expireAt);
-    return { lease: dynamicSecretLease, dynamicSecret: dynamicSecretCfg, data };
+    return {
+      lease: dynamicSecretLease,
+      dynamicSecret: dynamicSecretCfg,
+      data,
+      projectId,
+      environment: environmentSlug,
+      secretPath: path
+    };
   };
 
   const renewLease: TDynamicSecretLeaseServiceFactory["renewLease"] = async ({
@@ -277,7 +285,13 @@ export const dynamicSecretLeaseServiceFactory = ({
       expireAt,
       externalEntityId: entityId
     });
-    return updatedDynamicSecretLease;
+    return {
+      lease: updatedDynamicSecretLease,
+      dynamicSecret: dynamicSecretCfg,
+      projectId,
+      environment: environmentSlug,
+      secretPath: path
+    };
   };
 
   const revokeLease: TDynamicSecretLeaseServiceFactory["revokeLease"] = async ({
@@ -364,12 +378,24 @@ export const dynamicSecretLeaseServiceFactory = ({
       });
       // queue a job to retry the revocation at a later time
       await dynamicSecretQueueService.queueFailedRevocation(dynamicSecretLease.id, dynamicSecretCfg.id);
-      return updatedDynamicSecretLease;
+      return {
+        lease: updatedDynamicSecretLease,
+        dynamicSecret: dynamicSecretCfg,
+        projectId,
+        environment: environmentSlug,
+        secretPath: path
+      };
     }
 
     await dynamicSecretQueueService.unsetLeaseRevocation(dynamicSecretLease.id);
     const deletedDynamicSecretLease = await dynamicSecretLeaseDAL.deleteById(dynamicSecretLease.id);
-    return deletedDynamicSecretLease;
+    return {
+      lease: deletedDynamicSecretLease,
+      dynamicSecret: dynamicSecretCfg,
+      projectId,
+      environment: environmentSlug,
+      secretPath: path
+    };
   };
 
   const listLeases: TDynamicSecretLeaseServiceFactory["listLeases"] = async ({
@@ -417,7 +443,13 @@ export const dynamicSecretLeaseServiceFactory = ({
     );
 
     const dynamicSecretLeases = await dynamicSecretLeaseDAL.find({ dynamicSecretId: dynamicSecretCfg.id });
-    return dynamicSecretLeases;
+    return {
+      leases: dynamicSecretLeases,
+      dynamicSecret: dynamicSecretCfg,
+      projectId,
+      environment: environmentSlug,
+      secretPath: path
+    };
   };
 
   const getLeaseDetails: TDynamicSecretLeaseServiceFactory["getLeaseDetails"] = async ({
@@ -469,7 +501,13 @@ export const dynamicSecretLeaseServiceFactory = ({
       })
     );
 
-    return dynamicSecretLease;
+    return {
+      lease: dynamicSecretLease,
+      dynamicSecret: dynamicSecretCfg,
+      projectId,
+      environment: environmentSlug,
+      secretPath: path
+    };
   };
 
   return {

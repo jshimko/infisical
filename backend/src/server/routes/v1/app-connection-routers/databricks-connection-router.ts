@@ -30,6 +30,7 @@ export const registerDatabricksConnectionRouter = async (server: FastifyZodProvi
       rateLimit: readLimit
     },
     schema: {
+      operationId: "listDatabricksSecretScopes",
       params: z.object({
         connectionId: z.string().uuid()
       }),
@@ -49,6 +50,42 @@ export const registerDatabricksConnectionRouter = async (server: FastifyZodProvi
       );
 
       return { secretScopes };
+    }
+  });
+
+  server.route({
+    method: "GET",
+    url: `/:connectionId/service-principals`,
+    config: {
+      rateLimit: readLimit
+    },
+    schema: {
+      operationId: "listDatabricksServicePrincipals",
+      params: z.object({
+        connectionId: z.string().uuid()
+      }),
+      response: {
+        200: z.object({
+          servicePrincipals: z
+            .object({
+              id: z.string(),
+              name: z.string(),
+              clientId: z.string()
+            })
+            .array()
+        })
+      }
+    },
+    onRequest: verifyAuth([AuthMode.JWT]),
+    handler: async (req) => {
+      const { connectionId } = req.params;
+
+      const servicePrincipals = await server.services.appConnection.databricks.listServicePrincipals(
+        connectionId,
+        req.permission
+      );
+
+      return { servicePrincipals };
     }
   });
 };

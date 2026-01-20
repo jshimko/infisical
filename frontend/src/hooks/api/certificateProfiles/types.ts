@@ -13,7 +13,7 @@ export type TCertificateProfile = {
   id: string;
   projectId: string;
   caId: string | null;
-  certificateTemplateId: string;
+  certificatePolicyId: string;
   slug: string;
   description?: string;
   enrollmentType: EnrollmentType;
@@ -42,7 +42,7 @@ export type TCertificateProfileWithDetails = TCertificateProfile & {
     isExternal?: boolean;
     externalType?: string | null;
   };
-  certificateTemplate?: {
+  certificatePolicy?: {
     id: string;
     projectId: string;
     name: string;
@@ -62,13 +62,14 @@ export type TCertificateProfileWithDetails = TCertificateProfile & {
   acmeConfig?: {
     id: string;
     directoryUrl: string;
+    skipDnsOwnershipVerification?: boolean;
   };
 };
 
 export type TCreateCertificateProfileDTO = {
   projectId: string;
   caId?: string;
-  certificateTemplateId: string;
+  certificatePolicyId: string;
   slug: string;
   description?: string;
   enrollmentType: EnrollmentType;

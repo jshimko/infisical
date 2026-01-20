@@ -44,7 +44,9 @@ export const APP_CONNECTION_NAME_MAP: Record<AppConnection, string> = {
   [AppConnection.Redis]: "Redis",
   [AppConnection.MongoDB]: "MongoDB",
   [AppConnection.Chef]: "Chef",
-  [AppConnection.Northflank]: "Northflank"
+  [AppConnection.Northflank]: "Northflank",
+  [AppConnection.OctopusDeploy]: "Octopus Deploy",
+  [AppConnection.SSH]: "SSH"
 };
 
 export const APP_CONNECTION_PLAN_MAP: Record<AppConnection, AppConnectionPlanType> = {
@@ -91,5 +93,7 @@ export const APP_CONNECTION_PLAN_MAP: Record<AppConnection, AppConnectionPlanTyp
   [AppConnection.Redis]: AppConnectionPlanType.Regular,
   [AppConnection.MongoDB]: AppConnectionPlanType.Regular,
   [AppConnection.Chef]: AppConnectionPlanType.Enterprise,
-  [AppConnection.Northflank]: AppConnectionPlanType.Regular
+  [AppConnection.Northflank]: AppConnectionPlanType.Regular,
+  [AppConnection.OctopusDeploy]: AppConnectionPlanType.Regular,
+  [AppConnection.SSH]: AppConnectionPlanType.Regular
 };

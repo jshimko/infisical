@@ -15,6 +15,11 @@ import {
   TAzureClientSecretRotationOption
 } from "@app/hooks/api/secretRotationsV2/types/azure-client-secret-rotation";
 import {
+  TDatabricksServicePrincipalSecretRotation,
+  TDatabricksServicePrincipalSecretRotationGeneratedCredentialsResponse,
+  TDatabricksServicePrincipalSecretRotationOption
+} from "@app/hooks/api/secretRotationsV2/types/databricks-service-principal-secret-rotation";
+import {
   TLdapPasswordRotation,
   TLdapPasswordRotationGeneratedCredentialsResponse,
   TLdapPasswordRotationOption
@@ -54,6 +59,11 @@ import {
   TRedisCredentialsRotationGeneratedCredentialsResponse,
   TRedisCredentialsRotationOption
 } from "./redis-credentials-rotation";
+import {
+  TUnixLinuxLocalAccountRotation,
+  TUnixLinuxLocalAccountRotationGeneratedCredentialsResponse,
+  TUnixLinuxLocalAccountRotationOption
+} from "./unix-linux-local-account-rotation";
 
 export type TSecretRotationV2 = (
   | TPostgresCredentialsRotation
@@ -67,6 +77,8 @@ export type TSecretRotationV2 = (
   | TOktaClientSecretRotation
   | TRedisCredentialsRotation
   | TMongoDBCredentialsRotation
+  | TDatabricksServicePrincipalSecretRotation
+  | TUnixLinuxLocalAccountRotation
 ) & {
   secrets: (SecretV3RawSanitized | null)[];
 };
@@ -79,7 +91,9 @@ export type TSecretRotationV2Option =
   | TAwsIamUserSecretRotationOption
   | TOktaClientSecretRotationOption
   | TRedisCredentialsRotationOption
-  | TMongoDBCredentialsRotationOption;
+  | TMongoDBCredentialsRotationOption
+  | TDatabricksServicePrincipalSecretRotationOption
+  | TUnixLinuxLocalAccountRotationOption;
 
 export type TListSecretRotationV2Options = { secretRotationOptions: TSecretRotationV2Option[] };
 
@@ -96,7 +110,9 @@ export type TViewSecretRotationGeneratedCredentialsResponse =
   | TAwsIamUserSecretRotationGeneratedCredentialsResponse
   | TOktaClientSecretRotationGeneratedCredentialsResponse
   | TRedisCredentialsRotationGeneratedCredentialsResponse
-  | TMongoDBCredentialsRotationGeneratedCredentialsResponse;
+  | TMongoDBCredentialsRotationGeneratedCredentialsResponse
+  | TDatabricksServicePrincipalSecretRotationGeneratedCredentialsResponse
+  | TUnixLinuxLocalAccountRotationGeneratedCredentialsResponse;
 
 export type TCreateSecretRotationV2DTO = DiscriminativePick<
   TSecretRotationV2,
@@ -151,6 +167,8 @@ export type TSecretRotationOptionMap = {
   [SecretRotation.OktaClientSecret]: TOktaClientSecretRotationOption;
   [SecretRotation.RedisCredentials]: TRedisCredentialsRotationOption;
   [SecretRotation.MongoDBCredentials]: TMongoDBCredentialsRotationOption;
+  [SecretRotation.DatabricksServicePrincipalSecret]: TDatabricksServicePrincipalSecretRotationOption;
+  [SecretRotation.UnixLinuxLocalAccount]: TUnixLinuxLocalAccountRotationOption;
 };
 
 export type TSecretRotationGeneratedCredentialsResponseMap = {
@@ -165,4 +183,19 @@ export type TSecretRotationGeneratedCredentialsResponseMap = {
   [SecretRotation.OktaClientSecret]: TOktaClientSecretRotationGeneratedCredentialsResponse;
   [SecretRotation.RedisCredentials]: TRedisCredentialsRotationGeneratedCredentialsResponse;
   [SecretRotation.MongoDBCredentials]: TMongoDBCredentialsRotationGeneratedCredentialsResponse;
+  [SecretRotation.DatabricksServicePrincipalSecret]: TDatabricksServicePrincipalSecretRotationGeneratedCredentialsResponse;
+  [SecretRotation.UnixLinuxLocalAccount]: TUnixLinuxLocalAccountRotationGeneratedCredentialsResponse;
+};
+
+export type TReconcileUnixLinuxLocalAccountRotationDTO = {
+  rotationId: string;
+  // required for query invalidation
+  secretPath: string;
+  projectId: string;
+};
+
+export type TReconcileUnixLinuxLocalAccountRotationResponse = {
+  message: string;
+  reconciled: boolean;
+  secretRotation: TUnixLinuxLocalAccountRotation;
 };

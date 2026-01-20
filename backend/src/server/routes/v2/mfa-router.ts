@@ -84,6 +84,7 @@ export const registerMfaRouter = async (server: FastifyZodProvider) => {
       rateLimit: mfaRateLimit
     },
     schema: {
+      operationId: "resendMfaToken",
       response: {
         200: z.object({
           message: z.string()
@@ -103,6 +104,7 @@ export const registerMfaRouter = async (server: FastifyZodProvider) => {
       rateLimit: mfaRateLimit
     },
     schema: {
+      operationId: "checkTotpMfa",
       response: {
         200: z.object({
           isVerified: z.boolean()
@@ -135,6 +137,7 @@ export const registerMfaRouter = async (server: FastifyZodProvider) => {
       rateLimit: mfaRateLimit
     },
     schema: {
+      operationId: "verifyMfa",
       body: z.object({
         mfaToken: z.string().trim(),
         mfaMethod: z.nativeEnum(MfaMethod).optional().default(MfaMethod.EMAIL)
@@ -165,6 +168,7 @@ export const registerMfaRouter = async (server: FastifyZodProvider) => {
       rateLimit: mfaRateLimit
     },
     schema: {
+      operationId: "verifyMfaRecoveryCode",
       body: z.object({
         recoveryCode: z.string().trim().length(8, "Recovery code must be 8 characters")
       }),
@@ -184,6 +188,40 @@ export const registerMfaRouter = async (server: FastifyZodProvider) => {
     },
     handler: async (req, res) => {
       return handleMfaVerification(req, res, server, req.body.recoveryCode, MfaMethod.TOTP, true);
+    }
+  });
+
+  // WebAuthn MFA routes
+  server.route({
+    method: "GET",
+    url: "/mfa/check/webauthn",
+    config: {
+      rateLimit: mfaRateLimit
+    },
+    schema: {
+      operationId: "checkWebauthnMfa",
+      response: {
+        200: z.object({
+          hasPasskeys: z.boolean()
+        })
+      }
+    },
+    handler: async (req) => {
+      try {
+        const credentials = await server.services.webAuthn.getUserWebAuthnCredentials({
+          userId: req.mfa.userId
+        });
+
+        return {
+          hasPasskeys: credentials.length > 0
+        };
+      } catch (error) {
+        if (error instanceof NotFoundError) {
+          return { hasPasskeys: false };
+        }
+
+        throw error;
+      }
     }
   });
 };

@@ -38,9 +38,9 @@ import {
   signatureAlgorithmToAlgCfg
 } from "@app/services/certificate-authority/certificate-authority-fns";
 import { TInternalCertificateAuthorityServiceFactory } from "@app/services/certificate-authority/internal/internal-certificate-authority-service";
+import { TCertificatePolicyServiceFactory } from "@app/services/certificate-policy/certificate-policy-service";
 import { TCertificateProfileDALFactory } from "@app/services/certificate-profile/certificate-profile-dal";
 import { EnrollmentType, IssuerType } from "@app/services/certificate-profile/certificate-profile-types";
-import { TCertificateTemplateV2ServiceFactory } from "@app/services/certificate-template-v2/certificate-template-v2-service";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
 import { getProjectKmsCertificateKeyId } from "@app/services/project/project-fns";
@@ -48,6 +48,7 @@ import { getProjectKmsCertificateKeyId } from "@app/services/project/project-fns
 import {
   CertExtendedKeyUsageType,
   CertKeyUsageType,
+  CertPolicyState,
   CertSubjectAlternativeNameType,
   mapLegacyExtendedKeyUsageToStandard,
   mapLegacyKeyUsageToStandard
@@ -66,10 +67,10 @@ import {
   normalizeDateForApi,
   removeRootCaFromChain
 } from "../certificate-common/certificate-utils";
+import { TCertificateRequest } from "../certificate-policy/certificate-policy-types";
 import { TCertificateRequestServiceFactory } from "../certificate-request/certificate-request-service";
 import { CertificateRequestStatus } from "../certificate-request/certificate-request-types";
 import { TCertificateSyncDALFactory } from "../certificate-sync/certificate-sync-dal";
-import { TCertificateRequest } from "../certificate-template-v2/certificate-template-v2-types";
 import { TPkiSyncDALFactory } from "../pki-sync/pki-sync-dal";
 import { TPkiSyncQueueFactory } from "../pki-sync/pki-sync-queue";
 import { addRenewedCertificateToSyncs, triggerAutoSyncForCertificate } from "../pki-sync/pki-sync-utils";
@@ -99,10 +100,7 @@ type TCertificateV3ServiceFactoryDep = {
   >;
   certificateProfileDAL: Pick<TCertificateProfileDALFactory, "findByIdWithConfigs" | "findById">;
   acmeAccountDAL: Pick<TPkiAcmeAccountDALFactory, "findById">;
-  certificateTemplateV2Service: Pick<
-    TCertificateTemplateV2ServiceFactory,
-    "validateCertificateRequest" | "getTemplateV2ById"
-  >;
+  certificatePolicyService: Pick<TCertificatePolicyServiceFactory, "validateCertificateRequest" | "getPolicyById">;
   internalCaService: Pick<TInternalCertificateAuthorityServiceFactory, "signCertFromCa" | "issueCertFromCa">;
   permissionService: Pick<TPermissionServiceFactory, "getProjectPermission">;
   certificateSyncDAL: Pick<
@@ -422,7 +420,7 @@ const parseTtlToDays = (ttl: string): number => {
 
 const generateSelfSignedCertificate = async ({
   certificateRequest,
-  template,
+  policy,
   effectiveSignatureAlgorithm,
   effectiveKeyAlgorithm
 }: {
@@ -438,7 +436,7 @@ const generateSelfSignedCertificate = async ({
     notBefore?: Date;
     notAfter?: Date;
   };
-  template?: {
+  policy?: {
     subject?: Array<{
       type: string;
       allowed?: string[];
@@ -466,10 +464,10 @@ const generateSelfSignedCertificate = async ({
     value: string;
   }>;
 }> => {
-  const certificateSubject = buildCertificateSubjectFromTemplate(certificateRequest, template?.subject);
+  const certificateSubject = buildCertificateSubjectFromTemplate(certificateRequest, policy?.subject);
   const subjectAlternativeNames = buildSubjectAlternativeNamesFromTemplate(
     { subjectAlternativeNames: certificateRequest.altNames },
-    template?.sans
+    policy?.sans
   );
 
   const keyGenAlg = keyAlgorithmToAlgCfg(effectiveKeyAlgorithm);
@@ -724,7 +722,7 @@ const createEncryptedCertificateData = async ({
 
 const processSelfSignedCertificate = async ({
   certificateRequest,
-  template,
+  policy,
   profile,
   originalCert,
   effectiveAlgorithms,
@@ -744,7 +742,7 @@ const processSelfSignedCertificate = async ({
     notBefore?: Date;
     notAfter?: Date;
   };
-  template?: {
+  policy?: {
     subject?: Array<{
       type: string;
       allowed?: string[];
@@ -784,7 +782,7 @@ const processSelfSignedCertificate = async ({
 
   const selfSignedResult = await generateSelfSignedCertificate({
     certificateRequest,
-    template,
+    policy,
     effectiveSignatureAlgorithm: effectiveAlgorithms.signatureAlgorithm,
     effectiveKeyAlgorithm: effectiveAlgorithms.keyAlgorithm
   });
@@ -864,7 +862,7 @@ export const certificateV3ServiceFactory = ({
   certificateAuthorityDAL,
   certificateProfileDAL,
   acmeAccountDAL,
-  certificateTemplateV2Service,
+  certificatePolicyService,
   internalCaService,
   permissionService,
   certificateSyncDAL,
@@ -907,20 +905,20 @@ export const certificateV3ServiceFactory = ({
       subjectAlternativeNames: certificateRequest.altNames
     });
 
-    const template = await certificateTemplateV2Service.getTemplateV2ById({
+    const policy = await certificatePolicyService.getPolicyById({
       actor,
       actorId,
       actorAuthMethod,
       actorOrgId,
-      templateId: profile.certificateTemplateId,
+      policyId: profile.certificatePolicyId,
       internal: true
     });
-    if (!template) {
-      throw new NotFoundError({ message: "Certificate template not found for this profile" });
+    if (!policy) {
+      throw new NotFoundError({ message: "Certificate policy not found for this profile" });
     }
 
-    const validationResult = await certificateTemplateV2Service.validateCertificateRequest(
-      profile.certificateTemplateId,
+    const validationResult = await certificatePolicyService.validateCertificateRequest(
+      profile.certificatePolicyId,
       mappedCertificateRequest
     );
 
@@ -933,22 +931,22 @@ export const certificateV3ServiceFactory = ({
     const effectiveSignatureAlgorithm = certificateRequest.signatureAlgorithm as CertSignatureAlgorithm | undefined;
     const effectiveKeyAlgorithm = certificateRequest.keyAlgorithm as CertKeyAlgorithm | undefined;
 
-    if (template.algorithms?.keyAlgorithm && !effectiveKeyAlgorithm) {
+    if (policy.algorithms?.keyAlgorithm && !effectiveKeyAlgorithm) {
       throw new BadRequestError({
         message: "Key algorithm is required by template policy but not provided in request"
       });
     }
 
-    if (template.algorithms?.signature && !effectiveSignatureAlgorithm) {
+    if (policy.algorithms?.signature && !effectiveSignatureAlgorithm) {
       throw new BadRequestError({
         message: "Signature algorithm is required by template policy but not provided in request"
       });
     }
 
-    const certificateSubject = buildCertificateSubjectFromTemplate(certificateRequest, template?.subject);
+    const certificateSubject = buildCertificateSubjectFromTemplate(certificateRequest, policy?.subject);
     const subjectAlternativeNames = buildSubjectAlternativeNamesFromTemplate(
       { subjectAlternativeNames: certificateRequest.altNames },
-      template?.sans
+      policy?.sans
     );
 
     const issuerType = profile?.issuerType || (profile?.caId ? IssuerType.CA : IssuerType.SELF_SIGNED);
@@ -959,7 +957,7 @@ export const certificateV3ServiceFactory = ({
 
         const selfSignedResult = await processSelfSignedCertificate({
           certificateRequest,
-          template,
+          policy,
           profile,
           effectiveAlgorithms,
           certificateDAL,
@@ -1052,7 +1050,20 @@ export const certificateV3ServiceFactory = ({
     }
 
     validateCaSupport(ca, "direct certificate issuance");
-    validateAlgorithmCompatibility(ca, template);
+    validateAlgorithmCompatibility(ca, policy);
+
+    const shouldIssueAsCA = certificateRequest.basicConstraints?.isCA === true;
+    const policyIsCAState: CertPolicyState =
+      (policy.basicConstraints?.isCA as CertPolicyState) || CertPolicyState.DENIED;
+
+    if (shouldIssueAsCA && policyIsCAState === CertPolicyState.DENIED) {
+      throw new BadRequestError({
+        message:
+          "CA certificate issuance is not allowed by this policy. The policy's CA:true basicConstraints must be set to 'allowed' or 'required'."
+      });
+    }
+
+    const caBasicConstraints = shouldIssueAsCA ? { maxPathLength: policy.basicConstraints?.maxPathLength } : undefined;
 
     const {
       certificate,
@@ -1068,6 +1079,8 @@ export const certificateV3ServiceFactory = ({
         friendlyName: certificateSubject.common_name || "Certificate",
         commonName: certificateSubject.common_name || "",
         altNames: subjectAlternativeNames,
+        basicConstraints: caBasicConstraints,
+        pathLength: certificateRequest.basicConstraints?.pathLength,
         ttl: certificateRequest.validity.ttl,
         keyUsages: convertKeyUsageArrayToLegacy(certificateRequest.keyUsages) || [],
         extendedKeyUsages: convertExtendedKeyUsageArrayToLegacy(certificateRequest.extendedKeyUsages) || [],
@@ -1118,7 +1131,8 @@ export const certificateV3ServiceFactory = ({
         keyAlgorithm: effectiveKeyAlgorithm,
         signatureAlgorithm: effectiveSignatureAlgorithm,
         status: CertificateRequestStatus.ISSUED,
-        certificateId: certResult.certificateId
+        certificateId: certResult.certificateId,
+        basicConstraints: certificateRequest.basicConstraints
       });
 
       return { ...certResult, cert: certificateRecord, certificateRequestId: certRequestResult.id };
@@ -1171,7 +1185,8 @@ export const certificateV3ServiceFactory = ({
     actorAuthMethod,
     actorOrgId,
     enrollmentType,
-    removeRootsFromChain
+    removeRootsFromChain,
+    basicConstraints
   }: TSignCertificateFromProfileDTO): Promise<Omit<TCertificateFromProfileResponse, "privateKey">> => {
     const profile = await validateProfileAndPermissions(
       profileId,
@@ -1198,17 +1213,17 @@ export const certificateV3ServiceFactory = ({
 
     validateCaSupport(ca, "CSR signing");
 
-    const template = await certificateTemplateV2Service.getTemplateV2ById({
+    const policy = await certificatePolicyService.getPolicyById({
       actor,
       actorId,
       actorAuthMethod,
       actorOrgId,
-      templateId: profile.certificateTemplateId,
+      policyId: profile.certificatePolicyId,
       internal: true
     });
 
-    if (!template) {
-      throw new NotFoundError({ message: "Certificate template not found for this profile" });
+    if (!policy) {
+      throw new NotFoundError({ message: "Certificate policy not found for this profile" });
     }
 
     const certificateRequest = extractCertificateRequestFromCSR(csr);
@@ -1221,8 +1236,8 @@ export const certificateV3ServiceFactory = ({
     mappedCertificateRequest.signatureAlgorithm = extractedSignatureAlgorithm;
     mappedCertificateRequest.validity = validity;
 
-    const validationResult = await certificateTemplateV2Service.validateCertificateRequest(
-      profile.certificateTemplateId,
+    const validationResult = await certificatePolicyService.validateCertificateRequest(
+      profile.certificatePolicyId,
       mappedCertificateRequest
     );
 
@@ -1232,10 +1247,24 @@ export const certificateV3ServiceFactory = ({
       });
     }
 
-    validateAlgorithmCompatibility(ca, template);
+    validateAlgorithmCompatibility(ca, policy);
 
     const effectiveSignatureAlgorithm = extractedSignatureAlgorithm;
     const effectiveKeyAlgorithm = extractedKeyAlgorithm;
+
+    const shouldIssueAsCA = basicConstraints?.isCA === true;
+    const policyIsCAState: CertPolicyState =
+      (policy.basicConstraints?.isCA as CertPolicyState) || CertPolicyState.DENIED;
+
+    if (shouldIssueAsCA && policyIsCAState === CertPolicyState.DENIED) {
+      throw new BadRequestError({
+        message:
+          "CA certificate issuance is not allowed by this policy. The policy's CA:true basicConstraints must be set to 'allowed' or 'required'."
+      });
+    }
+
+    // Transform policy basicConstraints to the format expected by the CA service
+    const caBasicConstraints = shouldIssueAsCA ? { maxPathLength: policy.basicConstraints?.maxPathLength } : undefined;
 
     const { certificate, certificateChain, issuingCaCertificate, serialNumber, cert, certificateRequestId } =
       await certificateDAL.transaction(async (tx) => {
@@ -1243,6 +1272,8 @@ export const certificateV3ServiceFactory = ({
           isInternal: true,
           caId: ca.id,
           csr,
+          basicConstraints: caBasicConstraints,
+          pathLength: basicConstraints?.pathLength,
           ttl: validity.ttl,
           altNames: undefined,
           notBefore: normalizeDateForApi(notBefore),
@@ -1289,7 +1320,8 @@ export const certificateV3ServiceFactory = ({
           keyAlgorithm: effectiveKeyAlgorithm,
           signatureAlgorithm: effectiveSignatureAlgorithm,
           status: CertificateRequestStatus.ISSUED,
-          certificateId: certResult.certificateId
+          certificateId: certResult.certificateId,
+          basicConstraints
         });
 
         return { ...certResult, cert: signedCertRecord, certificateRequestId: certRequestResult.id };
@@ -1362,6 +1394,12 @@ export const certificateV3ServiceFactory = ({
       };
     }
 
+    if (certificateRequest.basicConstraints?.isCA) {
+      throw new BadRequestError({
+        message: "CA certificate issuance is not supported for external certificate authorities."
+      });
+    }
+
     const mappedCertificateRequest = mapEnumsForValidation(certificateRequest);
 
     if (certificateOrder.csr) {
@@ -1369,8 +1407,8 @@ export const certificateV3ServiceFactory = ({
       mappedCertificateRequest.signatureAlgorithm = extractedSignatureAlgorithm;
     }
 
-    const validationResult = await certificateTemplateV2Service.validateCertificateRequest(
-      profile.certificateTemplateId,
+    const validationResult = await certificatePolicyService.validateCertificateRequest(
+      profile.certificatePolicyId,
       mappedCertificateRequest
     );
 
@@ -1573,20 +1611,20 @@ export const certificateV3ServiceFactory = ({
         }
       }
 
-      const templateId = profile?.certificateTemplateId || originalCert.certificateTemplateId;
-      const template = templateId
-        ? await certificateTemplateV2Service.getTemplateV2ById({
+      const policyId = profile?.certificatePolicyId || originalCert.certificateTemplateId;
+      const policy = policyId
+        ? await certificatePolicyService.getPolicyById({
             actor,
             actorId,
             actorAuthMethod,
             actorOrgId,
-            templateId,
+            policyId,
             internal
           })
         : null;
 
-      if (!template && profile) {
-        throw new NotFoundError({ message: "Certificate template not found for this profile" });
+      if (!policy && profile) {
+        throw new NotFoundError({ message: "Certificate policy not found for this profile" });
       }
 
       const originalTtlInDays = Math.ceil(
@@ -1609,16 +1647,16 @@ export const certificateV3ServiceFactory = ({
       };
 
       let validationResult: { isValid: boolean; errors: string[] } = { isValid: true, errors: [] };
-      if (profile?.certificateTemplateId) {
-        validationResult = await certificateTemplateV2Service.validateCertificateRequest(
-          profile.certificateTemplateId,
+      if (profile?.certificatePolicyId) {
+        validationResult = await certificatePolicyService.validateCertificateRequest(
+          profile.certificatePolicyId,
           certificateRequest
         );
       }
 
       if (!validationResult.isValid) {
         await certificateDAL.updateById(originalCert.id, {
-          renewalError: `Template validation failed: ${validationResult.errors.join(", ")}`
+          renewalError: `Policy validation failed: ${validationResult.errors.join(", ")}`
         });
 
         throw new BadRequestError({
@@ -1648,7 +1686,7 @@ export const certificateV3ServiceFactory = ({
         // Only validate algorithm compatibility for internal CAs
         if (caType === CaType.INTERNAL) {
           validateAlgorithmCompatibility(ca, {
-            algorithms: template?.algorithms
+            algorithms: policy?.algorithms
           } as { algorithms?: { signature?: string[] } });
         }
 
@@ -1714,7 +1752,7 @@ export const certificateV3ServiceFactory = ({
 
         const selfSignedRenewalResult = await processSelfSignedCertificate({
           certificateRequest,
-          template,
+          policy,
           profile,
           originalCert,
           effectiveAlgorithms,

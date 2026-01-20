@@ -19,9 +19,10 @@ import {
   TextArea,
   Tooltip
 } from "@app/components/v2";
-import { useProject, useSubscription } from "@app/context";
+import { useProject } from "@app/context";
 import { CaType } from "@app/hooks/api/ca/enums";
 import { useGetAzureAdcsTemplates, useListCasByProjectId } from "@app/hooks/api/ca/queries";
+import { useListCertificatePolicies } from "@app/hooks/api/certificatePolicies";
 import {
   EnrollmentType,
   IssuerType,
@@ -31,8 +32,6 @@ import {
   useCreateCertificateProfile,
   useUpdateCertificateProfile
 } from "@app/hooks/api/certificateProfiles";
-import { useListCertificateTemplatesV2 } from "@app/hooks/api/certificateTemplates/queries";
-import { UsePopUpState } from "@app/hooks/usePopUp";
 
 const createSchema = z
   .object({
@@ -53,7 +52,7 @@ const createSchema = z
     enrollmentType: z.nativeEnum(EnrollmentType),
     issuerType: z.nativeEnum(IssuerType),
     certificateAuthorityId: z.string().nullable().optional(),
-    certificateTemplateId: z.string().min(1, "Certificate Template is required"),
+    certificatePolicyId: z.string().min(1, "Certificate Policy is required"),
     estConfig: z
       .object({
         disableBootstrapCaValidation: z.boolean().optional(),
@@ -79,7 +78,11 @@ const createSchema = z
         renewBeforeDays: z.number().min(1).max(365).optional()
       })
       .optional(),
-    acmeConfig: z.object({}).optional(),
+    acmeConfig: z
+      .object({
+        skipDnsOwnershipVerification: z.boolean().optional()
+      })
+      .optional(),
     externalConfigs: z
       .object({
         template: z.string().min(1, "Azure ADCS template is required")
@@ -205,7 +208,7 @@ const editSchema = z
     enrollmentType: z.nativeEnum(EnrollmentType),
     issuerType: z.nativeEnum(IssuerType),
     certificateAuthorityId: z.string().nullable().optional(),
-    certificateTemplateId: z.string().optional(),
+    certificatePolicyId: z.string().optional(),
     estConfig: z
       .object({
         disableBootstrapCaValidation: z.boolean().optional(),
@@ -219,7 +222,11 @@ const editSchema = z
         renewBeforeDays: z.number().min(1).max(365).optional()
       })
       .optional(),
-    acmeConfig: z.object({}).optional(),
+    acmeConfig: z
+      .object({
+        skipDnsOwnershipVerification: z.boolean().optional()
+      })
+      .optional(),
     externalConfigs: z
       .object({
         template: z.string().optional()
@@ -331,28 +338,15 @@ export type FormData = z.infer<typeof createSchema>;
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  handlePopUpOpen: (
-    popUpName: keyof UsePopUpState<["upgradePlan"]>,
-    data?: {
-      isEnterpriseFeature?: boolean;
-    }
-  ) => void;
   profile?: TCertificateProfileWithDetails;
   mode?: "create" | "edit";
 }
 
-export const CreateProfileModal = ({
-  isOpen,
-  onClose,
-  handlePopUpOpen,
-  profile,
-  mode = "create"
-}: Props) => {
+export const CreateProfileModal = ({ isOpen, onClose, profile, mode = "create" }: Props) => {
   const { currentProject } = useProject();
-  const { subscription } = useSubscription();
 
   const { data: allCaData } = useListCasByProjectId(currentProject?.id || "");
-  const { data: templateData } = useListCertificateTemplatesV2({
+  const { data: policyData } = useListCertificatePolicies({
     projectId: currentProject?.id || "",
     limit: 100,
     offset: 0
@@ -367,7 +361,7 @@ export const CreateProfileModal = ({
     ...ca,
     groupType: ca.type === "internal" ? "internal" : "external"
   }));
-  const certificateTemplates = templateData?.certificateTemplates || [];
+  const certificatePolicies = policyData?.certificatePolicies || [];
 
   const getGroupHeaderLabel = (groupType: "internal" | "external") => {
     switch (groupType) {
@@ -389,7 +383,7 @@ export const CreateProfileModal = ({
           enrollmentType: profile.enrollmentType,
           issuerType: profile.issuerType,
           certificateAuthorityId: profile.caId || undefined,
-          certificateTemplateId: profile.certificateTemplateId,
+          certificatePolicyId: profile.certificatePolicyId,
           estConfig:
             profile.enrollmentType === EnrollmentType.EST
               ? {
@@ -406,7 +400,13 @@ export const CreateProfileModal = ({
                   renewBeforeDays: profile.apiConfig?.renewBeforeDays || 30
                 }
               : undefined,
-          acmeConfig: profile.enrollmentType === EnrollmentType.ACME ? {} : undefined,
+          acmeConfig:
+            profile.enrollmentType === EnrollmentType.ACME
+              ? {
+                  skipDnsOwnershipVerification:
+                    profile.acmeConfig?.skipDnsOwnershipVerification || false
+                }
+              : undefined,
           externalConfigs: profile.externalConfigs
             ? {
                 template:
@@ -424,12 +424,14 @@ export const CreateProfileModal = ({
           enrollmentType: EnrollmentType.API,
           issuerType: IssuerType.CA,
           certificateAuthorityId: "",
-          certificateTemplateId: "",
+          certificatePolicyId: "",
           apiConfig: {
             autoRenew: false,
             renewBeforeDays: 30
           },
-          acmeConfig: {},
+          acmeConfig: {
+            skipDnsOwnershipVerification: false
+          },
           externalConfigs: undefined
         }
   });
@@ -459,7 +461,7 @@ export const CreateProfileModal = ({
         enrollmentType: profile.enrollmentType,
         issuerType: profile.issuerType,
         certificateAuthorityId: profile.caId || undefined,
-        certificateTemplateId: profile.certificateTemplateId,
+        certificatePolicyId: profile.certificatePolicyId,
         estConfig:
           profile.enrollmentType === "est"
             ? {
@@ -476,7 +478,13 @@ export const CreateProfileModal = ({
                 renewBeforeDays: profile.apiConfig?.renewBeforeDays || 30
               }
             : undefined,
-        acmeConfig: profile.enrollmentType === EnrollmentType.ACME ? {} : undefined,
+        acmeConfig:
+          profile.enrollmentType === EnrollmentType.ACME
+            ? {
+                skipDnsOwnershipVerification:
+                  profile.acmeConfig?.skipDnsOwnershipVerification || false
+              }
+            : undefined,
         externalConfigs: profile.externalConfigs
           ? {
               template:
@@ -510,15 +518,6 @@ export const CreateProfileModal = ({
   }, [isEdit, profile, isAzureAdcsCa, azureAdcsTemplatesData, setValue]);
 
   const onFormSubmit = async (data: FormData) => {
-    if (!isEdit && !subscription?.pkiAcme && data.enrollmentType === EnrollmentType.ACME) {
-      reset();
-      onClose();
-      handlePopUpOpen("upgradePlan", {
-        isEnterpriseFeature: true
-      });
-      return;
-    }
-
     if (!currentProject?.id && !isEdit) return;
 
     // Validate Azure ADCS template requirement
@@ -570,7 +569,7 @@ export const CreateProfileModal = ({
           data.issuerType === IssuerType.SELF_SIGNED
             ? undefined
             : data.certificateAuthorityId || undefined,
-        certificateTemplateId: data.certificateTemplateId
+        certificatePolicyId: data.certificatePolicyId
       };
 
       if (data.enrollmentType === EnrollmentType.EST && data.estConfig) {
@@ -667,7 +666,9 @@ export const CreateProfileModal = ({
                         renewBeforeDays: 30
                       });
                       setValue("estConfig", undefined);
-                      setValue("acmeConfig", undefined);
+                      setValue("acmeConfig", {
+                        skipDnsOwnershipVerification: false
+                      });
                     }
                     onChange(value);
                   }}
@@ -769,10 +770,10 @@ export const CreateProfileModal = ({
 
           <Controller
             control={control}
-            name="certificateTemplateId"
+            name="certificatePolicyId"
             render={({ field: { onChange, ...field }, fieldState: { error } }) => (
               <FormControl
-                label="Certificate Template"
+                label="Certificate Policy"
                 isRequired
                 isError={Boolean(error)}
                 errorText={error?.message}
@@ -797,18 +798,20 @@ export const CreateProfileModal = ({
                     } else if (watchedEnrollmentType === "acme") {
                       setValue("estConfig", undefined);
                       setValue("apiConfig", undefined);
-                      setValue("acmeConfig", {});
+                      setValue("acmeConfig", {
+                        skipDnsOwnershipVerification: false
+                      });
                     }
                     onChange(value);
                   }}
-                  placeholder="Select a certificate template"
+                  placeholder="Select a certificate policy"
                   className="w-full"
                   position="popper"
                   isDisabled={Boolean(isEdit)}
                 >
-                  {certificateTemplates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name}
+                  {certificatePolicies.map((policy) => (
+                    <SelectItem key={policy.id} value={policy.id}>
+                      {policy.name}
                     </SelectItem>
                   ))}
                 </Select>
@@ -846,7 +849,9 @@ export const CreateProfileModal = ({
                     } else if (value === "acme") {
                       setValue("apiConfig", undefined);
                       setValue("estConfig", undefined);
-                      setValue("acmeConfig", {});
+                      setValue("acmeConfig", {
+                        skipDnsOwnershipVerification: false
+                      });
                     }
                     onChange(value);
                   }}
@@ -975,10 +980,24 @@ export const CreateProfileModal = ({
             <div className="mb-4 space-y-4">
               <Controller
                 control={control}
-                name="acmeConfig"
-                render={({ fieldState: { error } }) => (
+                name="acmeConfig.skipDnsOwnershipVerification"
+                render={({ field: { value, onChange }, fieldState: { error } }) => (
                   <FormControl isError={Boolean(error)} errorText={error?.message}>
-                    <div className="flex items-center gap-2">{/* FIXME: ACME configuration */}</div>
+                    <div className="flex items-center gap-3 rounded-md border border-mineshaft-600 bg-mineshaft-900 p-4">
+                      <Checkbox
+                        id="skipDnsOwnershipVerification"
+                        isChecked={value || false}
+                        onCheckedChange={onChange}
+                      />
+                      <div className="space-y-1">
+                        <span className="text-sm font-medium text-mineshaft-100">
+                          Skip DNS Ownership Validation
+                        </span>
+                        <p className="text-xs text-bunker-300">
+                          Skip DNS ownership verification during ACME certificate issuance.
+                        </p>
+                      </div>
+                    </div>
                   </FormControl>
                 )}
               />

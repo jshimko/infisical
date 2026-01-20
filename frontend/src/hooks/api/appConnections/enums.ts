@@ -42,5 +42,7 @@ export enum AppConnection {
   Redis = "redis",
   MongoDB = "mongodb",
   LaravelForge = "laravel-forge",
-  Chef = "chef"
+  Chef = "chef",
+  OctopusDeploy = "octopus-deploy",
+  SSH = "ssh"
 }
