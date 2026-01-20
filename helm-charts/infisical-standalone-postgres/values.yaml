@@ -225,6 +225,9 @@ cnpg:
     retentionPolicy: "30d"
 
     # https://cloudnative-pg.io/plugin-barman-cloud/docs/object_stores/#s3-compatible-storage-providers
+    # kubectl create secret generic cnpg-s3-creds -n infisical \
+    #   --from-literal=ACCESS_KEY_ID=<access key here> \
+    #   --from-literal=ACCESS_SECRET_KEY=<secret key here>
     config:
       {}
       # endpointURL: https://s3.us-west-002.backblazeb2.com
