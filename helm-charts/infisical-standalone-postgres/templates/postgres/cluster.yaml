@@ -17,7 +17,7 @@ metadata:
     {{- end }}
 # https://cloudnative-pg.io/documentation/current/cloudnative-pg.v1/#postgresql-cnpg-io-v1-ClusterSpec
 spec:
-  {{- toYaml .Values.cnpg.cluster.spec | nindent 4 }}
+  {{- toYaml .Values.cnpg.cluster.spec | nindent 2 }}
 
   {{- if .Values.cnpg.backups.enabled }}
   plugins:
@@ -50,6 +50,8 @@ spec:
   schemas:
   - name: {{ .Values.cnpg.cluster.spec.bootstrap.initdb.database }}
     owner: {{ .Values.cnpg.cluster.spec.bootstrap.initdb.database }}
+
+---
 
 {{- if .Values.cnpg.pooler.enabled }}
 # PGBouncer
@@ -120,7 +122,7 @@ spec:
   cluster:
     name: {{ .Values.cnpg.cluster.name }}
   backupOwnerReference: self
-  schedule: {{ .Values.cnpg.backups.schedule }}
+  schedule: {{ .Values.cnpg.backups.schedule | quote }}
   pluginConfiguration:
     name: barman-cloud.cloudnative-pg.io
 {{- end }}

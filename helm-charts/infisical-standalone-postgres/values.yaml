@@ -165,8 +165,7 @@ ingress:
   # -- Custom annotations for ingress resource
   annotations: {}
   # -- TLS settings for HTTPS access
-  tls:
-    []
+  tls: []
     # -- TLS secret name for HTTPS
     # - secretName: letsencrypt-prod
     # -- Domain name to associate with the TLS certificate
@@ -195,10 +194,10 @@ cnpg:
           owner: infisical
 
       storage:
-        size: 1Gi
+        size: 10Gi
 
       walStorage:
-        size: 1Gi
+        size: 10Gi
 
   pooler:
     enabled: false
@@ -228,8 +227,7 @@ cnpg:
     # kubectl create secret generic cnpg-s3-creds -n infisical \
     #   --from-literal=ACCESS_KEY_ID=<access key here> \
     #   --from-literal=ACCESS_SECRET_KEY=<secret key here>
-    config:
-      {}
+    config: {}
       # endpointURL: https://s3.us-west-002.backblazeb2.com
       # destinationPath: s3://infisical-cnpg/backups/local-dev/
       # s3Credentials:
@@ -272,8 +270,7 @@ redis:
             storage: 1Gi
 
 # Misc extra k8s manifests to be deployed
-extraManifests:
-  []
+extraManifests: []
   #
   # - apiVersion: apps/v1
   #   kind: Deployment
