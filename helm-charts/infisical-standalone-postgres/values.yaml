@@ -85,7 +85,7 @@ infisical:
       path: /api/status
       port: 8080
     periodSeconds: 1
-    failureThreshold: 60
+    failureThreshold: 180 # allow for 3 minutes of startup time
 
   # -- Readiness probe for Infisical pods
   readinessProbe:
