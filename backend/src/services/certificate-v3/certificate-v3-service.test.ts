@@ -27,6 +27,7 @@ import { TCertificateProfileDALFactory } from "@app/services/certificate-profile
 import { EnrollmentType, IssuerType } from "@app/services/certificate-profile/certificate-profile-types";
 
 import { ActorType, AuthMethod } from "../auth/auth-type";
+import { createDistinguishedName, parseDistinguishedName } from "../certificate-authority/certificate-authority-fns";
 import {
   extractAlgorithmsFromCSR,
   extractCertificateRequestFromCSR
@@ -36,6 +37,23 @@ import { certificateV3ServiceFactory, TCertificateV3ServiceFactory } from "./cer
 vi.mock("../certificate-common/certificate-csr-utils", () => ({
   extractCertificateRequestFromCSR: vi.fn(),
   extractAlgorithmsFromCSR: vi.fn()
+}));
+
+vi.mock("@peculiar/x509", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@peculiar/x509")>();
+  return {
+    ...actual,
+    Pkcs10CertificateRequest: vi.fn().mockImplementation(() => ({
+      subject: "CN=test.example.com"
+    }))
+  };
+});
+
+vi.mock("../certificate-authority/certificate-authority-fns", () => ({
+  parseDistinguishedName: vi.fn().mockReturnValue({
+    commonName: "test.example.com"
+  }),
+  createDistinguishedName: vi.fn().mockReturnValue("CN=test.example.com")
 }));
 
 describe("CertificateV3Service", () => {
@@ -53,7 +71,8 @@ describe("CertificateV3Service", () => {
       serialNumber: "123456789",
       friendlyName: "Test Certificate",
       commonName: "test.example.com",
-      status: "ACTIVE"
+      status: "ACTIVE",
+      source: "issued"
     }),
     transaction: vi.fn().mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
       const mockTx = {};
@@ -127,6 +146,10 @@ describe("CertificateV3Service", () => {
   beforeEach(() => {
     // Reset all mocks before each test
     vi.resetAllMocks();
+    vi.mocked(mockCertificateDAL.transaction).mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
+      const mockTx = {};
+      return callback(mockTx);
+    });
 
     // Mock ForbiddenError.from static method
     vi.spyOn(ForbiddenError, "from").mockReturnValue({
@@ -156,6 +179,11 @@ describe("CertificateV3Service", () => {
       signatureAlgorithm: "RSA-SHA256" as any
     });
 
+    vi.mocked(parseDistinguishedName).mockReturnValue({
+      commonName: "test.example.com"
+    });
+    vi.mocked(createDistinguishedName).mockReturnValue("CN=test.example.com");
+
     service = certificateV3ServiceFactory({
       certificateDAL: mockCertificateDAL,
       certificateSecretDAL: mockCertificateSecretDAL,
@@ -168,7 +196,8 @@ describe("CertificateV3Service", () => {
       certificateSyncDAL: {
         findPkiSyncIdsByCertificateId: vi.fn().mockResolvedValue([]),
         addCertificates: vi.fn().mockResolvedValue([]),
-        findByPkiSyncAndCertificate: vi.fn().mockResolvedValue(null)
+        findByPkiSyncAndCertificate: vi.fn().mockResolvedValue(null),
+        updateSyncMetadata: vi.fn().mockResolvedValue(null)
       },
       pkiSyncDAL: {
         find: vi.fn().mockResolvedValue([])
@@ -202,6 +231,35 @@ describe("CertificateV3Service", () => {
       },
       certificateRequestService: {
         createCertificateRequest: vi.fn().mockResolvedValue({ id: "cert-req-123" })
+      },
+      approvalPolicyDAL: {
+        findByProjectId: vi.fn().mockResolvedValue([]),
+        findStepsByPolicyId: vi.fn().mockResolvedValue([])
+      },
+      certificateRequestDAL: {
+        updateById: vi.fn().mockResolvedValue({ id: "cert-req-123" }),
+        findById: vi.fn().mockResolvedValue({ id: "cert-req-123" }),
+        create: vi.fn().mockResolvedValue({ id: "cert-req-123" }),
+        transaction: vi.fn()
+      },
+      userDAL: {
+        findById: vi.fn().mockResolvedValue({ id: "user-123" })
+      },
+      identityDAL: {
+        findById: vi.fn().mockResolvedValue({ id: "identity-123", name: "test-identity" })
+      },
+      approvalPolicyService: {
+        createRequestFromPolicy: vi.fn().mockResolvedValue({
+          request: {
+            id: "approval-req-123",
+            steps: [{ id: "step-1", stepNumber: 1, approvers: [] }]
+          }
+        })
+      },
+      resourceMetadataDAL: {
+        insertMany: vi.fn().mockResolvedValue([]),
+        delete: vi.fn().mockResolvedValue([]),
+        find: vi.fn().mockResolvedValue([])
       }
     });
   });
@@ -339,7 +397,8 @@ describe("CertificateV3Service", () => {
         caId: "ca-123",
         certificatePolicyId: "policy-123",
         revokedAt: null,
-        revokedBy: null
+        revokedBy: null,
+        source: "issued"
       };
 
       vi.mocked(mockCertificateProfileDAL.findByIdWithConfigs).mockResolvedValue(mockProfile);
@@ -465,7 +524,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       };
 
       const camelCaseRequest = {
@@ -556,7 +616,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.updateById).mockResolvedValue(mockCertRecord);
 
@@ -751,7 +812,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       };
 
       const mockPolicy = {
@@ -1023,7 +1085,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.updateById).mockResolvedValue({
         id: "cert-1",
@@ -1045,7 +1108,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.findById).mockResolvedValue({
         id: "cert-1",
@@ -1067,7 +1131,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.transaction).mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         return callback(undefined as any);
@@ -1182,7 +1247,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.updateById).mockResolvedValue({
         id: "cert-1",
@@ -1204,7 +1270,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.findById).mockResolvedValue({
         id: "cert-1",
@@ -1226,7 +1293,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.transaction).mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         return callback(undefined as any);
@@ -1341,7 +1409,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.updateById).mockResolvedValue({
         id: "cert-1",
@@ -1363,7 +1432,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.findById).mockResolvedValue({
         id: "cert-1",
@@ -1385,7 +1455,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.transaction).mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         return callback(undefined as any);
@@ -1500,7 +1571,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.updateById).mockResolvedValue({
         id: "cert-1",
@@ -1522,7 +1594,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.findById).mockResolvedValue({
         id: "cert-1",
@@ -1544,7 +1617,8 @@ describe("CertificateV3Service", () => {
         extendedKeyUsages: null,
         revocationReason: null,
         pkiSubscriberId: null,
-        profileId: null
+        profileId: null,
+        source: "issued"
       });
       vi.mocked(mockCertificateDAL.transaction).mockImplementation(async (callback: (tx: any) => Promise<unknown>) => {
         return callback(undefined as any);
@@ -1591,7 +1665,8 @@ describe("CertificateV3Service", () => {
       renewedFromCertificateId: null,
       renewalError: null,
       keyAlgorithm: "RSA_2048",
-      signatureAlgorithm: "RSA-SHA256"
+      signatureAlgorithm: "RSA-SHA256",
+      source: "issued"
     };
 
     const mockProfile = {
@@ -1778,9 +1853,13 @@ describe("CertificateV3Service", () => {
       ).rejects.toThrow("Certificate renewal failed. Errors: Subject alternative name not allowed");
 
       // Should store policy validation error
-      expect(mockCertificateDAL.updateById).toHaveBeenCalledWith("cert-123", {
-        renewalError: "Policy validation failed: Subject alternative name not allowed"
-      });
+      expect(mockCertificateDAL.updateById).toHaveBeenCalledWith(
+        "cert-123",
+        {
+          renewalError: "Policy validation failed: Subject alternative name not allowed"
+        },
+        expect.anything()
+      );
     });
 
     it("should reject renewal if certificate has no profile and no CA", async () => {
@@ -2084,9 +2163,13 @@ describe("CertificateV3Service", () => {
         commonName: ""
       });
 
-      expect(mockCertificateDAL.updateById).toHaveBeenCalledWith("cert-123", {
-        renewBeforeDays: 7
-      });
+      expect(mockCertificateDAL.updateById).toHaveBeenCalledWith(
+        "cert-123",
+        {
+          renewBeforeDays: 7
+        },
+        expect.anything()
+      );
     });
 
     it("should reject update if certificate is not from profile", async () => {
@@ -2248,9 +2331,13 @@ describe("CertificateV3Service", () => {
         commonName: ""
       });
 
-      expect(mockCertificateDAL.updateById).toHaveBeenCalledWith("cert-123", {
-        renewBeforeDays: null
-      });
+      expect(mockCertificateDAL.updateById).toHaveBeenCalledWith(
+        "cert-123",
+        {
+          renewBeforeDays: null
+        },
+        expect.anything()
+      );
     });
 
     it("should reject disable if certificate is not from profile", async () => {

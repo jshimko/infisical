@@ -13,7 +13,8 @@ import { PamResource } from "../../pam-resource-enums";
 import {
   TPamResourceFactory,
   TPamResourceFactoryRotateAccountCredentials,
-  TPamResourceFactoryValidateAccountCredentials
+  TPamResourceFactoryValidateAccountCredentials,
+  TPamResourceInternalMetadata
 } from "../../pam-resource-types";
 import { TSqlAccountCredentials, TSqlResourceConnectionDetails } from "./sql-resource-types";
 
@@ -197,7 +198,11 @@ export const executeWithGateway = async <T>(
   operation: (connection: SqlResourceConnection) => Promise<T>
 ): Promise<T> => {
   const { connectionDetails, gatewayId } = config;
-  const [targetHost] = await verifyHostInputValidity(connectionDetails.host, true);
+  const [targetHost] = await verifyHostInputValidity({
+    host: connectionDetails.host,
+    isGateway: true,
+    isDynamicSecret: false
+  });
   const platformConnectionDetails = await gatewayV2Service.getPlatformConnectionDetailsByGatewayId({
     gatewayId,
     targetHost,
@@ -226,12 +231,11 @@ export const executeWithGateway = async <T>(
   );
 };
 
-export const sqlResourceFactory: TPamResourceFactory<TSqlResourceConnectionDetails, TSqlAccountCredentials> = (
-  resourceType,
-  connectionDetails,
-  gatewayId,
-  gatewayV2Service
-) => {
+export const sqlResourceFactory: TPamResourceFactory<
+  TSqlResourceConnectionDetails,
+  TSqlAccountCredentials,
+  TPamResourceInternalMetadata
+> = (resourceType, connectionDetails, gatewayId, gatewayV2Service) => {
   const validateConnection = async () => {
     if (!gatewayId) {
       throw new BadRequestError({ message: "Gateway ID is required" });

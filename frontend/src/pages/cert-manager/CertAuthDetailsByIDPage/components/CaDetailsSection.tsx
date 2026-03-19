@@ -1,33 +1,99 @@
-import { subject } from "@casl/ability";
-import { faCheck, faCopy, faPencil } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { format } from "date-fns";
+import { useEffect, useRef } from "react";
+import { Controller, useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { addDays, format } from "date-fns";
+import {
+  AlertTriangleIcon,
+  CheckIcon,
+  ClipboardListIcon,
+  ExternalLinkIcon,
+  InfoIcon,
+  LoaderIcon,
+  PencilIcon
+} from "lucide-react";
+import { z } from "zod";
 
-import { ProjectPermissionCan } from "@app/components/permissions";
-import { Button, IconButton, Tooltip } from "@app/components/v2";
-import { ProjectPermissionCertificateAuthorityActions, ProjectPermissionSub } from "@app/context";
+import { createNotification } from "@app/components/notifications";
+import {
+  Button as ButtonV2,
+  FormControl,
+  Input,
+  Modal,
+  ModalClose,
+  ModalContent,
+  Switch as SwitchV2,
+  Tooltip as TooltipV2
+} from "@app/components/v2";
+import {
+  Badge,
+  Detail,
+  DetailGroup,
+  DetailLabel,
+  DetailValue,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  UnstableAlert,
+  UnstableAlertTitle,
+  UnstableCard,
+  UnstableCardAction,
+  UnstableCardContent,
+  UnstableCardDescription,
+  UnstableCardHeader,
+  UnstableCardTitle,
+  UnstableIconButton
+} from "@app/components/v3";
+import { useOrganization, useProject } from "@app/context";
 import { useTimedReset } from "@app/hooks";
-import { CaStatus, CaType, InternalCaType, useGetCa } from "@app/hooks/api";
+import {
+  CaRenewalStatus,
+  CaStatus,
+  CaType,
+  InternalCaType,
+  useGetCa,
+  useGetCaAutoRenewal,
+  useUpdateCaAutoRenewal
+} from "@app/hooks/api";
 import { caStatusToNameMap, caTypeToNameMap } from "@app/hooks/api/ca/constants";
+import { caKeys } from "@app/hooks/api/ca/queries";
 import { TInternalCertificateAuthority } from "@app/hooks/api/ca/types";
 import { certKeyAlgorithmToNameMap } from "@app/hooks/api/certificates/constants";
-import { UsePopUpState } from "@app/hooks/usePopUp";
+import { usePopUp } from "@app/hooks/usePopUp";
 
 type Props = {
   caId: string;
-  handlePopUpOpen: (
-    popUpName: keyof UsePopUpState<["ca", "renewCa", "installCaCert"]>,
-    data?: object
-  ) => void;
 };
 
-export const CaDetailsSection = ({ caId, handlePopUpOpen }: Props) => {
-  const [copyTextId, isCopyingId, setCopyTextId] = useTimedReset<string>({
+const getStatusVariant = (status: CaStatus) => {
+  switch (status) {
+    case CaStatus.ACTIVE:
+      return "success";
+    case CaStatus.PENDING_CERTIFICATE:
+      return "warning";
+    case CaStatus.DISABLED:
+      return "danger";
+    default:
+      return "neutral";
+  }
+};
+
+const autoRenewalSchema = z.object({
+  autoRenewalEnabled: z.boolean(),
+  autoRenewalDaysBeforeExpiry: z.coerce.number().min(1).max(365)
+});
+
+type AutoRenewalFormData = z.infer<typeof autoRenewalSchema>;
+
+export const CaDetailsSection = ({ caId }: Props) => {
+  const { currentOrg } = useOrganization();
+  const { currentProject } = useProject();
+  const queryClient = useQueryClient();
+  const [, isCopyingId, setCopyTextId] = useTimedReset<string>({
     initialState: "Copy ID to clipboard"
   });
-  const [copyTextParentId, isCopyingParentId, setCopyTextParentId] = useTimedReset<string>({
-    initialState: "Copy ID to clipboard"
-  });
+  const { popUp, handlePopUpToggle } = usePopUp(["editAutoRenewal"] as const);
 
   const { data } = useGetCa({
     caId,
@@ -36,189 +102,342 @@ export const CaDetailsSection = ({ caId, handlePopUpOpen }: Props) => {
 
   const ca = data as TInternalCertificateAuthority;
 
-  return ca ? (
-    <div className="rounded-lg border border-mineshaft-600 bg-mineshaft-900 p-4">
-      <div className="flex items-center justify-between border-b border-mineshaft-400 pb-4">
-        <h3 className="text-lg font-medium text-mineshaft-100">CA Details</h3>
-        <ProjectPermissionCan
-          I={ProjectPermissionCertificateAuthorityActions.Edit}
-          a={subject(ProjectPermissionSub.CertificateAuthorities, { name: ca.name })}
-        >
-          {(isAllowed) => {
-            return (
-              <Tooltip content="Edit CA">
-                <IconButton
-                  isDisabled={!isAllowed}
-                  ariaLabel="copy icon"
-                  variant="plain"
-                  className="group relative"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePopUpOpen("ca", {
-                      caId: ca.id
-                    });
-                  }}
-                >
-                  <FontAwesomeIcon icon={faPencil} />
-                </IconButton>
-              </Tooltip>
-            );
-          }}
-        </ProjectPermissionCan>
-      </div>
-      <div className="pt-4">
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">CA Type</p>
-          <p className="text-sm text-mineshaft-300">{caTypeToNameMap[ca.configuration.type]}</p>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">CA ID</p>
-          <div className="group flex align-top">
-            <p className="text-sm text-mineshaft-300">{ca.id}</p>
-            <div className="opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-              <Tooltip content={copyTextId}>
-                <IconButton
-                  ariaLabel="copy icon"
-                  variant="plain"
-                  className="group relative ml-2"
-                  onClick={() => {
-                    navigator.clipboard.writeText(ca.id);
-                    setCopyTextId("Copied");
-                  }}
-                >
-                  <FontAwesomeIcon icon={isCopyingId ? faCheck : faCopy} />
-                </IconButton>
-              </Tooltip>
-            </div>
-          </div>
-        </div>
-        {ca.configuration.type === InternalCaType.INTERMEDIATE &&
-          ca.status !== CaStatus.PENDING_CERTIFICATE && (
-            <div className="mb-4">
-              <p className="text-sm font-medium text-mineshaft-300">Parent CA ID</p>
-              <div className="group flex align-top">
-                <p className="text-sm text-mineshaft-300">
-                  {ca.configuration.parentCaId
-                    ? ca.configuration.parentCaId
-                    : "N/A - External Parent CA"}
-                </p>
-                {ca.configuration.parentCaId && (
-                  <div className="opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                    <Tooltip content={copyTextParentId}>
-                      <IconButton
-                        ariaLabel="copy icon"
-                        variant="plain"
-                        className="group relative ml-2"
-                        onClick={() => {
-                          navigator.clipboard.writeText(ca.configuration.parentCaId as string);
-                          setCopyTextParentId("Copied");
-                        }}
-                      >
-                        <FontAwesomeIcon icon={isCopyingParentId ? faCheck : faCopy} />
-                      </IconButton>
-                    </Tooltip>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">Name</p>
-          <p className="text-sm text-mineshaft-300">{ca.name}</p>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">Status</p>
-          <p className="text-sm text-mineshaft-300">{caStatusToNameMap[ca.status]}</p>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">Key Algorithm</p>
-          <p className="text-sm text-mineshaft-300">
-            {certKeyAlgorithmToNameMap[ca.configuration.keyAlgorithm]}
-          </p>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">Max Path Length</p>
-          <p className="text-sm text-mineshaft-300">{ca.configuration.maxPathLength ?? "-"}</p>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">Not Before</p>
-          <p className="text-sm text-mineshaft-300">
-            {ca.configuration.notBefore
-              ? format(new Date(ca.configuration.notBefore), "yyyy-MM-dd")
-              : "-"}
-          </p>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm font-medium text-mineshaft-300">Not After</p>
-          <p className="text-sm text-mineshaft-300">
-            {ca.configuration.notAfter
-              ? format(new Date(ca.configuration.notAfter), "yyyy-MM-dd")
-              : "-"}
-          </p>
-        </div>
-        {ca.status === CaStatus.ACTIVE && (
-          <ProjectPermissionCan
-            I={ProjectPermissionCertificateAuthorityActions.Renew}
-            a={subject(ProjectPermissionSub.CertificateAuthorities, { name: ca.name })}
-          >
-            {(isAllowed) => {
-              return (
-                <Button
-                  isDisabled={!isAllowed}
-                  className="mt-4 w-full"
-                  colorSchema="primary"
-                  type="submit"
-                  onClick={() => {
-                    if (
-                      ca.configuration.type === InternalCaType.INTERMEDIATE &&
-                      !ca.configuration.parentCaId
-                    ) {
-                      // intermediate CA with external parent CA
-                      handlePopUpOpen("installCaCert", {
-                        caId: ca.id,
-                        isParentCaExternal: true
-                      });
-                      return;
-                    }
+  const { data: parentCaData } = useGetCa({
+    caId: ca?.configuration?.parentCaId || "",
+    type: CaType.INTERNAL,
+    options: {
+      enabled: Boolean(ca?.configuration?.parentCaId)
+    }
+  });
 
-                    handlePopUpOpen("renewCa", {
-                      caId: ca.id
-                    });
-                  }}
-                >
-                  Renew CA
-                </Button>
-              );
-            }}
-          </ProjectPermissionCan>
-        )}
-        {ca.status === CaStatus.PENDING_CERTIFICATE && (
-          <ProjectPermissionCan
-            I={ProjectPermissionCertificateAuthorityActions.Create}
-            a={subject(ProjectPermissionSub.CertificateAuthorities, { name: ca.name })}
-          >
-            {(isAllowed) => {
-              return (
-                <Button
-                  isDisabled={!isAllowed}
-                  className="mt-4 w-full"
-                  colorSchema="primary"
-                  type="submit"
-                  onClick={() => {
-                    handlePopUpOpen("installCaCert", {
-                      caId: ca.id
-                    });
-                  }}
-                >
-                  Install CA Certificate
-                </Button>
-              );
-            }}
-          </ProjectPermissionCan>
-        )}
-      </div>
-    </div>
-  ) : (
-    <div />
+  const parentCa = parentCaData as TInternalCertificateAuthority | undefined;
+
+  const { data: autoRenewal } = useGetCaAutoRenewal(caId, {
+    enabled:
+      Boolean(caId) &&
+      (ca?.status === CaStatus.ACTIVE || ca?.status === CaStatus.PENDING_CERTIFICATE)
+  });
+
+  const prevStatusRef = useRef(autoRenewal?.lastRenewalStatus);
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    const currentStatus = autoRenewal?.lastRenewalStatus;
+    prevStatusRef.current = currentStatus;
+
+    if (
+      prevStatus === CaRenewalStatus.PENDING &&
+      currentStatus &&
+      currentStatus !== CaRenewalStatus.PENDING
+    ) {
+      queryClient.invalidateQueries({ queryKey: caKeys.getCaById(caId) });
+      queryClient.invalidateQueries({ queryKey: caKeys.getCaCerts(caId) });
+      queryClient.invalidateQueries({ queryKey: caKeys.getCaCert(caId) });
+      queryClient.invalidateQueries({
+        queryKey: caKeys.listCasByTypeAndProjectId(CaType.INTERNAL, currentProject.id)
+      });
+    }
+  }, [autoRenewal?.lastRenewalStatus, caId, currentProject.id, queryClient]);
+
+  const { mutateAsync: updateAutoRenewal } = useUpdateCaAutoRenewal();
+
+  const {
+    control,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { isSubmitting }
+  } = useForm<AutoRenewalFormData>({
+    resolver: zodResolver(autoRenewalSchema),
+    values: {
+      autoRenewalEnabled: autoRenewal?.autoRenewalEnabled ?? false,
+      autoRenewalDaysBeforeExpiry: autoRenewal?.autoRenewalDaysBeforeExpiry ?? 30
+    }
+  });
+
+  const watchEnabled = watch("autoRenewalEnabled");
+
+  if (!ca) {
+    return <div />;
+  }
+
+  const onAutoRenewalSubmit = async ({
+    autoRenewalEnabled,
+    autoRenewalDaysBeforeExpiry
+  }: AutoRenewalFormData) => {
+    try {
+      await updateAutoRenewal({
+        caId,
+        autoRenewalEnabled,
+        ...(autoRenewalEnabled && { autoRenewalDaysBeforeExpiry })
+      });
+      createNotification({
+        text: "Renewal settings updated",
+        type: "success"
+      });
+      handlePopUpToggle("editAutoRenewal", false);
+    } catch {
+      createNotification({
+        text: "Failed to update renewal settings",
+        type: "error"
+      });
+    }
+  };
+
+  const getNextRenewalDate = () => {
+    if (
+      !autoRenewal?.autoRenewalEnabled ||
+      !autoRenewal.autoRenewalDaysBeforeExpiry ||
+      !ca.configuration.notAfter
+    ) {
+      return null;
+    }
+    return addDays(new Date(ca.configuration.notAfter), -autoRenewal.autoRenewalDaysBeforeExpiry);
+  };
+
+  const showAutoRenewal =
+    (ca.status === CaStatus.ACTIVE || ca.status === CaStatus.PENDING_CERTIFICATE) && autoRenewal;
+
+  return (
+    <>
+      <UnstableCard className="w-full">
+        <UnstableCardHeader className="border-b">
+          <UnstableCardTitle>Details</UnstableCardTitle>
+          <UnstableCardDescription>Certificate authority details</UnstableCardDescription>
+          {showAutoRenewal && (
+            <UnstableCardAction>
+              <UnstableIconButton
+                variant="outline"
+                size="xs"
+                onClick={() => handlePopUpToggle("editAutoRenewal", true)}
+              >
+                <PencilIcon />
+              </UnstableIconButton>
+            </UnstableCardAction>
+          )}
+        </UnstableCardHeader>
+        <UnstableCardContent>
+          <DetailGroup>
+            <Detail>
+              <DetailLabel>CA Type</DetailLabel>
+              <DetailValue>{caTypeToNameMap[ca.configuration.type]}</DetailValue>
+            </Detail>
+
+            <Detail>
+              <DetailLabel>CA ID</DetailLabel>
+              <DetailValue className="flex items-center gap-x-1">
+                <span className="break-all">{ca.id}</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <UnstableIconButton
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(ca.id);
+                        setCopyTextId("Copied");
+                      }}
+                    >
+                      {isCopyingId ? <CheckIcon /> : <ClipboardListIcon className="text-label" />}
+                    </UnstableIconButton>
+                  </TooltipTrigger>
+                  <TooltipContent>{isCopyingId ? "Copied" : "Copy ID to clipboard"}</TooltipContent>
+                </Tooltip>
+              </DetailValue>
+            </Detail>
+
+            {ca.configuration.type === InternalCaType.INTERMEDIATE &&
+              ca.status !== CaStatus.PENDING_CERTIFICATE && (
+                <Detail>
+                  <DetailLabel>Parent CA</DetailLabel>
+                  <DetailValue className="flex items-center gap-x-1">
+                    {ca.configuration.parentCaId ? (
+                      <Badge variant="neutral" asChild>
+                        <Link
+                          to="/organizations/$orgId/projects/cert-manager/$projectId/ca/$caId"
+                          params={{
+                            orgId: currentOrg.id,
+                            projectId: currentProject.id,
+                            caId: ca.configuration.parentCaId
+                          }}
+                        >
+                          {parentCa?.name || ca.configuration.parentCaId}
+                          <ExternalLinkIcon />
+                        </Link>
+                      </Badge>
+                    ) : (
+                      <span className="break-all">N/A - External Parent CA</span>
+                    )}
+                  </DetailValue>
+                </Detail>
+              )}
+
+            <Detail>
+              <DetailLabel>Name</DetailLabel>
+              <DetailValue>{ca.name}</DetailValue>
+            </Detail>
+
+            <Detail>
+              <DetailLabel>Status</DetailLabel>
+              <DetailValue>
+                <Badge variant={getStatusVariant(ca.status)}>{caStatusToNameMap[ca.status]}</Badge>
+              </DetailValue>
+            </Detail>
+
+            <Detail>
+              <DetailLabel>Key Algorithm</DetailLabel>
+              <DetailValue>{certKeyAlgorithmToNameMap[ca.configuration.keyAlgorithm]}</DetailValue>
+            </Detail>
+
+            {showAutoRenewal && (
+              <>
+                <Detail>
+                  <DetailLabel>Auto-Renewal</DetailLabel>
+                  <DetailValue>
+                    <Badge variant={autoRenewal.autoRenewalEnabled ? "success" : "neutral"}>
+                      {autoRenewal.autoRenewalEnabled ? "Enabled" : "Disabled"}
+                    </Badge>
+                  </DetailValue>
+                </Detail>
+
+                {autoRenewal.lastRenewalAt && (
+                  <Detail>
+                    <DetailLabel>Last Renewal</DetailLabel>
+                    <DetailValue>
+                      {format(new Date(autoRenewal.lastRenewalAt), "MMM d, yyyy 'at' h:mm a")}
+                    </DetailValue>
+                  </Detail>
+                )}
+
+                {autoRenewal.lastRenewalStatus && (
+                  <Detail>
+                    <DetailLabel>Last Installation Status</DetailLabel>
+                    <DetailValue>
+                      {autoRenewal.lastRenewalStatus === CaRenewalStatus.FAILED &&
+                      autoRenewal.lastRenewalMessage ? (
+                        <TooltipV2
+                          position="right"
+                          content={autoRenewal.lastRenewalMessage}
+                          className="max-w-md break-words"
+                        >
+                          <Badge variant="danger">Failed</Badge>
+                        </TooltipV2>
+                      ) : (
+                        <Badge
+                          variant={(() => {
+                            if (autoRenewal.lastRenewalStatus === CaRenewalStatus.SUCCESS)
+                              return "success";
+                            if (autoRenewal.lastRenewalStatus === CaRenewalStatus.PENDING)
+                              return "info";
+                            return "danger";
+                          })()}
+                        >
+                          {autoRenewal.lastRenewalStatus === CaRenewalStatus.PENDING
+                            ? "Installing..."
+                            : autoRenewal.lastRenewalStatus.charAt(0).toUpperCase() +
+                              autoRenewal.lastRenewalStatus.slice(1)}
+                        </Badge>
+                      )}
+                    </DetailValue>
+                  </Detail>
+                )}
+              </>
+            )}
+          </DetailGroup>
+
+          {showAutoRenewal && autoRenewal.lastRenewalStatus === CaRenewalStatus.PENDING && (
+            <UnstableAlert variant="info" className="mt-2">
+              <LoaderIcon className="animate-spin" />
+              <UnstableAlertTitle>Certificate installation in progress...</UnstableAlertTitle>
+            </UnstableAlert>
+          )}
+
+          {showAutoRenewal &&
+            autoRenewal.lastRenewalStatus !== CaRenewalStatus.PENDING &&
+            autoRenewal.autoRenewalEnabled &&
+            (autoRenewal.lastRenewalStatus === CaRenewalStatus.FAILED &&
+            autoRenewal.lastRenewalMessage ? (
+              <UnstableAlert className="mt-2 border-warning/20 bg-warning/5 text-warning">
+                <AlertTriangleIcon />
+                <UnstableAlertTitle>
+                  Last renewal failed: {autoRenewal.lastRenewalMessage}
+                </UnstableAlertTitle>
+              </UnstableAlert>
+            ) : (
+              (() => {
+                const nextRenewalDate = getNextRenewalDate();
+                if (!nextRenewalDate) return null;
+                return (
+                  <UnstableAlert variant="info" className="mt-2">
+                    <InfoIcon />
+                    <UnstableAlertTitle>
+                      Next auto-renewal: {format(nextRenewalDate, "MMM d, yyyy")}
+                    </UnstableAlertTitle>
+                  </UnstableAlert>
+                );
+              })()
+            ))}
+        </UnstableCardContent>
+      </UnstableCard>
+
+      <Modal
+        isOpen={popUp.editAutoRenewal.isOpen}
+        onOpenChange={(isOpen) => {
+          handlePopUpToggle("editAutoRenewal", isOpen);
+          if (!isOpen) reset();
+        }}
+      >
+        <ModalContent title="Edit Renewal Settings">
+          <form onSubmit={handleSubmit(onAutoRenewalSubmit)}>
+            <Controller
+              control={control}
+              name="autoRenewalEnabled"
+              render={({ field: { value, onChange } }) => (
+                <FormControl>
+                  <SwitchV2
+                    id="auto-renewal-enabled"
+                    className="bg-mineshaft-400/80 shadow-inner data-[state=checked]:bg-green/80"
+                    thumbClassName="bg-mineshaft-800"
+                    isChecked={value}
+                    onCheckedChange={onChange}
+                  >
+                    Auto-Renewal
+                  </SwitchV2>
+                </FormControl>
+              )}
+            />
+            {watchEnabled && (
+              <Controller
+                control={control}
+                name="autoRenewalDaysBeforeExpiry"
+                render={({ field, fieldState: { error } }) => (
+                  <FormControl
+                    label="Days Before Expiry"
+                    errorText={error?.message}
+                    isError={Boolean(error)}
+                    helperText="Number of days before certificate expiry to trigger auto-renewal"
+                  >
+                    <Input {...field} type="number" min={1} max={365} />
+                  </FormControl>
+                )}
+              />
+            )}
+            <div className="flex w-full justify-between gap-4 pt-4">
+              <ModalClose asChild>
+                <ButtonV2 colorSchema="secondary" variant="plain">
+                  Cancel
+                </ButtonV2>
+              </ModalClose>
+              <ButtonV2
+                isLoading={isSubmitting}
+                isDisabled={isSubmitting}
+                type="submit"
+                colorSchema="secondary"
+              >
+                Save
+              </ButtonV2>
+            </div>
+          </form>
+        </ModalContent>
+      </Modal>
+    </>
   );
 };

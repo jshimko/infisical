@@ -54,7 +54,7 @@ import {
 import { ProjectPermissionSecretActions } from "@app/context/ProjectPermissionContext/types";
 import { getProjectBaseURL } from "@app/helpers/project";
 import { usePopUp, useToggle } from "@app/hooks";
-import { useGetSecretVersion } from "@app/hooks/api";
+import { useGetSecretVersion, useRedactSecretValue } from "@app/hooks/api";
 import {
   dashboardKeys,
   fetchSecretValue,
@@ -90,6 +90,7 @@ type Props = {
 export const SecretDetailSidebar = ({
   isOpen,
   onToggle,
+  onClose,
   secret: originalSecret,
   onDeleteSecret,
   onSaveSecret,
@@ -103,6 +104,8 @@ export const SecretDetailSidebar = ({
   const { currentProject } = useProject();
   const [isFieldFocused, setIsFieldFocused] = useToggle();
   const queryClient = useQueryClient();
+
+  const { mutateAsync: redactSecretValue } = useRedactSecretValue();
 
   const canFetchSecretValue =
     Boolean(originalSecret) && !originalSecret.secretValueHidden && !originalSecret.isEmpty;
@@ -179,17 +182,44 @@ export const SecretDetailSidebar = ({
     formState: { isDirty }
   } = useForm<TFormSchema>({
     resolver: zodResolver(formSchema),
-    values: {
+    defaultValues: {
       ...secret,
+      tags: secret?.tags?.map((tag) => ({ id: tag.id, slug: tag.slug, tagColor: tag.color })),
       valueOverride: getOverrideDefaultValue(),
       value: getDefaultValue()
     },
     disabled: !secret
   });
 
+  // Update value fields when secret value is fetched, but only if user hasn't modified them
+  useEffect(() => {
+    if (secretValueData) {
+      // Only update if the field hasn't been touched/modified by the user
+      if (!getFieldState("value").isDirty && secretValueData.value !== undefined) {
+        setValue("value", secretValueData.value, { shouldDirty: false });
+      }
+      if (!getFieldState("valueOverride").isDirty && secretValueData.valueOverride !== undefined) {
+        setValue("valueOverride", secretValueData.valueOverride, { shouldDirty: false });
+      }
+    }
+  }, [secretValueData, setValue, getFieldState]);
+
+  // Reset form when a different secret is opened
+  useEffect(() => {
+    if (originalSecret?.id) {
+      reset({
+        ...secret,
+        tags: secret?.tags?.map((tag) => ({ id: tag.id, slug: tag.slug, tagColor: tag.color })),
+        valueOverride: getOverrideDefaultValue(),
+        value: getDefaultValue()
+      });
+    }
+  }, [originalSecret?.id]);
+
   const { handlePopUpToggle, popUp, handlePopUpOpen } = usePopUp([
     "secretAccessUpgradePlan",
-    "secretReferenceTree"
+    "secretReferenceTree",
+    "redactSecretValue"
   ] as const);
 
   const tagFields = useFieldArray({
@@ -270,7 +300,7 @@ export const SecretDetailSidebar = ({
         tagFields.remove(tagPos);
       }
     } else {
-      tagFields.append(tag);
+      tagFields.append({ id: tag.id, slug: tag.slug, tagColor: tag.color });
     }
   };
 
@@ -332,6 +362,7 @@ export const SecretDetailSidebar = ({
         }
       >
         <ModalContent
+          className="max-w-3xl"
           title="Secret Reference Details"
           subTitle="Visual breakdown of secrets referenced by this secret."
           onOpenAutoFocus={(e) => e.preventDefault()}
@@ -340,9 +371,14 @@ export const SecretDetailSidebar = ({
             secretPath={secretPath}
             environment={environment}
             secretKey={popUp.secretReferenceTree.data}
+            onClose={() => {
+              handlePopUpToggle("secretReferenceTree", false);
+              onClose();
+            }}
           />
         </ModalContent>
       </Modal>
+
       <Drawer
         onOpenChange={async (state) => {
           if (isOpen && isDirty) {
@@ -354,7 +390,7 @@ export const SecretDetailSidebar = ({
       >
         <DrawerContent
           title={`Secret – ${secret?.key}`}
-          className="h-full thin-scrollbar"
+          className="h-full thin-scrollbar w-md"
           cardBodyClassName="pb-0"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
@@ -484,7 +520,7 @@ export const SecretDetailSidebar = ({
                         <Switch
                           id="skipmultiencoding-option"
                           onCheckedChange={(isChecked) => onChange(isChecked)}
-                          isChecked={value}
+                          isChecked={value ?? false}
                           onBlur={onBlur}
                           isDisabled={!isAllowed}
                           className="items-center justify-between"
@@ -658,6 +694,33 @@ export const SecretDetailSidebar = ({
                             )}
                           />
                         </div>
+                        <div>
+                          {i === 0 && (
+                            <FormLabel label="Encrypt" className="text-xs text-mineshaft-400" />
+                          )}
+                          <Controller
+                            control={control}
+                            defaultValue={
+                              currentProject.enforceEncryptedSecretManagerSecretMetadata
+                            }
+                            name={`secretMetadata.${i}.isEncrypted`}
+                            render={({ field, fieldState: { error } }) => (
+                              <FormControl
+                                isError={Boolean(error?.message)}
+                                errorText={error?.message}
+                                className="mb-0 w-12"
+                              >
+                                <Switch
+                                  id="metadata-is-encrypted-checkbox"
+                                  isChecked={field.value}
+                                  defaultChecked={field.value}
+                                  onCheckedChange={field.onChange}
+                                  className="mt-1.5 mb-2 ml-1"
+                                />
+                              </FormControl>
+                            )}
+                          />
+                        </div>
                         <IconButton
                           ariaLabel="delete key"
                           className="bottom-0.5 max-h-8"
@@ -674,7 +737,9 @@ export const SecretDetailSidebar = ({
                         variant="outline_bg"
                         size="xs"
                         className="rounded-md"
-                        onClick={() => metadataFormFields.append({ key: "", value: "" })}
+                        onClick={() =>
+                          metadataFormFields.append({ key: "", value: "", isEncrypted: false })
+                        }
                       >
                         <FontAwesomeIcon icon={faPlus} />
                       </IconButton>
@@ -712,6 +777,16 @@ export const SecretDetailSidebar = ({
                     secretVersion={version}
                     secret={secret}
                     currentVersion={secretVersion.length}
+                    onRedactSecretValue={async (versionId) => {
+                      await redactSecretValue({ versionId, secretId: secret.id });
+
+                      createNotification({
+                        title: "Secret value redacted",
+                        text: "The secret value has been redacted successfully and is no longer persisted or viewable.",
+                        type: "success"
+                      });
+                    }}
+                    canEditSecret={!cannotEditSecret}
                     onRevert={async (versionValue) => {
                       await fetchValue();
 
@@ -846,7 +921,7 @@ export const SecretDetailSidebar = ({
                 leftIcon={<FontAwesomeIcon icon={faProjectDiagram} />}
                 onClick={() => handlePopUpOpen("secretReferenceTree", secretKey)}
               >
-                Secret Reference Tree
+                Secret References
               </Button>
               <Tooltip content="Copy Secret ID" className="z-100">
                 <IconButton

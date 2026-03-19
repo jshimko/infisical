@@ -7,10 +7,12 @@ import { registerAwsParameterStoreSyncRouter } from "./aws-parameter-store-sync-
 import { registerAwsSecretsManagerSyncRouter } from "./aws-secrets-manager-sync-router";
 import { registerAzureAppConfigurationSyncRouter } from "./azure-app-configuration-sync-router";
 import { registerAzureDevOpsSyncRouter } from "./azure-devops-sync-router";
+import { registerAzureEntraIdScimSyncRouter } from "./azure-entra-id-scim-sync-router";
 import { registerAzureKeyVaultSyncRouter } from "./azure-key-vault-sync-router";
 import { registerBitbucketSyncRouter } from "./bitbucket-sync-router";
 import { registerCamundaSyncRouter } from "./camunda-sync-router";
 import { registerChecklySyncRouter } from "./checkly-sync-router";
+import { registerCircleCISyncRouter } from "./circleci-sync-router";
 import { registerCloudflarePagesSyncRouter } from "./cloudflare-pages-sync-router";
 import { registerCloudflareWorkersSyncRouter } from "./cloudflare-workers-sync-router";
 import { registerDatabricksSyncRouter } from "./databricks-sync-router";
@@ -71,5 +73,7 @@ export const SECRET_SYNC_REGISTER_ROUTER_MAP: Record<SecretSync, (server: Fastif
   [SecretSync.Bitbucket]: registerBitbucketSyncRouter,
   [SecretSync.LaravelForge]: registerLaravelForgeSyncRouter,
   [SecretSync.Chef]: registerChefSyncRouter,
-  [SecretSync.OctopusDeploy]: registerOctopusDeploySyncRouter
+  [SecretSync.OctopusDeploy]: registerOctopusDeploySyncRouter,
+  [SecretSync.CircleCI]: registerCircleCISyncRouter,
+  [SecretSync.AzureEntraIdScim]: registerAzureEntraIdScimSyncRouter
 };

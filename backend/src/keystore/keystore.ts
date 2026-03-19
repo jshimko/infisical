@@ -1,4 +1,5 @@
-import { Cluster, Redis } from "ioredis";
+import type { Cluster } from "ioredis";
+import { Redis } from "ioredis";
 import { Knex } from "knex";
 
 import { buildRedisFromConfig, TRedisConfigKeys } from "@app/lib/config/redis";
@@ -14,6 +15,7 @@ export const PgSqlLock = {
   BootUpMigration: 2023,
   SuperAdminInit: 2024,
   KmsRootKeyInit: 2025,
+  SanitizedSchemaGeneration: 2026,
   OrgGatewayRootCaInit: (orgId: string) => pgAdvisoryLockHashText(`org-gateway-root-ca:${orgId}`),
   OrgGatewayCertExchange: (orgId: string) => pgAdvisoryLockHashText(`org-gateway-cert-exchange:${orgId}`),
   SecretRotationV2Creation: (folderId: string) => pgAdvisoryLockHashText(`secret-rotation-v2-creation:${folderId}`),
@@ -23,22 +25,21 @@ export const PgSqlLock = {
   InstanceRelayConfigInit: () => pgAdvisoryLockHashText("instance-relay-config-init"),
   OrgGatewayV2Init: (orgId: string) => pgAdvisoryLockHashText(`org-gateway-v2-init:${orgId}`),
   OrgRelayConfigInit: (orgId: string) => pgAdvisoryLockHashText(`org-relay-config-init:${orgId}`),
+  OrgKmipInit: (orgId: string) => pgAdvisoryLockHashText(`org-kmip-init:${orgId}`),
   GatewayPamSessionKey: (gatewayId: string) => pgAdvisoryLockHashText(`gateway-pam-session-key:${gatewayId}`),
   IdentityLogin: (identityId: string, nonce: string) => pgAdvisoryLockHashText(`identity-login:${identityId}:${nonce}`),
-  PamResourceSshCaInit: (resourceId: string) => pgAdvisoryLockHashText(`pam-resource-ssh-ca-init:${resourceId}`)
+  PamResourceSshCaInit: (resourceId: string) => pgAdvisoryLockHashText(`pam-resource-ssh-ca-init:${resourceId}`),
+  CreateIdentity: (orgId: string) => pgAdvisoryLockHashText(`create-identity:${orgId}`),
+  AccessSharedSecret: (sharedSecretId: string) => pgAdvisoryLockHashText(`access-shared-secret:${sharedSecretId}`),
+  KmsOrgKeyCreation: (orgId: string) => pgAdvisoryLockHashText(`kms-org-key:${orgId}`),
+  KmsOrgDataKeyCreation: (orgId: string) => pgAdvisoryLockHashText(`kms-org-data-key:${orgId}`),
+  KmsProjectKeyCreation: (projectId: string) => pgAdvisoryLockHashText(`kms-project-key:${projectId}`),
+  KmsProjectDataKeyCreation: (projectId: string) => pgAdvisoryLockHashText(`kms-project-data-key:${projectId}`)
 } as const;
 
 // all the key prefixes used must be set here to avoid conflict
 export const KeyStorePrefixes = {
   SecretReplication: "secret-replication-import-lock",
-  KmsProjectDataKeyCreation: "kms-project-data-key-creation-lock",
-  KmsProjectKeyCreation: "kms-project-key-creation-lock",
-  WaitUntilReadyKmsProjectDataKeyCreation: "wait-until-ready-kms-project-data-key-creation-",
-  WaitUntilReadyKmsProjectKeyCreation: "wait-until-ready-kms-project-key-creation-",
-  KmsOrgKeyCreation: "kms-org-key-creation-lock",
-  KmsOrgDataKeyCreation: "kms-org-data-key-creation-lock",
-  WaitUntilReadyKmsOrgKeyCreation: "wait-until-ready-kms-org-key-creation-",
-  WaitUntilReadyKmsOrgDataKeyCreation: "wait-until-ready-kms-org-data-key-creation-",
   FolderTreeCheckpoint: (envId: string) => `folder-tree-checkpoint-${envId}`,
 
   WaitUntilReadyProjectEnvironmentOperation: (projectId: string) =>
@@ -83,12 +84,24 @@ export const KeyStorePrefixes = {
   PkiAcmeNonce: (nonce: string) => `pki-acme-nonce:${nonce}` as const,
   MfaSession: (mfaSessionId: string) => `mfa-session:${mfaSessionId}` as const,
   WebAuthnChallenge: (userId: string) => `webauthn-challenge:${userId}` as const,
+  UserMfaLockoutLock: (userId: string) => `user-mfa-lockout-lock:${userId}` as const,
+  UserMfaUnlockEmailSent: (userId: string) => `user-mfa-unlock-email-sent:${userId}` as const,
 
   AiMcpServerOAuth: (sessionId: string) => `ai-mcp-server-oauth:${sessionId}` as const,
 
   // AI MCP Endpoint OAuth
   AiMcpEndpointOAuthClient: (clientId: string) => `ai-mcp-endpoint-oauth-client:${clientId}` as const,
-  AiMcpEndpointOAuthCode: (clientId: string, code: string) => `ai-mcp-endpoint-oauth-code:${clientId}:${code}` as const
+  AiMcpEndpointOAuthCode: (clientId: string, code: string) => `ai-mcp-endpoint-oauth-code:${clientId}:${code}` as const,
+
+  // Project SSE Connection Rate Limiting
+  ProjectSSEConnectionsSet: (projectId: string) => `project-sse-connections:${projectId}` as const,
+  ProjectSSEConnectionsLockoutKey: (projectId: string) => `project-sse-connections:lockout:${projectId}` as const,
+  ProjectSSEConnection: (projectId: string, connectionId: string) =>
+    `project-sse-conn:${projectId}:${connectionId}` as const,
+
+  ProjectDeleteLock: (projectId: string) => `project-delete-lock-${projectId}` as const,
+
+  TelemetryIdentifyIdentity: (dedupKey: string) => `telemetry-identify-identity:${dedupKey}` as const
 };
 
 export const KeyStoreTtls = {
@@ -98,7 +111,9 @@ export const KeyStoreTtls = {
   ProjectPermissionCacheInSeconds: 300, // 5 minutes
   ProjectPermissionDalVersionTtl: "15m", // Project permission DAL version TTL
   MfaSessionInSeconds: 300, // 5 minutes
-  WebAuthnChallengeInSeconds: 300 // 5 minutes
+  WebAuthnChallengeInSeconds: 300, // 5 minutes
+  ProjectSSEConnectionTtlSeconds: 180, // Must be > heartbeat interval (60s) * 2
+  TelemetryIdentifyIdentityInSeconds: 600 // 10 minutes
 };
 
 type TDeleteItems = {
@@ -128,11 +143,31 @@ export type TKeyStoreFactory = {
     value: string | number | Buffer,
     prefix?: string
   ) => Promise<"OK">;
+  setItemWithExpiryNX: (
+    key: string,
+    expiryInSeconds: number | string,
+    value: string | number | Buffer,
+    prefix?: string
+  ) => Promise<"OK" | null>;
   deleteItem: (key: string) => Promise<number>;
   deleteItemsByKeyIn: (keys: string[]) => Promise<number>;
   deleteItems: (arg: TDeleteItems) => Promise<number>;
   incrementBy: (key: string, value: number) => Promise<number>;
   getKeysByPattern: (pattern: string, limit?: number) => Promise<string[]>;
+  // list operations
+  listPush: (key: string, value: string) => Promise<number>;
+  listRange: (key: string, start: number, stop: number) => Promise<string[]>;
+  listRemove: (key: string, count: number, value: string) => Promise<number>;
+  listLength: (key: string) => Promise<number>;
+  // stream operations
+  streamAdd: (key: string, id: string, fieldValue: Record<string, string>, maxLen?: number) => Promise<string | null>;
+  streamRange: (key: string, start: string, end: string, count?: number) => Promise<[string, string[]][]>;
+  streamTrim: (key: string, minId: string, inclusive?: boolean) => Promise<number>;
+  streamCollect: (
+    key: string,
+    batchSize: number,
+    maxEntries: number
+  ) => Promise<{ entries: [string, string[]][]; lastId: string | null }>;
   // pg
   pgIncrementBy: (key: string, dto: { incr?: number; expiry?: string; tx?: Knex }) => Promise<number>;
   pgGetIntItem: (key: string, prefix?: string) => Promise<number | undefined>;
@@ -160,6 +195,7 @@ export const keyStoreFactory = (
   keyValueStoreDAL: TKeyValueStoreDALFactory
 ): TKeyStoreFactory => {
   const primaryRedis = buildRedisFromConfig(redisConfigKeys);
+
   const redisReadReplicas = redisConfigKeys.REDIS_READ_REPLICAS?.map((el) => {
     if (redisConfigKeys.REDIS_URL) {
       const primaryNode = new URL(redisConfigKeys?.REDIS_URL);
@@ -193,6 +229,13 @@ export const keyStoreFactory = (
     value: string | number | Buffer,
     prefix?: string
   ) => primaryRedis.set(prefix ? `${prefix}:${key}` : key, value, "EX", expiryInSeconds);
+
+  const setItemWithExpiryNX = async (
+    key: string,
+    expiryInSeconds: number | string,
+    value: string | number | Buffer,
+    prefix?: string
+  ) => primaryRedis.set(prefix ? `${prefix}:${key}` : key, value, "EX", expiryInSeconds, "NX");
 
   const deleteItem = async (key: string) => primaryRedis.del(key);
 
@@ -265,6 +308,62 @@ export const keyStoreFactory = (
   const pgGetIntItem = async (key: string, prefix?: string) =>
     keyValueStoreDAL.findOneInt(prefix ? `${prefix}:${key}` : key);
 
+  // List operations
+  const listPush = async (key: string, value: string) => primaryRedis.rpush(key, value);
+
+  const listRange = async (key: string, start: number, stop: number) =>
+    pickPrimaryOrSecondaryRedis(primaryRedis, redisReadReplicas).lrange(key, start, stop);
+
+  const listRemove = async (key: string, count: number, value: string) => primaryRedis.lrem(key, count, value);
+
+  const listLength = async (key: string) => pickPrimaryOrSecondaryRedis(primaryRedis, redisReadReplicas).llen(key);
+
+  // Stream operations
+  const streamAdd = async (key: string, id: string, fieldValue: Record<string, string>, maxLen = 1000000) => {
+    const args: string[] = [];
+    for (const [field, value] of Object.entries(fieldValue)) {
+      args.push(field, value);
+    }
+    return primaryRedis.xadd(key, "MAXLEN", "~", maxLen, id, ...args);
+  };
+
+  const streamRange = async (key: string, start: string, end: string, count?: number) => {
+    if (count) {
+      return primaryRedis.xrange(key, start, end, "COUNT", count);
+    }
+    return primaryRedis.xrange(key, start, end);
+  };
+
+  const streamTrim = async (key: string, minId: string, inclusive = false) => {
+    let id = minId;
+    if (inclusive) {
+      const [ts, seq] = minId.split("-");
+      id = `${ts}-${Number(seq) + 1}`;
+    }
+    return primaryRedis.xtrim(key, "MINID", id);
+  };
+
+  const streamCollect = async (key: string, batchSize: number, maxEntries: number) => {
+    let lastId: string | null = null;
+    const allEntries: [string, string[]][] = [];
+
+    for (let i = 0; i < Math.ceil(maxEntries / batchSize); i += 1) {
+      const start: string = lastId ? `(${lastId}` : "-";
+      // eslint-disable-next-line no-await-in-loop
+      const batch: [string, string[]][] = await primaryRedis.xrange(key, start, "+", "COUNT", batchSize);
+
+      if (batch.length === 0) break;
+
+      allEntries.push(...batch);
+      // eslint-disable-next-line prefer-destructuring
+      lastId = batch[batch.length - 1][0];
+
+      if (allEntries.length >= maxEntries || batch.length < batchSize) break;
+    }
+
+    return { entries: allEntries, lastId };
+  };
+
   const waitTillReady = async ({
     key,
     waitingCb,
@@ -293,6 +392,7 @@ export const keyStoreFactory = (
     getItem,
     setExpiry,
     setItemWithExpiry,
+    setItemWithExpiryNX,
     deleteItem,
     deleteItems,
     incrementBy,
@@ -304,6 +404,14 @@ export const keyStoreFactory = (
     deleteItemsByKeyIn,
     getItems,
     pgGetIntItem,
-    pgIncrementBy
+    pgIncrementBy,
+    listPush,
+    listRange,
+    listRemove,
+    listLength,
+    streamAdd,
+    streamRange,
+    streamTrim,
+    streamCollect
   };
 };

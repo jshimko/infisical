@@ -38,16 +38,18 @@ export type SecretV3RawSanitized = {
   idOverride?: string;
   overrideAction?: string;
   folderId?: string;
-  skipMultilineEncoding?: boolean;
-  secretMetadata?: { key: string; value: string }[];
+  skipMultilineEncoding?: boolean | null;
+  secretMetadata?: { key: string; value: string; isEncrypted?: boolean }[];
   isReminderEvent?: boolean;
   isRotatedSecret?: boolean;
   secretReminderRecipients?: SecretReminderRecipient[];
   rotationId?: string;
   isPending?: boolean;
+  hasPendingValueChange?: boolean;
   pendingAction?: PendingAction;
   reminder?: Reminder;
   isEmpty?: boolean;
+  isOverrideEmpty?: boolean;
 };
 
 export type SecretV3Raw = {
@@ -64,8 +66,8 @@ export type SecretV3Raw = {
   secretComment?: string;
   secretReminderNote?: string;
   secretReminderRepeatDays?: number;
-  secretMetadata?: { key: string; value: string }[];
-  skipMultilineEncoding?: boolean;
+  secretMetadata?: { key: string; value: string; isEncrypted?: boolean }[];
+  skipMultilineEncoding?: boolean | null;
   metadata?: Record<string, string>;
   tags?: WsTag[];
   createdAt: string;
@@ -101,7 +103,7 @@ export type SecretVersions = {
   secretComment?: string;
   tags: WsTag[];
   __v: number;
-  skipMultilineEncoding?: boolean;
+  skipMultilineEncoding?: boolean | null;
   createdAt: string;
   updatedAt: string;
   actor?: {
@@ -111,6 +113,14 @@ export type SecretVersions = {
     membershipId?: string | null;
     groupId?: string | null;
   } | null;
+  isRedacted: boolean;
+  redactedByActor: {
+    username: string | null;
+    email: string | null;
+    projectMembershipId: string | null;
+  } | null;
+  redactedAt: string | null;
+  redactedByUserId: string | null;
 };
 
 // dto
@@ -160,12 +170,13 @@ export type TCreateSecretsV3DTO = {
   secretKey: string;
   secretValue: string;
   secretComment: string;
-  skipMultilineEncoding?: boolean;
+  skipMultilineEncoding?: boolean | null;
   secretPath: string;
   projectId: string;
   environment: string;
   type: SecretType;
   tagIds?: string[];
+  secretMetadata?: { key: string; value: string; isEncrypted?: boolean }[];
 };
 
 export type TUpdateSecretsV3DTO = {
@@ -173,7 +184,7 @@ export type TUpdateSecretsV3DTO = {
   environment: string;
   secretPath: string;
   type: SecretType;
-  skipMultilineEncoding?: boolean;
+  skipMultilineEncoding?: boolean | null;
   newSecretName?: string;
   secretKey: string;
   secretValue?: string;
@@ -181,7 +192,7 @@ export type TUpdateSecretsV3DTO = {
   secretReminderRepeatDays?: number | null;
   secretReminderNote?: string | null;
   tagIds?: string[];
-  secretMetadata?: { key: string; value: string }[];
+  secretMetadata?: { key: string; value: string; isEncrypted?: boolean }[];
   secretReminderRecipients?: string[] | null;
 };
 
@@ -202,7 +213,7 @@ export type TCreateSecretBatchDTO = {
     secretKey: string;
     secretValue: string;
     secretComment: string;
-    skipMultilineEncoding?: boolean;
+    skipMultilineEncoding?: boolean | null;
     type: SecretType;
     tagIds?: string[];
     metadata?: {
@@ -220,7 +231,7 @@ export type TUpdateSecretBatchDTO = {
     secretKey: string;
     secretValue: string;
     secretComment?: string;
-    skipMultilineEncoding?: boolean;
+    skipMultilineEncoding?: boolean | null;
     tagIds?: string[];
     metadata?: {
       source?: string;
@@ -264,8 +275,23 @@ export type TSecretReferenceTraceNode = {
   children: TSecretReferenceTraceNode[];
 };
 
+export type TGetSecretReferencesDTO = {
+  secretKey: string;
+  secretPath: string;
+  environment: string;
+  projectId: string;
+};
+
+export type TSecretDependencyTreeNode = {
+  key: string;
+  environment: string;
+  secretPath: string;
+  children: TSecretDependencyTreeNode[];
+};
+
 export type SecretAccessListEntry = {
   allowedActions: ProjectPermissionActions[];
   id: string;
+  membershipId: string;
   name: string;
 };

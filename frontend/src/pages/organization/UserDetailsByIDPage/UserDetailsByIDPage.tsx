@@ -8,7 +8,7 @@ import { createNotification } from "@app/components/notifications";
 import { OrgPermissionCan } from "@app/components/permissions";
 import { DeleteActionModal, PageHeader } from "@app/components/v2";
 import {
-  UnstableButton,
+  Button,
   UnstableDropdownMenu,
   UnstableDropdownMenuContent,
   UnstableDropdownMenuItem,
@@ -125,10 +125,10 @@ const Page = withPermission(
               {userId !== membership.user.id && (
                 <UnstableDropdownMenu>
                   <UnstableDropdownMenuTrigger asChild>
-                    <UnstableButton variant="outline">
+                    <Button variant="outline">
                       Options
                       <EllipsisIcon />
-                    </UnstableButton>
+                    </Button>
                   </UnstableDropdownMenuTrigger>
                   <UnstableDropdownMenuContent align="end">
                     <UnstableDropdownMenuItem
@@ -170,14 +170,6 @@ const Page = withPermission(
                         <UnstableDropdownMenuItem
                           isDisabled={!isAllowed}
                           onClick={async () => {
-                            if (currentOrg?.scimEnabled) {
-                              createNotification({
-                                text: "You cannot manage users from Infisical when SCIM is enabled for your organization",
-                                type: "error"
-                              });
-                              return;
-                            }
-
                             if (!membership.isActive) {
                               // activate user
                               await updateOrgMembership({
@@ -209,14 +201,6 @@ const Page = withPermission(
                           variant="danger"
                           isDisabled={!isAllowed}
                           onClick={() => {
-                            if (currentOrg?.scimEnabled) {
-                              createNotification({
-                                text: "You cannot manage users from Infisical when SCIM is enabled for your organization",
-                                type: "error"
-                              });
-                              return;
-                            }
-
                             handlePopUpOpen("removeMember", {
                               orgMembershipId: membershipId,
                               username: membership.user.username

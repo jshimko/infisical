@@ -4,6 +4,7 @@ import { z } from "zod";
 import { SecretApprovalRequestsSchema, SecretType, ServiceTokenScopes } from "@app/db/schemas";
 import { EventType, SecretApprovalEvent, UserAgentType } from "@app/ee/services/audit-log/audit-log-types";
 import { ApiDocsTags, RAW_SECRETS } from "@app/lib/api-docs";
+import { AUDIT_LOG_SENSITIVE_VALUE } from "@app/lib/config/const";
 import { BadRequestError } from "@app/lib/errors";
 import { removeTrailingSlash } from "@app/lib/fn";
 import { secretsLimit } from "@app/server/config/rateLimiter";
@@ -12,8 +13,12 @@ import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
 import { getUserAgentType } from "@app/server/plugins/audit-log";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { ActorType, AuthMode } from "@app/services/auth/auth-type";
-import { ResourceMetadataSchema } from "@app/services/resource-metadata/resource-metadata-schema";
-import { SecretProtectionType } from "@app/services/secret/secret-types";
+import { ResourceMetadataWithEncryptionSchema } from "@app/services/resource-metadata/resource-metadata-schema";
+import {
+  PersonalOverridesBehavior,
+  SecretImportReferencesBehavior,
+  SecretProtectionType
+} from "@app/services/secret/secret-types";
 import { SecretUpdateMode } from "@app/services/secret-v2-bridge/secret-v2-bridge-types";
 import { PostHogEventTypes } from "@app/services/telemetry/telemetry-types";
 
@@ -121,9 +126,10 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
         environment: z.string().trim().optional().describe(RAW_SECRETS.LIST.environment),
         secretPath: z.string().trim().default("/").transform(removeTrailingSlash).describe(RAW_SECRETS.LIST.secretPath),
         viewSecretValue: convertStringBoolean(true).describe(RAW_SECRETS.LIST.viewSecretValue),
-        expandSecretReferences: convertStringBoolean().describe(RAW_SECRETS.LIST.expand),
+        expandSecretReferences: convertStringBoolean(true).describe(RAW_SECRETS.LIST.expand),
         recursive: convertStringBoolean().describe(RAW_SECRETS.LIST.recursive),
-        include_imports: convertStringBoolean().describe(RAW_SECRETS.LIST.includeImports),
+        includePersonalOverrides: convertStringBoolean().describe(RAW_SECRETS.LIST.includePersonalOverrides),
+        includeImports: convertStringBoolean(true).describe(RAW_SECRETS.LIST.includeImports),
         tagSlugs: z
           .string()
           .describe(RAW_SECRETS.LIST.tagSlugs)
@@ -137,7 +143,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
             .extend({
               secretPath: z.string().optional(),
               secretValueHidden: z.boolean(),
-              secretMetadata: ResourceMetadataSchema.optional(),
+              secretMetadata: ResourceMetadataWithEncryptionSchema.optional(),
               tags: SanitizedTagSchema.array().optional()
             })
             .array(),
@@ -150,7 +156,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
                 .omit({ createdAt: true, updatedAt: true })
                 .extend({
                   secretValueHidden: z.boolean(),
-                  secretMetadata: ResourceMetadataSchema.optional()
+                  secretMetadata: ResourceMetadataWithEncryptionSchema.optional()
                 })
                 .array()
             })
@@ -181,16 +187,20 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
         actorOrgId: req.permission.orgId,
         environment,
         expandSecretReferences: req.query.expandSecretReferences,
+        personalOverridesBehavior: req.query.includePersonalOverrides
+          ? PersonalOverridesBehavior.Priority
+          : PersonalOverridesBehavior.NeverInclude,
+        secretImportReferencesBehavior: SecretImportReferencesBehavior.Relative,
+        expandPersonalOverrides: req.query.includePersonalOverrides,
         actorAuthMethod: req.permission.authMethod,
         projectId,
         viewSecretValue: req.query.viewSecretValue,
         path: secretPath,
         metadataFilter: req.query.metadataFilter,
-        includeImports: req.query.include_imports,
+        includeImports: req.query.includeImports,
         recursive: req.query.recursive,
         tagSlugs: req.query.tagSlugs
       });
-
       await server.services.auditLog.createAuditLog({
         projectId,
         ...req.auditLogInfo,
@@ -215,7 +225,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
             environment,
             secretPath: req.query.secretPath,
             channel: getUserAgentType(req.headers["user-agent"]),
-            ...req.auditLogInfo
+            ...req.auditLogInfo,
+            actorType: req.permission.type
           }
         });
       }
@@ -242,7 +253,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           secret: secretRawSchema.extend({
             secretPath: z.string(),
             tags: SanitizedTagSchema.array().optional(),
-            secretMetadata: ResourceMetadataSchema.optional()
+            secretMetadata: ResourceMetadataWithEncryptionSchema.optional()
           })
         })
       }
@@ -288,8 +299,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
         version: z.coerce.number().optional().describe(RAW_SECRETS.GET.version),
         type: z.nativeEnum(SecretType).default(SecretType.Shared).describe(RAW_SECRETS.GET.type),
         viewSecretValue: convertStringBoolean(true).describe(RAW_SECRETS.GET.viewSecretValue),
-        expandSecretReferences: convertStringBoolean().describe(RAW_SECRETS.GET.expand),
-        include_imports: convertStringBoolean().describe(RAW_SECRETS.GET.includeImports)
+        expandSecretReferences: convertStringBoolean(true).describe(RAW_SECRETS.GET.expand),
+        includeImports: convertStringBoolean(true).describe(RAW_SECRETS.GET.includeImports)
       }),
       response: {
         200: z.object({
@@ -297,7 +308,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
             secretValueHidden: z.boolean(),
             secretPath: z.string(),
             tags: SanitizedTagSchema.array().optional(),
-            secretMetadata: ResourceMetadataSchema.optional()
+            secretMetadata: ResourceMetadataWithEncryptionSchema.optional()
           })
         })
       }
@@ -326,13 +337,14 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
         actorAuthMethod: req.permission.authMethod,
         actorOrgId: req.permission.orgId,
         expandSecretReferences: req.query.expandSecretReferences,
+        expandPersonalOverrides: true,
         environment,
         projectId,
         viewSecretValue: req.query.viewSecretValue,
         path: secretPath,
         secretName: req.params.secretName,
         type: req.query.type,
-        includeImports: req.query.include_imports,
+        includeImports: req.query.includeImports,
         version: req.query.version
       });
 
@@ -347,7 +359,11 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
             secretId: secret.id,
             secretKey: req.params.secretName,
             secretVersion: secret.version,
-            secretMetadata: secret.secretMetadata
+            secretMetadata: secret.secretMetadata?.map((meta) => ({
+              key: meta.key,
+              isEncrypted: meta.isEncrypted,
+              value: meta.isEncrypted ? AUDIT_LOG_SENSITIVE_VALUE : meta.value
+            }))
           }
         }
       });
@@ -363,7 +379,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
             environment,
             secretPath: req.query.secretPath,
             channel: getUserAgentType(req.headers["user-agent"]),
-            ...req.auditLogInfo
+            ...req.auditLogInfo,
+            actorType: req.permission.type
           }
         });
       }
@@ -404,9 +421,9 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           .transform((val) => (val.at(-1) === "\n" ? `${val.trim()}\n` : val.trim()))
           .describe(RAW_SECRETS.CREATE.secretValue),
         secretComment: z.string().trim().optional().default("").describe(RAW_SECRETS.CREATE.secretComment),
-        secretMetadata: ResourceMetadataSchema.optional(),
+        secretMetadata: ResourceMetadataWithEncryptionSchema.optional(),
         tagIds: z.string().array().optional().describe(RAW_SECRETS.CREATE.tagIds),
-        skipMultilineEncoding: z.boolean().optional().describe(RAW_SECRETS.CREATE.skipMultilineEncoding),
+        skipMultilineEncoding: z.boolean().nullish().describe(RAW_SECRETS.CREATE.skipMultilineEncoding),
         type: z.nativeEnum(SecretType).default(SecretType.Shared).describe(RAW_SECRETS.CREATE.type),
         secretReminderRepeatDays: z
           .number()
@@ -482,7 +499,11 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
             secretId: secret.id,
             secretKey: req.params.secretName,
             secretVersion: secret.version,
-            secretMetadata: req.body.secretMetadata,
+            secretMetadata: req.body.secretMetadata?.map((meta) => ({
+              key: meta.key,
+              isEncrypted: meta.isEncrypted,
+              value: meta.isEncrypted ? AUDIT_LOG_SENSITIVE_VALUE : meta.value
+            })),
             secretTags: secret.tags?.map((tag) => tag.name)
           }
         }
@@ -498,7 +519,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           environment: req.body.environment,
           secretPath: req.body.secretPath,
           channel: getUserAgentType(req.headers["user-agent"]),
-          ...req.auditLogInfo
+          ...req.auditLogInfo,
+          actorType: req.permission.type
         }
       });
 
@@ -543,7 +565,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
         type: z.nativeEnum(SecretType).default(SecretType.Shared).describe(RAW_SECRETS.UPDATE.type),
         tagIds: z.string().array().optional().describe(RAW_SECRETS.UPDATE.tagIds),
         metadata: z.record(z.string()).optional(),
-        secretMetadata: ResourceMetadataSchema.optional(),
+        secretMetadata: ResourceMetadataWithEncryptionSchema.optional(),
         secretReminderNote: z
           .string()
           .max(1024, "Secret reminder note cannot exceed 1024 characters")
@@ -627,7 +649,11 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
             secretId: secret.id,
             secretKey: req.params.secretName,
             secretVersion: secret.version,
-            secretMetadata: req.body.secretMetadata,
+            secretMetadata: req.body.secretMetadata?.map((meta) => ({
+              key: meta.key,
+              isEncrypted: meta.isEncrypted,
+              value: meta.isEncrypted ? AUDIT_LOG_SENSITIVE_VALUE : meta.value
+            })),
             secretTags: secret.tags?.map((tag) => tag.name)
           }
         }
@@ -643,7 +669,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           environment: req.body.environment,
           secretPath: req.body.secretPath,
           channel: getUserAgentType(req.headers["user-agent"]),
-          ...req.auditLogInfo
+          ...req.auditLogInfo,
+          actorType: req.permission.type
         }
       });
       return { secret };
@@ -752,7 +779,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           environment: req.body.environment,
           secretPath: req.body.secretPath,
           channel: getUserAgentType(req.headers["user-agent"]),
-          ...req.auditLogInfo
+          ...req.auditLogInfo,
+          actorType: req.permission.type
         }
       });
 
@@ -851,9 +879,9 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
               .transform((val) => (val.at(-1) === "\n" ? `${val.trim()}\n` : val.trim()))
               .describe(RAW_SECRETS.CREATE.secretValue),
             secretComment: z.string().trim().optional().default("").describe(RAW_SECRETS.CREATE.secretComment),
-            skipMultilineEncoding: z.boolean().optional().describe(RAW_SECRETS.CREATE.skipMultilineEncoding),
+            skipMultilineEncoding: z.boolean().nullish().describe(RAW_SECRETS.CREATE.skipMultilineEncoding),
             metadata: z.record(z.string()).optional(),
-            secretMetadata: ResourceMetadataSchema.optional(),
+            secretMetadata: ResourceMetadataWithEncryptionSchema.optional(),
             tagIds: z.string().array().optional().describe(RAW_SECRETS.CREATE.tagIds)
           })
           .array()
@@ -921,7 +949,11 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
               secretId: secret.id,
               secretKey: secret.secretKey,
               secretVersion: secret.version,
-              secretMetadata: secretMetadataMap.get(secret.secretKey),
+              secretMetadata: secretMetadataMap.get(secret.secretKey)?.map((meta) => ({
+                key: meta.key,
+                isEncrypted: meta.isEncrypted,
+                value: meta.isEncrypted ? AUDIT_LOG_SENSITIVE_VALUE : meta.value
+              })),
               secretTags: secret.tags?.map((tag) => tag.name)
             }))
           }
@@ -938,7 +970,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           environment: req.body.environment,
           secretPath: req.body.secretPath,
           channel: getUserAgentType(req.headers["user-agent"]),
-          ...req.auditLogInfo
+          ...req.auditLogInfo,
+          actorType: req.permission.type
         }
       });
       return { secrets };
@@ -999,7 +1032,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
               .optional()
               .nullable()
               .describe(RAW_SECRETS.UPDATE.secretReminderNote),
-            secretMetadata: ResourceMetadataSchema.optional(),
+            secretMetadata: ResourceMetadataWithEncryptionSchema.optional(),
             secretReminderRepeatDays: z
               .number()
               .optional()
@@ -1021,6 +1054,10 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.SERVICE_TOKEN, AuthMode.IDENTITY_ACCESS_TOKEN]),
     handler: async (req) => {
       const { environment, secretPath, secrets: inputSecrets } = req.body;
+
+      // Sort by secretKey to ensure consistent lock ordering and prevent deadlocks
+      const sortedSecrets = [...inputSecrets].sort((a, b) => a.secretKey.localeCompare(b.secretKey));
+
       const secretOperation = await server.services.secret.updateManySecretsRaw({
         actorId: req.permission.id,
         actor: req.permission.type,
@@ -1029,7 +1066,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
         secretPath,
         environment,
         projectId: req.body.projectId,
-        secrets: inputSecrets,
+        secrets: sortedSecrets,
         mode: req.body.mode
       });
       if (secretOperation.type === SecretProtectionType.Approval) {
@@ -1075,7 +1112,11 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
                 secretPath: secret.secretPath,
                 secretKey: secret.secretKey,
                 secretVersion: secret.version,
-                secretMetadata: secretMetadataMap.get(secret.secretKey),
+                secretMetadata: secretMetadataMap.get(secret.secretKey)?.map((meta) => ({
+                  key: meta.key,
+                  isEncrypted: meta.isEncrypted,
+                  value: meta.isEncrypted ? AUDIT_LOG_SENSITIVE_VALUE : meta.value
+                })),
                 secretTags: secret.tags?.map((tag) => tag.name)
               }))
           }
@@ -1096,7 +1137,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
                 secretPath: secret.secretPath,
                 secretKey: secret.secretKey,
                 secretVersion: secret.version,
-                secretMetadata: secretMetadataMap.get(secret.secretKey)
+                secretMetadata: secretMetadataMap.get(secret.secretKey)?.filter((meta) => !meta.isEncrypted)
               }))
             }
           }
@@ -1113,7 +1154,8 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           environment: req.body.environment,
           secretPath: req.body.secretPath,
           channel: getUserAgentType(req.headers["user-agent"]),
-          ...req.auditLogInfo
+          ...req.auditLogInfo,
+          actorType: req.permission.type
         }
       });
       return { secrets };
@@ -1169,6 +1211,10 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.SERVICE_TOKEN, AuthMode.IDENTITY_ACCESS_TOKEN]),
     handler: async (req) => {
       const { environment, secretPath, secrets: inputSecrets } = req.body;
+
+      // Sort by secretKey to ensure consistent lock ordering and prevent deadlocks
+      const sortedSecrets = [...inputSecrets].sort((a, b) => a.secretKey.localeCompare(b.secretKey));
+
       const secretOperation = await server.services.secret.deleteManySecretsRaw({
         actorId: req.permission.id,
         actor: req.permission.type,
@@ -1177,7 +1223,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
         environment,
         secretPath,
         projectId: req.body.projectId,
-        secrets: inputSecrets
+        secrets: sortedSecrets
       });
       if (secretOperation.type === SecretProtectionType.Approval) {
         await server.services.auditLog.createAuditLog({
@@ -1191,7 +1237,7 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
               secretApprovalRequestSlug: secretOperation.approval.slug,
               secretPath,
               environment,
-              secrets: inputSecrets.map((secret) => ({
+              secrets: sortedSecrets.map((secret) => ({
                 secretKey: secret.secretKey
               })),
               eventType: SecretApprovalEvent.DeleteMany
@@ -1230,10 +1276,66 @@ export const registerSecretRouter = async (server: FastifyZodProvider) => {
           environment: req.body.environment,
           secretPath: req.body.secretPath,
           channel: getUserAgentType(req.headers["user-agent"]),
-          ...req.auditLogInfo
+          ...req.auditLogInfo,
+          actorType: req.permission.type
         }
       });
       return { secrets };
+    }
+  });
+
+  server.route({
+    method: "GET",
+    url: "/:secretName/reference-dependency-tree",
+    config: {
+      rateLimit: secretsLimit
+    },
+    schema: {
+      hide: false,
+      operationId: "getSecretReferencesV4",
+      tags: [ApiDocsTags.Secrets],
+      description: "Get secret reference dependency tree",
+      security: [
+        {
+          bearerAuth: []
+        }
+      ],
+      params: z.object({
+        secretName: z.string().trim().describe(RAW_SECRETS.GET_REFERENCE_TREE.secretName)
+      }),
+      querystring: z.object({
+        projectId: z.string().trim().describe(RAW_SECRETS.GET_REFERENCE_TREE.projectId),
+        environment: z.string().trim().describe(RAW_SECRETS.GET_REFERENCE_TREE.environment),
+        secretPath: z
+          .string()
+          .trim()
+          .default("/")
+          .transform(removeTrailingSlash)
+          .describe(RAW_SECRETS.GET_REFERENCE_TREE.secretPath)
+      }),
+      response: {
+        200: z.object({
+          tree: SecretReferenceNodeTree
+        })
+      }
+    },
+    onRequest: verifyAuth([AuthMode.JWT]),
+    handler: async (req) => {
+      const { secretName } = req.params;
+      const { secretPath, environment, projectId } = req.query;
+
+      const { tree } = await server.services.secret.getSecretReferenceDependencyTree({
+        actorId: req.permission.id,
+        actor: req.permission.type,
+        actorAuthMethod: req.permission.authMethod,
+        actorOrgId: req.permission.orgId,
+        projectId,
+        secretName,
+        secretPath,
+        environment
+      });
+
+      return { tree };
     }
   });
 

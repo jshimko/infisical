@@ -2,6 +2,7 @@ import { TProjectPermission } from "@app/lib/types";
 
 import {
   CertExtendedKeyUsageType,
+  CertificateRequestStatus,
   CertKeyUsageType,
   CertSubjectAlternativeNameType
 } from "../certificate-common/certificate-constants";
@@ -34,6 +35,7 @@ export type TIssueCertificateFromProfileDTO = {
       pathLength?: number;
     };
   };
+  metadata?: Array<{ key: string; value: string }>;
   removeRootsFromChain?: boolean;
 } & Omit<TProjectPermission, "projectId">;
 
@@ -46,6 +48,7 @@ export type TSignCertificateFromProfileDTO = {
   notBefore?: Date;
   notAfter?: Date;
   enrollmentType: EnrollmentType;
+  metadata?: Array<{ key: string; value: string }>;
   removeRootsFromChain?: boolean;
   basicConstraints?: {
     isCA: boolean;
@@ -72,28 +75,42 @@ export type TOrderCertificateFromProfileDTO = {
     keyAlgorithm?: string;
     template?: string;
     csr?: string;
+    organization?: string;
+    organizationalUnit?: string;
+    country?: string;
+    state?: string;
+    locality?: string;
   };
+  metadata?: Array<{ key: string; value: string }>;
   removeRootsFromChain?: boolean;
 } & Omit<TProjectPermission, "projectId">;
 
-export type TCertificateFromProfileResponse = {
+export type TCertificateIssuanceResponse = {
+  status: CertificateRequestStatus;
+  certificateRequestId: string;
+  projectId: string;
+  profileName: string;
+  commonName?: string;
+  certificate?: string;
+  issuingCaCertificate?: string;
+  certificateChain?: string;
+  privateKey?: string;
+  serialNumber?: string;
+  certificateId?: string;
+  message?: string;
+};
+
+export type TCertificateIssuedResponse = TCertificateIssuanceResponse & {
+  status: CertificateRequestStatus.ISSUED;
   certificate: string;
   issuingCaCertificate: string;
   certificateChain: string;
-  privateKey?: string;
   serialNumber: string;
   certificateId: string;
-  certificateRequestId: string;
-  projectId: string;
-  profileName: string;
-  commonName: string;
 };
 
-export type TCertificateOrderResponse = {
-  certificateRequestId: string;
-  certificate?: string;
-  projectId: string;
-  profileName: string;
+export type TCertificatePendingApprovalResponse = TCertificateIssuanceResponse & {
+  status: CertificateRequestStatus.PENDING_APPROVAL;
 };
 
 export type TRenewCertificateDTO = {
@@ -120,4 +137,14 @@ export type TRenewalConfigResponse = {
 export type TDisableRenewalResponse = {
   projectId: string;
   commonName: string;
+};
+
+export type TUpdateCertificateDTO = {
+  certificateId: string;
+  metadata?: Array<{ key: string; value: string }>;
+} & Omit<TProjectPermission, "projectId">;
+
+export type TAltNameEntry = {
+  type: CertSubjectAlternativeNameType;
+  value: string;
 };

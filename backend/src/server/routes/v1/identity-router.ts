@@ -3,10 +3,11 @@ import { z } from "zod";
 import { IdentitiesSchema, IdentityOrgMembershipsSchema, OrgMembershipRole, OrgRolesSchema } from "@app/db/schemas";
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
 import { ApiDocsTags, IDENTITIES } from "@app/lib/api-docs";
+import { logger } from "@app/lib/logger";
 import { buildSearchZodSchema, SearchResourceOperators } from "@app/lib/search-resource/search";
 import { OrderByDirection } from "@app/lib/types";
 import { CharacterType, zodValidateCharacters } from "@app/lib/validator/validate-string";
-import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
+import { identityCreationLimit, readLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { AuthMode } from "@app/services/auth/auth-type";
@@ -31,7 +32,7 @@ export const registerIdentityRouter = async (server: FastifyZodProvider) => {
     method: "POST",
     url: "/",
     config: {
-      rateLimit: writeLimit
+      rateLimit: identityCreationLimit
     },
     onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     schema: {
@@ -164,6 +165,22 @@ export const registerIdentityRouter = async (server: FastifyZodProvider) => {
         }
       });
 
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.MachineIdentityUpdated,
+          distinctId: getTelemetryDistinctId(req),
+          organizationId: identity.orgId,
+          properties: {
+            identityId: identity.id,
+            orgId: identity.orgId,
+            name: identity.name,
+            hasDeleteProtection: identity.hasDeleteProtection
+          }
+        })
+        .catch((error) => {
+          logger.error(error, `Failed to send telemetry event [identityId=${identity.id}]`);
+        });
+
       return { identity };
     }
   });
@@ -214,6 +231,21 @@ export const registerIdentityRouter = async (server: FastifyZodProvider) => {
           }
         }
       });
+
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.MachineIdentityDeleted,
+          distinctId: getTelemetryDistinctId(req),
+          organizationId: identity.orgId,
+          properties: {
+            identityId: identity.id,
+            orgId: identity.orgId
+          }
+        })
+        .catch((error) => {
+          logger.error(error, `Failed to send telemetry event [identityId=${identity.id}]`);
+        });
+
       return { identity };
     }
   });

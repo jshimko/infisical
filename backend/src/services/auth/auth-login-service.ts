@@ -2,14 +2,17 @@ import { Knex } from "knex";
 
 import {
   AccessScope,
+  OrganizationActionScope,
   OrgMembershipRole,
   OrgMembershipStatus,
-  TableName,
   TUsers,
   UserDeviceSchema
 } from "@app/db/schemas";
 import { EventType, TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-types";
+import { OrgPermissionSsoActions, OrgPermissionSubjects } from "@app/ee/services/permission/org-permission";
 import { isAuthMethodSaml } from "@app/ee/services/permission/permission-fns";
+import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
+import { KeyStorePrefixes, TKeyStoreFactory } from "@app/keystore/keystore";
 import { getConfig } from "@app/lib/config/env";
 import { crypto, generateSrpServerKey, srpCheckClientProof } from "@app/lib/crypto";
 import { getUserPrivateKey } from "@app/lib/crypto/srp";
@@ -39,6 +42,8 @@ import { LoginMethod } from "../super-admin/super-admin-types";
 import { TTotpServiceFactory } from "../totp/totp-service";
 import { TUserDALFactory } from "../user/user-dal";
 import { UserEncryption } from "../user/user-types";
+import { TUserAliasDALFactory } from "../user-alias/user-alias-dal";
+import { UserAliasType } from "../user-alias/user-alias-types";
 import { enforceUserLockStatus, getAuthMethodAndOrgId, validateProviderAuthToken, verifyCaptcha } from "./auth-fns";
 import {
   TLoginClientProofDTO,
@@ -58,6 +63,7 @@ import {
 
 type TAuthLoginServiceFactoryDep = {
   userDAL: TUserDALFactory;
+  userAliasDAL: Pick<TUserAliasDALFactory, "findOne" | "create" | "updateById">;
   orgDAL: TOrgDALFactory;
   tokenService: TAuthTokenServiceFactory;
   smtpService: TSmtpService;
@@ -66,11 +72,14 @@ type TAuthLoginServiceFactoryDep = {
   membershipUserDAL: TMembershipUserDALFactory;
   membershipRoleDAL: TMembershipRoleDALFactory;
   notificationService: Pick<TNotificationServiceFactory, "createUserNotifications">;
+  keyStore: Pick<TKeyStoreFactory, "acquireLock" | "setItemWithExpiry" | "getItem">;
+  permissionService: Pick<TPermissionServiceFactory, "getOrgPermission">;
 };
 
 export type TAuthLoginFactory = ReturnType<typeof authLoginServiceFactory>;
 export const authLoginServiceFactory = ({
   userDAL,
+  userAliasDAL,
   tokenService,
   smtpService,
   orgDAL,
@@ -78,7 +87,9 @@ export const authLoginServiceFactory = ({
   auditLogService,
   notificationService,
   membershipUserDAL,
-  membershipRoleDAL
+  membershipRoleDAL,
+  keyStore,
+  permissionService
 }: TAuthLoginServiceFactoryDep) => {
   /*
    * Private
@@ -139,8 +150,10 @@ export const authLoginServiceFactory = ({
   };
 
   /*
-   * Check user device and send mail if new device
-   * generate the auth and refresh token. fn shared by mfa verification and login verification with mfa disabled
+   * Generate the auth and refresh token.
+   * Shared by mfa verification, login verification with mfa disabled, and select organization.
+   * Note: device tracking (updateUserDeviceSession) is intentionally NOT called here —
+   * it must only run after full authentication (including MFA) is complete.
    */
   const generateUserTokens = async (
     {
@@ -165,7 +178,6 @@ export const authLoginServiceFactory = ({
     tx?: Knex
   ) => {
     const cfg = getConfig();
-    await updateUserDeviceSession(user, ip, userAgent, tx);
     const tokenSession = await tokenService.getUserTokenSession(
       {
         userAgent,
@@ -536,11 +548,11 @@ export const authLoginServiceFactory = ({
     const user = await userDAL.findUserEncKeyByUserId(decodedToken.userId);
     if (!user) throw new BadRequestError({ message: "User not found", name: "Find user from token" });
 
-    // Check user membership in the sub-organization
-    const orgMembership = await membershipUserDAL.findOne({
-      actorUserId: user.id,
-      scopeOrgId: organizationId,
-      scope: AccessScope.Organization,
+    // Check user membership in the sub-organization (direct or via group)
+    const orgMembership = await orgDAL.findEffectiveOrgMembership({
+      actorType: ActorType.USER,
+      actorId: user.id,
+      orgId: organizationId,
       status: OrgMembershipStatus.Accepted
     });
 
@@ -556,8 +568,6 @@ export const authLoginServiceFactory = ({
     }
 
     const isSubOrganization = Boolean(selectedOrg.rootOrgId && selectedOrg.id !== selectedOrg.rootOrgId);
-
-    const membershipRole = (await membershipRoleDAL.findOne({ membershipId: orgMembership.id })).role;
 
     let rootOrg = selectedOrg;
 
@@ -590,11 +600,23 @@ export const authLoginServiceFactory = ({
       }
     }
 
+    const { permission } = await permissionService.getOrgPermission({
+      actor: ActorType.USER,
+      actorId: user.id,
+      orgId: rootOrg.id,
+      actorAuthMethod: decodedToken.authMethod,
+      actorOrgId: rootOrg.id,
+      scope: OrganizationActionScope.Any
+    });
+    const canBypassSso =
+      rootOrg.bypassOrgAuthEnabled &&
+      permission.can(OrgPermissionSsoActions.BypassSsoEnforcement, OrgPermissionSubjects.Sso);
+
     if (
       rootOrg.authEnforced &&
       !isAuthMethodSaml(decodedToken.authMethod) &&
       decodedToken.authMethod !== AuthMethod.OIDC &&
-      !(rootOrg.bypassOrgAuthEnabled && membershipRole === OrgMembershipRole.Admin)
+      !canBypassSso
     ) {
       throw new BadRequestError({
         message: "Login with the auth method required by your organization."
@@ -602,9 +624,7 @@ export const authLoginServiceFactory = ({
     }
 
     if (rootOrg.googleSsoAuthEnforced && decodedToken.authMethod !== AuthMethod.GOOGLE) {
-      const canBypass = rootOrg.bypassOrgAuthEnabled && membershipRole === OrgMembershipRole.Admin;
-
-      if (!canBypass) {
+      if (!canBypassSso) {
         throw new ForbiddenRequestError({
           message: "Google SSO is enforced for this organization. Please use Google SSO to login.",
           error: "GoogleSsoEnforced"
@@ -648,6 +668,8 @@ export const authLoginServiceFactory = ({
       return { isMfaEnabled: true, mfa: mfaToken, mfaMethod } as const;
     }
 
+    await updateUserDeviceSession(user as TUsers, ipAddress, userAgent);
+
     const tokens = await generateUserTokens({
       authMethod: decodedToken.authMethod,
       user,
@@ -659,14 +681,16 @@ export const authLoginServiceFactory = ({
       mfaMethod: decodedToken.mfaMethod
     });
 
-    // In the event of this being a break-glass request (non-saml / non-oidc, when either is enforced)
-    if (
+    // In the event of this being a break-glass request (non-saml / non-oidc / non-google, when any is enforced)
+    const isAuthEnforcedBypass =
       rootOrg.authEnforced &&
       rootOrg.bypassOrgAuthEnabled &&
       !isAuthMethodSaml(decodedToken.authMethod) &&
       decodedToken.authMethod !== AuthMethod.OIDC &&
-      decodedToken.authMethod !== AuthMethod.GOOGLE
-    ) {
+      decodedToken.authMethod !== AuthMethod.GOOGLE;
+    const isGoogleSsoEnforcedBypass =
+      rootOrg.googleSsoAuthEnforced && rootOrg.bypassOrgAuthEnabled && decodedToken.authMethod !== AuthMethod.GOOGLE;
+    if (isAuthEnforcedBypass || isGoogleSsoEnforcedBypass) {
       await auditLogService.createAuditLog({
         orgId: organizationId,
         ipAddress,
@@ -701,14 +725,14 @@ export const authLoginServiceFactory = ({
               userId: admin.user.id,
               orgId: organizationId,
               type: NotificationType.ADMIN_SSO_BYPASS,
-              title: "Security Alert: Admin SSO Bypass",
-              body: `The org admin **${user.email}** has bypassed enforced SSO login.`
+              title: "Security Alert: SSO Bypass",
+              body: `The organization member **${user.email}** has bypassed enforced SSO login.`
             }))
         );
 
         await smtpService.sendMail({
           recipients: adminEmails,
-          subjectLine: "Security Alert: Admin SSO Bypass",
+          subjectLine: "Security Alert: SSO Bypass",
           substitutions: {
             email: user.email,
             timestamp: new Date().toISOString(),
@@ -899,20 +923,43 @@ export const authLoginServiceFactory = ({
       const updatedUser = await processFailedMfaAttempt(userId);
       if (updatedUser.isLocked) {
         if (updatedUser.email) {
-          const unlockToken = await tokenService.createTokenForUser({
-            type: TokenType.TOKEN_USER_UNLOCK,
-            userId: updatedUser.id
-          });
+          // Use a keystore lock to prevent sending duplicate unlock emails during concurrent requests
+          let lock: Awaited<ReturnType<typeof keyStore.acquireLock>> | undefined;
+          try {
+            lock = await keyStore.acquireLock([KeyStorePrefixes.UserMfaLockoutLock(userId)], 3000, {
+              retryCount: 0
+            });
 
-          await smtpService.sendMail({
-            template: SmtpTemplates.UnlockAccount,
-            subjectLine: "Unlock your Infisical account",
-            recipients: [updatedUser.email],
-            substitutions: {
-              token: unlockToken,
-              callback_url: `${appCfg.SITE_URL}/api/v1/user/${updatedUser.id}/unlock`
+            // Check if an unlock email was already sent recently (within 5 minutes)
+            const emailAlreadySent = await keyStore.getItem(KeyStorePrefixes.UserMfaUnlockEmailSent(userId));
+            if (!emailAlreadySent) {
+              const unlockToken = await tokenService.createTokenForUser({
+                type: TokenType.TOKEN_USER_UNLOCK,
+                userId: updatedUser.id
+              });
+
+              await smtpService.sendMail({
+                template: SmtpTemplates.UnlockAccount,
+                subjectLine: "Unlock your Infisical account",
+                recipients: [updatedUser.email],
+                substitutions: {
+                  token: unlockToken,
+                  callback_url: `${appCfg.SITE_URL}/api/v1/user/${updatedUser.id}/unlock`
+                }
+              });
+
+              // Mark that an unlock email was sent, expires after 5 minutes
+              await keyStore.setItemWithExpiry(KeyStorePrefixes.UserMfaUnlockEmailSent(userId), 300, "1");
             }
-          });
+          } catch (lockErr) {
+            if (lock) {
+              logger.error(lockErr, "Failed to send unlock email");
+            }
+          } finally {
+            if (lock) {
+              await lock.release();
+            }
+          }
         }
       }
 
@@ -948,10 +995,47 @@ export const authLoginServiceFactory = ({
   /*
    * OAuth2 login for google,github, and other oauth2 provider
    * */
-  const oauth2Login = async ({ email, firstName, lastName, authMethod, callbackPort, orgSlug }: TOauthLoginDTO) => {
-    // akhilmhdh: case sensitive email resolution
-    const usersByUsername = await userDAL.findUserByUsername(email);
-    let user = usersByUsername?.length > 1 ? usersByUsername.find((el) => el.username === email) : usersByUsername?.[0];
+  const authMethodToAliasType = (method: AuthMethod): UserAliasType => {
+    switch (method) {
+      case AuthMethod.GOOGLE:
+        return UserAliasType.GOOGLE;
+      case AuthMethod.GITHUB:
+        return UserAliasType.GITHUB;
+      case AuthMethod.GITLAB:
+        return UserAliasType.GITLAB;
+      default:
+        throw new BadRequestError({ message: `Unsupported OAuth auth method: ${method}` });
+    }
+  };
+
+  const oauth2Login = async ({
+    email,
+    firstName,
+    lastName,
+    authMethod,
+    callbackPort,
+    orgSlug,
+    providerUserId
+  }: TOauthLoginDTO) => {
+    const aliasType = authMethodToAliasType(authMethod);
+
+    // Step 1: Look up user by provider alias (stable, immutable ID)
+    let user: TUsers | undefined;
+    let isNewAlias = false;
+    const existingAlias = await userAliasDAL.findOne({ externalId: providerUserId, aliasType });
+    if (existingAlias) {
+      user = await userDAL.findById(existingAlias.userId);
+    }
+
+    // Step 2: Fall back to email lookup for existing users without an alias yet
+    if (!user) {
+      const usersByUsername = await userDAL.findUserByUsername(email);
+      user = usersByUsername?.length > 1 ? usersByUsername.find((el) => el.username === email) : usersByUsername?.[0];
+      if (user) {
+        isNewAlias = true;
+      }
+    }
+
     const serverCfg = await getServerCfg();
 
     if (serverCfg.enabledLoginMethods && user) {
@@ -1018,37 +1102,41 @@ export const authLoginServiceFactory = ({
           });
       }
 
-      user = await userDAL.create({
-        username: email.trim().toLowerCase(),
-        email: email.trim().toLowerCase(),
-        isEmailVerified: true,
-        firstName,
-        lastName,
-        authMethods: [authMethod],
-        isGhost: false
-      });
+      user = await userDAL.transaction(async (tx) => {
+        const newUser = await userDAL.create(
+          {
+            username: email.trim().toLowerCase(),
+            email: email.trim().toLowerCase(),
+            isEmailVerified: true,
+            firstName,
+            lastName,
+            authMethods: [authMethod],
+            isGhost: false
+          },
+          tx
+        );
 
-      if (authMethod === AuthMethod.GITHUB && serverCfg.defaultAuthOrgId && !appCfg.isCloud) {
-        const defaultOrg = await orgDAL.findOrgById(serverCfg.defaultAuthOrgId);
-        if (!defaultOrg) {
-          throw new BadRequestError({
-            message: `Failed to find default organization with ID ${serverCfg.defaultAuthOrgId}`
+        if (authMethod === AuthMethod.GITHUB && serverCfg.defaultAuthOrgId && !appCfg.isCloud) {
+          const defaultOrg = await orgDAL.findOrgById(serverCfg.defaultAuthOrgId);
+          if (!defaultOrg) {
+            throw new BadRequestError({
+              message: `Failed to find default organization with ID ${serverCfg.defaultAuthOrgId}`
+            });
+          }
+          orgId = defaultOrg.id;
+          const existingMembership = await orgDAL.findEffectiveOrgMembership({
+            actorType: ActorType.USER,
+            actorId: newUser.id,
+            orgId,
+            acceptAnyStatus: true
           });
-        }
-        orgId = defaultOrg.id;
-        const [orgMembership] = await orgDAL.findMembership({
-          [`${TableName.Membership}.actorUserId` as "actorUserId"]: user.id,
-          [`${TableName.Membership}.scopeOrgId` as "scopeOrgId"]: orgId,
-          [`${TableName.Membership}.scope` as "scope"]: AccessScope.Organization
-        });
 
-        if (!orgMembership) {
-          const { role, roleId } = await getDefaultOrgMembershipRole(defaultOrg.defaultMembershipRole);
+          if (!existingMembership) {
+            const { role, roleId } = await getDefaultOrgMembershipRole(defaultOrg.defaultMembershipRole);
 
-          await membershipUserDAL.transaction(async (tx) => {
             const membership = await membershipUserDAL.create(
               {
-                actorUserId: user?.id,
+                actorUserId: newUser.id,
                 inviteEmail: email,
                 scopeOrgId: orgId,
                 scope: AccessScope.Organization,
@@ -1065,9 +1153,23 @@ export const authLoginServiceFactory = ({
               },
               tx
             );
-          });
+          }
         }
-      }
+
+        await userAliasDAL.create(
+          {
+            userId: newUser.id,
+            aliasType,
+            externalId: providerUserId,
+            emails: [email],
+            orgId: orgId || null,
+            isEmailVerified: true
+          },
+          tx
+        );
+
+        return newUser;
+      });
     } else {
       const isLinkingRequired = !user?.authMethods?.includes(authMethod);
       if (isLinkingRequired) {
@@ -1079,24 +1181,83 @@ export const authLoginServiceFactory = ({
           lastName: !user.isAccepted ? lastName : undefined
         });
       }
+
+      // Sync email/username if the provider email has changed (user found by alias)
+      const normalizedProviderEmail = email.trim().toLowerCase();
+      if (existingAlias && user.email !== normalizedProviderEmail) {
+        const conflictingUsers = await userDAL.findUserByUsername(normalizedProviderEmail);
+        const conflictingUser =
+          conflictingUsers?.length > 1
+            ? conflictingUsers.find((el) => el.username === normalizedProviderEmail)
+            : conflictingUsers?.[0];
+
+        if (conflictingUser && conflictingUser.id !== user.id) {
+          throw new BadRequestError({
+            message:
+              "Unable to complete login: the email associated with your SSO account is already in use by another Infisical user.",
+            name: "Oauth 2 login"
+          });
+        }
+
+        user = await userDAL.transaction(async (tx) => {
+          const updatedUser = await userDAL.updateById(
+            user!.id,
+            {
+              username: normalizedProviderEmail,
+              email: normalizedProviderEmail
+            },
+            tx
+          );
+
+          await userAliasDAL.updateById(
+            existingAlias.id,
+            {
+              emails: [normalizedProviderEmail]
+            },
+            tx
+          );
+
+          return updatedUser;
+        });
+      }
     }
 
     if (!orgId && orgSlug) {
       const org = await orgDAL.findOrgBySlug(orgSlug);
 
       if (org) {
-        // checks for the membership and only sets the orgId / orgName if the user is a member of the specified org
-        const orgMembership = await orgDAL.findMembership({
-          [`${TableName.Membership}.actorUserId` as "actorUserId"]: user.id,
-          [`${TableName.Membership}.scopeOrgId` as "scopeOrgId"]: org.id,
-          [`${TableName.Membership}.isActive` as "isActive"]: true,
-          [`${TableName.Membership}.status` as "status"]: OrgMembershipStatus.Accepted,
-          [`${TableName.Membership}.scope` as "scope"]: AccessScope.Organization
+        // checks for the membership and only sets the orgId / orgName if the user is a member of the specified org (direct or via group)
+        const orgMembership = await orgDAL.findEffectiveOrgMembership({
+          actorType: ActorType.USER,
+          actorId: user.id,
+          orgId: org.id,
+          status: OrgMembershipStatus.Accepted
         });
 
-        if (orgMembership) {
+        if (orgMembership?.isActive) {
           orgId = org.id;
           orgName = org.name;
+        }
+      }
+    }
+
+    // Self-healing backfill: create alias for existing users found by email fallback
+    if (isNewAlias) {
+      try {
+        await userAliasDAL.create({
+          userId: user.id,
+          aliasType,
+          externalId: providerUserId,
+          emails: [email],
+          orgId: orgId || null,
+          isEmailVerified: true
+        });
+      } catch (err) {
+        // Swallow duplicate key errors from the unique index (race condition: concurrent login already created the alias)
+        if (err instanceof DatabaseError && (err.error as { code: string })?.code === "23505") {
+          logger.warn(`OAuth alias backfill for user ${user.id} skipped: alias already exists`);
+        } else {
+          throw err;
         }
       }
     }

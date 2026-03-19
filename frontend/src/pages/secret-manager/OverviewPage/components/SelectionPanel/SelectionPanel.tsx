@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { subject } from "@casl/ability";
-import { faAnglesRight, faTrash } from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { FolderInputIcon, TrashIcon } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import { createNotification } from "@app/components/notifications";
-import { Button, DeleteActionModal, Tooltip } from "@app/components/v2";
+import { DeleteActionModal } from "@app/components/v2";
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from "@app/components/v3";
 import {
   ProjectPermissionActions,
   ProjectPermissionSub,
@@ -15,8 +15,10 @@ import {
 } from "@app/context";
 import { ProjectPermissionSecretActions } from "@app/context/ProjectPermissionContext/types";
 import { usePopUp } from "@app/hooks";
-import { useDeleteFolder, useDeleteSecretBatch } from "@app/hooks/api";
+import { useDeleteSecretBatch } from "@app/hooks/api";
 import { ProjectSecretsImportedBy, UsedBySecretSyncs } from "@app/hooks/api/dashboard/types";
+import { PendingAction } from "@app/hooks/api/secretFolders/types";
+import { useCreateCommit } from "@app/hooks/api/secrets/mutations";
 import {
   SecretType,
   SecretV3RawSanitized,
@@ -69,7 +71,7 @@ export const SelectionPanel = ({
   const { currentProject, projectId } = useProject();
   const userAvailableEnvs = currentProject?.environments || [];
   const { mutateAsync: deleteBatchSecretV3 } = useDeleteSecretBatch();
-  const { mutateAsync: deleteFolder } = useDeleteFolder();
+  const { mutateAsync: createCommit } = useCreateCommit();
 
   const isMultiSelectActive = selectedCount > 0;
 
@@ -124,20 +126,31 @@ export const SelectionPanel = ({
           subject(ProjectPermissionSub.SecretFolders, { environment: env.slug, secretPath })
         )
       ) {
-        await Promise.all(
-          Object.values(selectedEntries.folder).map(async (folderRecord) => {
-            const folder = folderRecord[env.slug];
-            if (folder) {
-              processedEntries += 1;
-              await deleteFolder({
-                folderId: folder?.id,
-                path: secretPath,
-                environment: env.slug,
-                projectId
-              });
-            }
-          })
-        );
+        const folderDeletes = Object.values(selectedEntries.folder)
+          .map((folderRecord) => folderRecord[env.slug])
+          .filter((folder): folder is TSecretFolder => Boolean(folder))
+          .map((folder) => ({
+            id: folder.id,
+            timestamp: Date.now(),
+            resourceType: "folder" as const,
+            type: PendingAction.Delete as const,
+            folderName: folder.name,
+            folderPath: secretPath
+          }));
+
+        if (folderDeletes.length > 0) {
+          processedEntries += folderDeletes.length;
+          await createCommit({
+            projectId,
+            environment: env.slug,
+            secretPath,
+            pendingChanges: {
+              secrets: [],
+              folders: folderDeletes
+            },
+            message: `Deleted ${folderDeletes.length} folder${folderDeletes.length === 1 ? "" : "s"}`
+          });
+        }
       }
 
       const secretsToDelete = Object.values(selectedEntries.secret).reduce(
@@ -227,49 +240,48 @@ export const SelectionPanel = ({
     <>
       <div
         className={twMerge(
-          "h-0 shrink-0 overflow-hidden transition-all",
+          "mb-2 h-0 shrink-0 overflow-hidden transition-all",
           isMultiSelectActive && "h-16"
         )}
       >
-        <div className="mt-3.5 flex items-center rounded-md border border-mineshaft-600 bg-mineshaft-800 px-4 py-2 text-bunker-300">
+        <div className="mt-3.5 flex items-center rounded-md border border-border bg-card p-2 pl-4 text-foreground">
           <div className="mr-2 text-sm">{selectedCount} Selected</div>
           <button
             type="button"
-            className="mr-auto text-xs text-mineshaft-400 underline-offset-2 hover:text-mineshaft-200 hover:underline"
+            className="mt-0.5 mr-auto text-xs text-accent underline-offset-2 hover:underline"
             onClick={resetSelectedEntries}
           >
             Unselect All
           </button>
           {isRotatedSecretSelected && (
-            <span className="text-sm text-mineshaft-400">
+            <span className="text-xs text-accent">
               Rotated Secrets will not be affected by action.
             </span>
           )}
           {shouldShowDelete && (
             <>
-              <Tooltip content={areFoldersSelected ? "Moving folders is not supported" : undefined}>
-                <div>
+              <Tooltip open={areFoldersSelected ? undefined : false}>
+                <TooltipTrigger>
                   <Button
                     isDisabled={areFoldersSelected}
-                    variant="outline_bg"
-                    colorSchema="primary"
-                    leftIcon={<FontAwesomeIcon icon={faAnglesRight} />}
-                    className="ml-4"
+                    variant="project"
+                    className="ml-2"
                     onClick={() => handlePopUpOpen("bulkMoveSecrets")}
                     size="xs"
                   >
+                    <FolderInputIcon />
                     Move
                   </Button>
-                </div>
+                </TooltipTrigger>
+                <TooltipContent>Moving folders is not supported</TooltipContent>
               </Tooltip>
               <Button
-                variant="outline_bg"
-                colorSchema="danger"
-                leftIcon={<FontAwesomeIcon icon={faTrash} />}
-                className="ml-4"
+                variant="danger"
+                className="ml-2"
                 onClick={() => handlePopUpOpen("bulkDeleteEntries")}
                 size="xs"
               >
+                <TrashIcon />
                 Delete
               </Button>
             </>

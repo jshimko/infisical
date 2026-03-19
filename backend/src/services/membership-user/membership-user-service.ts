@@ -13,6 +13,7 @@ import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { groupBy } from "@app/lib/fn";
 import { ms } from "@app/lib/ms";
 import { SearchResourceOperators } from "@app/lib/search-resource/search";
+import { isDisposableEmail } from "@app/lib/validator";
 
 import { TAdditionalPrivilegeDALFactory } from "../additional-privilege/additional-privilege-dal";
 import { AuthMethod } from "../auth/auth-type";
@@ -25,6 +26,8 @@ import { TProjectDALFactory } from "../project/project-dal";
 import { TProjectKeyDALFactory } from "../project-key/project-key-dal";
 import { TRoleDALFactory } from "../role/role-dal";
 import { TSmtpService } from "../smtp/smtp-service";
+import { getServerCfg } from "../super-admin/super-admin-service";
+import { LoginMethod } from "../super-admin/super-admin-types";
 import { TUserDALFactory } from "../user/user-dal";
 import { TUserAliasDALFactory } from "../user-alias/user-alias-dal";
 import { TMembershipUserDALFactory } from "./membership-user-dal";
@@ -35,7 +38,6 @@ import {
   TListMembershipUserDTO,
   TUpdateMembershipUserDTO
 } from "./membership-user-types";
-import { newNamespaceMembershipUserFactory } from "./namespace/namespace-membership-user-factory";
 import { newOrgMembershipUserFactory } from "./org/org-membership-user-factory";
 import { newProjectMembershipUserFactory } from "./project/project-membership-user-factory";
 
@@ -88,13 +90,13 @@ export const membershipUserServiceFactory = ({
       userGroupMembershipDAL,
       membershipUserDAL
     }),
-    [AccessScope.Namespace]: newNamespaceMembershipUserFactory({}),
     [AccessScope.Project]: newProjectMembershipUserFactory({
       orgDAL,
       permissionService,
       membershipUserDAL,
       projectDAL,
-      smtpService
+      smtpService,
+      userDAL
     })
   };
 
@@ -203,6 +205,13 @@ export const membershipUserServiceFactory = ({
       });
     }
 
+    const isEmailInvalid = await isDisposableEmail(data.usernames);
+    if (isEmailInvalid) {
+      throw new BadRequestError({
+        message: "Disposable emails are not allowed"
+      });
+    }
+
     const scopeDatabaseFields = factory.getScopeDatabaseFields(dto.scopeData);
     const users = await $getUsers(dto.data.usernames);
     const existingMemberships = await membershipUserDAL.find({
@@ -216,12 +225,16 @@ export const membershipUserServiceFactory = ({
     if (existingMemberships.length === users.length) return { memberships: [] };
     const isSubOrganization = Boolean(orgDetails.rootOrgId);
 
+    const serverCfg = await getServerCfg();
+    const isEmailLoginEnabled =
+      !serverCfg.enabledLoginMethods || serverCfg.enabledLoginMethods.includes(LoginMethod.EMAIL);
+
     const newMembershipUsers = users.filter((user) => !existingMemberships?.find((el) => el.actorUserId === user.id));
     await factory.onCreateMembershipUserGuard(dto, newMembershipUsers);
     const newMemberships = newMembershipUsers.map((user) => {
       let status: OrgMembershipStatus | undefined;
       if (scopeData.scope === AccessScope.Organization) {
-        if (isSubOrganization) {
+        if (isSubOrganization || !isEmailLoginEnabled) {
           status = OrgMembershipStatus.Accepted;
         } else {
           status = OrgMembershipStatus.Invited;

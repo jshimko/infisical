@@ -15,6 +15,7 @@ import { TCertificateDALFactory } from "@app/services/certificate/certificate-da
 import { TCertificateServiceFactory } from "@app/services/certificate/certificate-service";
 
 import { ActorType } from "../auth/auth-type";
+import { TResourceMetadataDALFactory } from "../resource-metadata/resource-metadata-dal";
 import { TCertificateRequestDALFactory } from "./certificate-request-dal";
 import {
   CertificateRequestStatus,
@@ -31,9 +32,15 @@ type TCertificateRequestServiceFactoryDep = {
   certificateDAL: Pick<TCertificateDALFactory, "findById">;
   certificateService: Pick<TCertificateServiceFactory, "getCertBody" | "getCertPrivateKey">;
   permissionService: Pick<TPermissionServiceFactory, "getProjectPermission">;
+  resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "find">;
 };
 
 export type TCertificateRequestServiceFactory = ReturnType<typeof certificateRequestServiceFactory>;
+
+const subjectAlternativeNameSchema = z.object({
+  type: z.string().max(50),
+  value: z.string().max(500)
+});
 
 const certificateRequestDataSchema = z
   .object({
@@ -41,7 +48,7 @@ const certificateRequestDataSchema = z
     caId: z.string().uuid().optional(),
     csr: z.string().min(1).optional(),
     commonName: z.string().max(255).optional(),
-    altNames: z.string().max(1000).optional(),
+    altNames: z.array(subjectAlternativeNameSchema).max(100).optional(),
     keyUsages: z.array(z.string()).max(20).optional(),
     extendedKeyUsages: z.array(z.string()).max(20).optional(),
     notBefore: z.date().optional(),
@@ -55,7 +62,14 @@ const certificateRequestDataSchema = z
         isCA: z.boolean(),
         pathLength: z.number().int().min(-1).optional()
       })
-      .optional()
+      .optional(),
+    ttl: z.string().max(50).optional(),
+    enrollmentType: z.string().max(50).optional(),
+    organization: z.string().max(255).optional(),
+    organizationalUnit: z.string().max(255).optional(),
+    country: z.string().max(100).optional(),
+    state: z.string().max(255).optional(),
+    locality: z.string().max(255).optional()
   })
   .refine(
     (data) => {
@@ -108,7 +122,8 @@ export const certificateRequestServiceFactory = ({
   certificateRequestDAL,
   certificateDAL,
   certificateService,
-  permissionService
+  permissionService,
+  resourceMetadataDAL
 }: TCertificateRequestServiceFactoryDep) => {
   const createCertificateRequest = async ({
     acmeOrderId,
@@ -121,7 +136,7 @@ export const certificateRequestServiceFactory = ({
     status,
     ...requestData
   }: TCreateCertificateRequestDTO & { tx?: Knex }) => {
-    if (actor !== ActorType.ACME_ACCOUNT) {
+    if (actor !== ActorType.ACME_ACCOUNT && actor !== ActorType.PLATFORM && actor !== ActorType.EST_ACCOUNT) {
       const { permission } = await permissionService.getProjectPermission({
         actor,
         actorId,
@@ -140,13 +155,21 @@ export const certificateRequestServiceFactory = ({
     // Validate input data before creating the request
     const validatedData = validateCertificateRequestData(requestData);
 
+    const { altNames: altNamesInput, ...restValidatedData } = validatedData;
+
+    // Explicitly set createdAt to ensure millisecond precision matches when used in FK references.
+    // PostgreSQL's DEFAULT now() has microsecond precision, but JavaScript Date only has millisecond precision.
+    // This mismatch causes FK violations when the returned createdAt is used in composite FK references
+    // (e.g., resource_metadata referencing the partitioned certificate_requests table).
     const certificateRequest = await certificateRequestDAL.create(
       {
         status,
         projectId,
         acmeOrderId,
-        ...validatedData
-      },
+        ...restValidatedData,
+        altNames: altNamesInput ? JSON.stringify(altNamesInput) : null,
+        createdAt: new Date()
+      } as Parameters<typeof certificateRequestDAL.create>[0] & { createdAt: Date },
       tx
     );
 
@@ -213,6 +236,14 @@ export const certificateRequestServiceFactory = ({
       ProjectPermissionSub.Certificates
     );
 
+    const parsedBasicConstraints = certificateRequest.basicConstraints as {
+      isCA: boolean;
+      pathLength?: number;
+    } | null;
+
+    const metadataRows = await resourceMetadataDAL.find({ certificateRequestId: certificateRequest.id });
+    const requestMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     // If no certificate is attached, return basic info
     if (!certificateRequest.certificate) {
       return {
@@ -223,6 +254,14 @@ export const certificateRequestServiceFactory = ({
           privateKey: null,
           serialNumber: null,
           errorMessage: certificateRequest.errorMessage || null,
+          commonName: certificateRequest.commonName || null,
+          organization: certificateRequest.organization || null,
+          organizationalUnit: certificateRequest.organizationalUnit || null,
+          country: certificateRequest.country || null,
+          state: certificateRequest.state || null,
+          locality: certificateRequest.locality || null,
+          basicConstraints: parsedBasicConstraints,
+          metadata: requestMetadata,
           createdAt: certificateRequest.createdAt,
           updatedAt: certificateRequest.updatedAt
         },
@@ -268,6 +307,14 @@ export const certificateRequestServiceFactory = ({
         privateKey,
         serialNumber: certificateRequest.certificate.serialNumber,
         errorMessage: certificateRequest.errorMessage || null,
+        commonName: certificateRequest.commonName || null,
+        organization: certificateRequest.organization || null,
+        organizationalUnit: certificateRequest.organizationalUnit || null,
+        country: certificateRequest.country || null,
+        state: certificateRequest.state || null,
+        locality: certificateRequest.locality || null,
+        basicConstraints: parsedBasicConstraints,
+        metadata: requestMetadata,
         createdAt: certificateRequest.createdAt,
         updatedAt: certificateRequest.updatedAt
       },
@@ -319,7 +366,8 @@ export const certificateRequestServiceFactory = ({
     toDate,
     profileIds,
     sortBy,
-    sortOrder
+    sortOrder,
+    metadataFilter
   }: TListCertificateRequestsDTO) => {
     const { permission } = await permissionService.getProjectPermission({
       actor,
@@ -350,7 +398,8 @@ export const certificateRequestServiceFactory = ({
       toDate,
       profileIds,
       sortBy,
-      sortOrder
+      sortOrder,
+      metadataFilter
     };
 
     const [certificateRequests, totalCount] = await Promise.all([

@@ -29,7 +29,7 @@ import { sanitizedSshHostGroup } from "@app/ee/services/ssh-host-group/ssh-host-
 import { ApiDocsTags, PROJECTS } from "@app/lib/api-docs";
 import { CharacterType, characterValidator } from "@app/lib/validator/validate-string";
 import { re2Validator } from "@app/lib/zod";
-import { readLimit, requestAccessLimit, writeLimit } from "@app/server/config/rateLimiter";
+import { projectCreationLimit, readLimit, requestAccessLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { slugSchema } from "@app/server/lib/schemas";
 import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
@@ -142,7 +142,7 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
     method: "POST",
     url: "/",
     config: {
-      rateLimit: writeLimit
+      rateLimit: projectCreationLimit
     },
     schema: {
       hide: false,
@@ -433,6 +433,10 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
           .describe(PROJECTS.UPDATE.projectDescription),
         autoCapitalization: z.boolean().optional().describe(PROJECTS.UPDATE.autoCapitalization),
         hasDeleteProtection: z.boolean().optional().describe(PROJECTS.UPDATE.hasDeleteProtection),
+        enforceEncryptedSecretManagerSecretMetadata: z
+          .boolean()
+          .optional()
+          .describe(PROJECTS.UPDATE.enforceEncryptedSecretManagerSecretMetadata),
         slug: z
           .string()
           .trim()
@@ -473,7 +477,8 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
           secretSharing: req.body.secretSharing,
           showSnapshotsLegacy: req.body.showSnapshotsLegacy,
           secretDetectionIgnoreValues: req.body.secretDetectionIgnoreValues,
-          pitVersionLimit: req.body.pitVersionLimit
+          pitVersionLimit: req.body.pitVersionLimit,
+          enforceEncryptedSecretManagerSecretMetadata: req.body.enforceEncryptedSecretManagerSecretMetadata
         },
         actorAuthMethod: req.permission.authMethod,
         actorId: req.permission.id,
@@ -1217,7 +1222,9 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
       rateLimit: readLimit
     },
     schema: {
-      hide: false,
+      deprecated: true,
+      description: "Deprecated: Use POST /:projectId/certificates/search instead.",
+      hide: true,
       operationId: "listProjectCertificates",
       tags: [ApiDocsTags.PkiCertificates],
       params: z.object({
@@ -1262,6 +1269,68 @@ export const registerProjectRouter = async (server: FastifyZodProvider) => {
         actorAuthMethod: req.permission.authMethod,
         actor: req.permission.type,
         ...req.query
+      });
+      return { certificates, totalCount };
+    }
+  });
+
+  server.route({
+    method: "POST",
+    url: "/:projectId/certificates/search",
+    config: {
+      rateLimit: readLimit
+    },
+    schema: {
+      hide: false,
+      operationId: "searchProjectCertificates",
+      tags: [ApiDocsTags.PkiCertificates],
+      description: "Search and filter certificates within a project.",
+      params: z.object({
+        projectId: z.string().trim()
+      }),
+      body: z.object({
+        friendlyName: z.string().optional().describe(PROJECTS.SEARCH_CERTIFICATES.friendlyName),
+        commonName: z.string().optional().describe(PROJECTS.SEARCH_CERTIFICATES.commonName),
+        offset: z.number().min(0).default(0).describe(PROJECTS.SEARCH_CERTIFICATES.offset),
+        limit: z.number().min(1).max(100).default(25).describe(PROJECTS.SEARCH_CERTIFICATES.limit),
+        forPkiSync: z.boolean().default(false).optional().describe(PROJECTS.SEARCH_CERTIFICATES.forPkiSync),
+        search: z.string().trim().optional().describe(PROJECTS.SEARCH_CERTIFICATES.search),
+        status: z.string().optional().describe(PROJECTS.SEARCH_CERTIFICATES.status),
+        profileIds: z.array(z.string().uuid()).optional().describe(PROJECTS.SEARCH_CERTIFICATES.profileIds),
+        fromDate: z.coerce.date().optional().describe(PROJECTS.SEARCH_CERTIFICATES.fromDate),
+        toDate: z.coerce.date().optional().describe(PROJECTS.SEARCH_CERTIFICATES.toDate),
+        metadata: z
+          .array(
+            z.object({
+              key: z.string().trim().min(1).max(255),
+              value: z.string().trim().max(1020).optional()
+            })
+          )
+          .optional()
+          .describe(PROJECTS.SEARCH_CERTIFICATES.metadata),
+        extendedKeyUsage: z.string().trim().optional().describe(PROJECTS.SEARCH_CERTIFICATES.extendedKeyUsage)
+      }),
+      response: {
+        200: z.object({
+          certificates: z.array(CertificatesSchema.extend({ hasPrivateKey: z.boolean() })),
+          totalCount: z.number()
+        })
+      }
+    },
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
+    handler: async (req) => {
+      const { metadata, ...filters } = req.body;
+      const { certificates, totalCount } = await server.services.project.listProjectCertificates({
+        filter: {
+          projectId: req.params.projectId,
+          type: ProjectFilterType.ID
+        },
+        actorId: req.permission.id,
+        actorOrgId: req.permission.orgId,
+        actorAuthMethod: req.permission.authMethod,
+        actor: req.permission.type,
+        ...filters,
+        metadataFilter: metadata
       });
       return { certificates, totalCount };
     }

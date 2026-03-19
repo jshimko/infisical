@@ -4,6 +4,7 @@ import { ForbiddenError } from "@casl/ability";
 import { ActionProjectType } from "@app/db/schemas";
 import { Event, EventType } from "@app/ee/services/audit-log/audit-log-types";
 import { ProjectPermissionCommitsActions, ProjectPermissionSub } from "@app/ee/services/permission/project-permission";
+import { AUDIT_LOG_SENSITIVE_VALUE } from "@app/lib/config/const";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { logger } from "@app/lib/logger";
 import { ActorAuthMethod, ActorType } from "@app/services/auth/auth-type";
@@ -679,6 +680,27 @@ export const pitServiceFactory = ({
       }
 
       if (policy) {
+        // When a policy exists, secret changes go through approval workflow
+        // but folder changes should still be committed immediately since they're not affected by approval policies
+        let commitId: string | undefined;
+        if (commitChanges.length > 0) {
+          const commit = await folderCommitService.createCommit(
+            {
+              actor: {
+                type: actor || ActorType.PLATFORM,
+                metadata: {
+                  id: actorId
+                }
+              },
+              message,
+              folderId: targetFolder.id,
+              changes: commitChanges
+            },
+            trx
+          );
+          commitId = commit?.id;
+        }
+
         if (
           (changes.secrets?.create?.length ?? 0) > 0 ||
           (changes.secrets?.update?.length ?? 0) > 0 ||
@@ -723,11 +745,13 @@ export const pitServiceFactory = ({
           });
           return {
             approvalId: approval.id,
+            commitId,
             folderChanges,
             secretMutationEvents
           };
         }
         return {
+          commitId,
           folderChanges,
           secretMutationEvents
         };
@@ -755,7 +779,12 @@ export const pitServiceFactory = ({
               secretId: secret.id,
               secretKey: secret.secretKey,
               secretVersion: secret.version,
-              secretTags: secret.tags?.map((tag) => tag.name)
+              secretTags: secret.tags?.map((tag) => tag.name),
+              secretMetadata: secret.secretMetadata?.map((meta) => ({
+                key: meta.key,
+                isEncrypted: meta.isEncrypted,
+                value: meta.isEncrypted ? AUDIT_LOG_SENSITIVE_VALUE : meta.value
+              }))
             }))
           }
         });
@@ -783,7 +812,12 @@ export const pitServiceFactory = ({
               secretId: secret.id,
               secretKey: secret.secretKey,
               secretVersion: secret.version,
-              secretTags: secret.tags?.map((tag) => tag.name)
+              secretTags: secret.tags?.map((tag) => tag.name),
+              secretMetadata: secret.secretMetadata?.map((meta) => ({
+                key: meta.key,
+                isEncrypted: meta.isEncrypted,
+                value: meta.isEncrypted ? AUDIT_LOG_SENSITIVE_VALUE : meta.value
+              }))
             }))
           }
         });

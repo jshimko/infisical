@@ -20,21 +20,35 @@ import { GITHUB_SYNC_LIST_OPTION, GithubSyncFns } from "@app/services/secret-syn
 import { SecretSync, SecretSyncPlanType } from "@app/services/secret-sync/secret-sync-enums";
 import { SecretSyncError } from "@app/services/secret-sync/secret-sync-errors";
 import {
+  TPreSaveTransformDeps,
+  TPreSaveTransformDestinationConfigFn,
+  TPreSaveTransformDestinationConfigParams,
+  TPreSaveTransformSyncOptionsFn,
+  TPreSaveTransformSyncOptionsParams,
   TSecretMap,
   TSecretSyncListItem,
-  TSecretSyncWithCredentials
+  TSecretSyncWithCredentials,
+  TSyncSecretsResult
 } from "@app/services/secret-sync/secret-sync-types";
 
 import { TAppConnectionDALFactory } from "../app-connection/app-connection-dal";
 import { TKmsServiceFactory } from "../kms/kms-service";
 import { ONEPASS_SYNC_LIST_OPTION, OnePassSyncFns } from "./1password";
+import { AwsSecretsManagerSyncMappingBehavior } from "./aws-secrets-manager/aws-secrets-manager-sync-enums";
 import { AZURE_APP_CONFIGURATION_SYNC_LIST_OPTION, azureAppConfigurationSyncFactory } from "./azure-app-configuration";
 import { AZURE_DEVOPS_SYNC_LIST_OPTION, azureDevOpsSyncFactory } from "./azure-devops";
+import {
+  AZURE_ENTRA_ID_SCIM_SYNC_LIST_OPTION,
+  azureEntraIdScimPreSaveTransformDestinationConfig,
+  azureEntraIdScimPreSaveTransformSyncOptions,
+  AzureEntraIdScimSyncFns
+} from "./azure-entra-id-scim";
 import { AZURE_KEY_VAULT_SYNC_LIST_OPTION, azureKeyVaultSyncFactory } from "./azure-key-vault";
 import { BITBUCKET_SYNC_LIST_OPTION, BitbucketSyncFns } from "./bitbucket";
 import { CAMUNDA_SYNC_LIST_OPTION, camundaSyncFactory } from "./camunda";
 import { CHECKLY_SYNC_LIST_OPTION } from "./checkly/checkly-sync-constants";
 import { ChecklySyncFns } from "./checkly/checkly-sync-fns";
+import { CIRCLECI_SYNC_LIST_OPTION, CircleCISyncFns } from "./circleci";
 import { CLOUDFLARE_PAGES_SYNC_LIST_OPTION } from "./cloudflare-pages/cloudflare-pages-constants";
 import { CloudflarePagesSyncFns } from "./cloudflare-pages/cloudflare-pages-fns";
 import { CLOUDFLARE_WORKERS_SYNC_LIST_OPTION, CloudflareWorkersSyncFns } from "./cloudflare-workers";
@@ -99,11 +113,41 @@ const SECRET_SYNC_LIST_OPTIONS: Record<SecretSync, TSecretSyncListItem> = {
   [SecretSync.Bitbucket]: BITBUCKET_SYNC_LIST_OPTION,
   [SecretSync.LaravelForge]: LARAVEL_FORGE_SYNC_LIST_OPTION,
   [SecretSync.Chef]: CHEF_SYNC_LIST_OPTION,
-  [SecretSync.OctopusDeploy]: OCTOPUS_DEPLOY_SYNC_LIST_OPTION
+  [SecretSync.OctopusDeploy]: OCTOPUS_DEPLOY_SYNC_LIST_OPTION,
+  [SecretSync.CircleCI]: CIRCLECI_SYNC_LIST_OPTION,
+  [SecretSync.AzureEntraIdScim]: AZURE_ENTRA_ID_SCIM_SYNC_LIST_OPTION
 };
 
 export const listSecretSyncOptions = () => {
   return Object.values(SECRET_SYNC_LIST_OPTIONS).sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const PRE_SAVE_TRANSFORM_SYNC_OPTIONS_MAP: Partial<Record<SecretSync, TPreSaveTransformSyncOptionsFn>> = {
+  [SecretSync.AzureEntraIdScim]: azureEntraIdScimPreSaveTransformSyncOptions
+};
+
+const PRE_SAVE_TRANSFORM_DESTINATION_CONFIG_MAP: Partial<Record<SecretSync, TPreSaveTransformDestinationConfigFn>> = {
+  [SecretSync.AzureEntraIdScim]: azureEntraIdScimPreSaveTransformDestinationConfig
+};
+
+export const preSaveTransformSyncOptions = async (
+  destination: SecretSync,
+  params: TPreSaveTransformSyncOptionsParams,
+  deps: TPreSaveTransformDeps
+) => {
+  const transform = PRE_SAVE_TRANSFORM_SYNC_OPTIONS_MAP[destination];
+  if (!transform) return params.syncOptions;
+  return transform(params, deps);
+};
+
+export const preSaveTransformDestinationConfig = async (
+  destination: SecretSync,
+  params: TPreSaveTransformDestinationConfigParams,
+  deps: TPreSaveTransformDeps
+) => {
+  const transform = PRE_SAVE_TRANSFORM_DESTINATION_CONFIG_MAP[destination];
+  if (!transform) return params.destinationConfig;
+  return transform(params, deps);
 };
 
 type TSyncSecretDeps = {
@@ -111,6 +155,23 @@ type TSyncSecretDeps = {
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">;
   gatewayService: Pick<TGatewayServiceFactory, "fnGetGatewayClientTlsByGatewayId">;
   gatewayV2Service: Pick<TGatewayV2ServiceFactory, "getPlatformConnectionDetailsByGatewayId">;
+};
+
+export const getKeyWithSchema = ({
+  key,
+  environment,
+  schema
+}: {
+  key: string;
+  environment: string;
+  schema?: string;
+}) => {
+  if (!schema) return key;
+
+  return handlebars.compile(schema)({
+    secretKey: key,
+    environment
+  });
 };
 
 // Add schema to secret keys
@@ -220,14 +281,14 @@ export const SecretSyncFns = {
     secretSync: TSecretSyncWithCredentials,
     secretMap: TSecretMap,
     { kmsService, appConnectionDAL, gatewayService, gatewayV2Service }: TSyncSecretDeps
-  ): Promise<void> => {
+  ): Promise<TSyncSecretsResult | void> => {
     const schemaSecretMap = addSchema(secretMap, secretSync.environment?.slug || "", secretSync.syncOptions.keySchema);
 
     switch (secretSync.destination) {
       case SecretSync.AWSParameterStore:
         return AwsParameterStoreSyncFns.syncSecrets(secretSync, schemaSecretMap);
       case SecretSync.AWSSecretsManager:
-        return AwsSecretsManagerSyncFns.syncSecrets(secretSync, schemaSecretMap);
+        return AwsSecretsManagerSyncFns.syncSecrets(secretSync, schemaSecretMap, secretMap);
       case SecretSync.GitHub:
         return GithubSyncFns.syncSecrets(secretSync, schemaSecretMap, gatewayService, gatewayV2Service);
       case SecretSync.GCPSecretManager:
@@ -268,7 +329,7 @@ export const SecretSyncFns = {
       case SecretSync.Windmill:
         return WindmillSyncFns.syncSecrets(secretSync, schemaSecretMap);
       case SecretSync.HCVault:
-        return HCVaultSyncFns.syncSecrets(secretSync, schemaSecretMap, gatewayService);
+        return HCVaultSyncFns.syncSecrets(secretSync, schemaSecretMap, gatewayService, gatewayV2Service);
       case SecretSync.TeamCity:
         return TeamCitySyncFns.syncSecrets(secretSync, schemaSecretMap);
       case SecretSync.OCIVault:
@@ -307,6 +368,10 @@ export const SecretSyncFns = {
         return ChefSyncFns.syncSecrets(secretSync, schemaSecretMap);
       case SecretSync.OctopusDeploy:
         return OctopusDeploySyncFns.syncSecrets(secretSync, schemaSecretMap);
+      case SecretSync.CircleCI:
+        return CircleCISyncFns.syncSecrets(secretSync, schemaSecretMap);
+      case SecretSync.AzureEntraIdScim:
+        return AzureEntraIdScimSyncFns.syncSecrets(secretSync, schemaSecretMap, { appConnectionDAL, kmsService });
       default:
         throw new Error(
           `Unhandled sync destination for sync secrets fns: ${(secretSync as TSecretSyncWithCredentials).destination}`
@@ -315,7 +380,7 @@ export const SecretSyncFns = {
   },
   getSecrets: async (
     secretSync: TSecretSyncWithCredentials,
-    { kmsService, appConnectionDAL, gatewayService }: TSyncSecretDeps
+    { kmsService, appConnectionDAL, gatewayService, gatewayV2Service }: TSyncSecretDeps
   ): Promise<TSecretMap> => {
     let secretMap: TSecretMap;
     switch (secretSync.destination) {
@@ -324,6 +389,9 @@ export const SecretSyncFns = {
         break;
       case SecretSync.AWSSecretsManager:
         secretMap = await AwsSecretsManagerSyncFns.getSecrets(secretSync);
+        // if many-to-one we don't check for/strip schema, as schema is only applied to the secret name
+        if (secretSync.destinationConfig.mappingBehavior === AwsSecretsManagerSyncMappingBehavior.ManyToOne)
+          return secretMap;
         break;
       case SecretSync.GitHub:
         secretMap = await GithubSyncFns.getSecrets(secretSync);
@@ -373,7 +441,7 @@ export const SecretSyncFns = {
         secretMap = await WindmillSyncFns.getSecrets(secretSync);
         break;
       case SecretSync.HCVault:
-        secretMap = await HCVaultSyncFns.getSecrets(secretSync, gatewayService);
+        secretMap = await HCVaultSyncFns.getSecrets(secretSync, gatewayService, gatewayV2Service);
         break;
       case SecretSync.TeamCity:
         secretMap = await TeamCitySyncFns.getSecrets(secretSync);
@@ -435,6 +503,12 @@ export const SecretSyncFns = {
       case SecretSync.OctopusDeploy:
         secretMap = await OctopusDeploySyncFns.getSecrets(secretSync);
         break;
+      case SecretSync.CircleCI:
+        secretMap = await CircleCISyncFns.getSecrets(secretSync);
+        break;
+      case SecretSync.AzureEntraIdScim:
+        secretMap = await AzureEntraIdScimSyncFns.getSecrets();
+        break;
       default:
         throw new Error(
           `Unhandled sync destination for get secrets fns: ${(secretSync as TSecretSyncWithCredentials).destination}`
@@ -495,7 +569,7 @@ export const SecretSyncFns = {
       case SecretSync.Windmill:
         return WindmillSyncFns.removeSecrets(secretSync, schemaSecretMap);
       case SecretSync.HCVault:
-        return HCVaultSyncFns.removeSecrets(secretSync, schemaSecretMap, gatewayService);
+        return HCVaultSyncFns.removeSecrets(secretSync, schemaSecretMap, gatewayService, gatewayV2Service);
       case SecretSync.TeamCity:
         return TeamCitySyncFns.removeSecrets(secretSync, schemaSecretMap);
       case SecretSync.OCIVault:
@@ -536,6 +610,10 @@ export const SecretSyncFns = {
         return ChefSyncFns.removeSecrets(secretSync, schemaSecretMap);
       case SecretSync.OctopusDeploy:
         return OctopusDeploySyncFns.removeSecrets(secretSync, schemaSecretMap);
+      case SecretSync.CircleCI:
+        return CircleCISyncFns.removeSecrets(secretSync, schemaSecretMap);
+      case SecretSync.AzureEntraIdScim:
+        return AzureEntraIdScimSyncFns.removeSecrets();
       default:
         throw new Error(
           `Unhandled sync destination for remove secrets fns: ${(secretSync as TSecretSyncWithCredentials).destination}`
@@ -552,7 +630,8 @@ export const parseSyncErrorMessage = (err: unknown): string => {
   if (err instanceof SecretSyncError) {
     errorMessage = JSON.stringify({
       secretKey: err.secretKey,
-      error: err.message || parseSyncErrorMessage(err.error)
+      message: err.message || undefined,
+      error: err.error ? parseSyncErrorMessage(err.error) : undefined
     });
   } else if (err instanceof AxiosError) {
     errorMessage = err?.response?.data

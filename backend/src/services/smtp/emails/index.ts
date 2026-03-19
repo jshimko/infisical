@@ -1,6 +1,7 @@
 export * from "./AccessApprovalRequestTemplate";
 export * from "./AccessApprovalRequestUpdatedTemplate";
 export * from "./AccountDeletionConfirmationTemplate";
+export * from "./CredentialRotationFailedTemplate";
 export * from "./EmailMfaTemplate";
 export * from "./EmailVerificationTemplate";
 export * from "./ExternalImportFailedTemplate";
@@ -32,5 +33,6 @@ export * from "./SecretScanningSecretsDetectedTemplate";
 export * from "./SecretSyncFailedTemplate";
 export * from "./ServiceTokenExpiryNoticeTemplate";
 export * from "./SignupEmailVerificationTemplate";
+export * from "./SignupExistingAccountTemplate";
 export * from "./SubOrganizationInvitationTemplate";
 export * from "./UnlockAccountTemplate";

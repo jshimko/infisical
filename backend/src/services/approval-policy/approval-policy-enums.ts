@@ -1,5 +1,7 @@
 export enum ApprovalPolicyType {
-  PamAccess = "pam-access"
+  PamAccess = "pam-access",
+  CertRequest = "cert-request",
+  CertCodeSigning = "cert-code-signing"
 }
 
 export enum ApproverType {

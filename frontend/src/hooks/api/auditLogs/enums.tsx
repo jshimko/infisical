@@ -6,6 +6,7 @@ export enum ActorType {
   IDENTITY = "identity",
   ACME_PROFILE = "acmeProfile",
   ACME_ACCOUNT = "acmeAccount",
+  EST_ACCOUNT = "estAccount",
   UNKNOWN_USER = "unknownUser"
 }
 
@@ -28,6 +29,7 @@ export enum EventType {
   CREATE_SECRET = "create-secret",
   UPDATE_SECRET = "update-secret",
   DELETE_SECRET = "delete-secret",
+  REDACT_SECRET_VERSION_VALUE = "redact-secret-version-value",
   GET_PROJECT_KEY = "get-project-key",
   AUTHORIZE_INTEGRATION = "authorize-integration",
   UPDATE_INTEGRATION_AUTH = "update-integration-auth",
@@ -271,11 +273,23 @@ export enum EventType {
   PAM_ACCOUNT_CREATE = "pam-account-create",
   PAM_ACCOUNT_UPDATE = "pam-account-update",
   PAM_ACCOUNT_DELETE = "pam-account-delete",
+  PAM_WEB_ACCESS_SESSION_TICKET_CREATED = "pam-web-access-session-ticket-created",
   PAM_RESOURCE_LIST = "pam-resource-list",
   PAM_RESOURCE_GET = "pam-resource-get",
   PAM_RESOURCE_CREATE = "pam-resource-create",
   PAM_RESOURCE_UPDATE = "pam-resource-update",
   PAM_RESOURCE_DELETE = "pam-resource-delete",
+
+  PAM_DISCOVERY_SOURCE_LIST = "pam-discovery-source-list",
+  PAM_DISCOVERY_SOURCE_GET = "pam-discovery-source-get",
+  PAM_DISCOVERY_SOURCE_CREATE = "pam-discovery-source-create",
+  PAM_DISCOVERY_SOURCE_UPDATE = "pam-discovery-source-update",
+  PAM_DISCOVERY_SOURCE_DELETE = "pam-discovery-source-delete",
+  PAM_DISCOVERY_SCAN = "pam-discovery-scan",
+  PAM_DISCOVERY_SOURCE_RUN_LIST = "pam-discovery-source-run-list",
+  PAM_DISCOVERY_SOURCE_RUN_GET = "pam-discovery-source-run-get",
+  PAM_DISCOVERY_SOURCE_RESOURCE_LIST = "pam-discovery-source-resource-list",
+  PAM_DISCOVERY_SOURCE_ACCOUNT_LIST = "pam-discovery-source-account-list",
 
   CREATE_CERTIFICATE_PROFILE = "create-certificate-profile",
   UPDATE_CERTIFICATE_PROFILE = "update-certificate-profile",

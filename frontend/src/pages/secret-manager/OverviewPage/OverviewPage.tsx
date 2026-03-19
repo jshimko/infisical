@@ -1,28 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useTranslation } from "react-i18next";
 import { subject } from "@casl/ability";
-import { faCheckCircle } from "@fortawesome/free-regular-svg-icons";
+import { DragDropProvider, DragEndEvent, DragOverlay } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
+import { arrayMove } from "@dnd-kit/sortable";
+import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useParams, useRouter, useSearch } from "@tanstack/react-router";
+import { AxiosError } from "axios";
 import {
-  faAngleDown,
-  faArrowDown,
-  faArrowLeft,
-  faArrowRight,
-  faArrowRightToBracket,
-  faArrowUp,
-  faCheck,
-  faCopy,
-  faFilter,
-  faFingerprint,
-  faFolder,
-  faFolderBlank,
-  faFolderPlus,
-  faKey,
-  faPlus,
-  faRotate
-} from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { Link, useNavigate, useParams, useRouter, useSearch } from "@tanstack/react-router";
+  ChevronDownIcon,
+  CopyIcon,
+  DownloadIcon,
+  EyeIcon,
+  EyeOffIcon,
+  GitCommitIcon,
+  GroupIcon,
+  InfoIcon,
+  LayersIcon,
+  LockIcon,
+  SettingsIcon,
+  TrashIcon
+} from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import { UpgradePlanModal } from "@app/components/license/UpgradePlanModal";
@@ -31,46 +30,73 @@ import { ProjectPermissionCan } from "@app/components/permissions";
 import { CreateSecretRotationV2Modal } from "@app/components/secret-rotations-v2";
 import { DeleteSecretRotationV2Modal } from "@app/components/secret-rotations-v2/DeleteSecretRotationV2Modal";
 import { EditSecretRotationV2Modal } from "@app/components/secret-rotations-v2/EditSecretRotationV2Modal";
-import { ReconcileUnixLinuxLocalAccountRotationModal } from "@app/components/secret-rotations-v2/ReconcileUnixLinuxLocalAccountRotationModal";
+import { ReconcileLocalAccountRotationModal } from "@app/components/secret-rotations-v2/ReconcileLocalAccountRotationModal";
 import { RotateSecretRotationV2Modal } from "@app/components/secret-rotations-v2/RotateSecretRotationV2Modal";
 import { ViewSecretRotationV2GeneratedCredentialsModal } from "@app/components/secret-rotations-v2/ViewSecretRotationV2GeneratedCredentials";
 import {
-  Button,
-  Checkbox,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-  EmptyState,
-  IconButton,
-  Lottie,
+  Button as ButtonV2,
+  DeleteActionModal,
   Modal,
   ModalContent,
-  PageHeader,
-  Pagination,
-  Table,
-  TableContainer,
-  TableSkeleton,
-  TBody,
-  Td,
-  TFoot,
-  Th,
-  THead,
-  Tooltip,
-  Tr
+  PageHeader
 } from "@app/components/v2";
-import { HeaderResizer } from "@app/components/v2/HeaderResizer/HeaderResizer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+  Badge,
+  Button,
+  Checkbox,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Skeleton,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  UnstableAlert,
+  UnstableAlertTitle,
+  UnstableCard,
+  UnstableCardContent,
+  UnstableCardHeader,
+  UnstableDropdownMenu,
+  UnstableDropdownMenuContent,
+  UnstableDropdownMenuItem,
+  UnstableDropdownMenuTrigger,
+  UnstablePagination,
+  UnstableTable,
+  UnstableTableBody,
+  UnstableTableCell,
+  UnstableTableHead,
+  UnstableTableHeader,
+  UnstableTableRow
+} from "@app/components/v3";
+import { apiRequest } from "@app/config/request";
 import { ROUTE_PATHS } from "@app/const/routes";
 import {
   ProjectPermissionActions,
   ProjectPermissionDynamicSecretActions,
   ProjectPermissionSub,
+  useOrgPermission,
   useProject,
   useProjectPermission,
   useSubscription
 } from "@app/context";
-import { ProjectPermissionSecretRotationActions } from "@app/context/ProjectPermissionContext/types";
+import {
+  ProjectPermissionCommitsActions,
+  ProjectPermissionSecretActions,
+  ProjectPermissionSecretRotationActions
+} from "@app/context/ProjectPermissionContext/types";
+import { downloadSecretEnvFile } from "@app/helpers/download";
+import { OrgMembershipRole } from "@app/helpers/roles";
 import {
   getUserTablePreference,
   PreferenceKey,
@@ -78,71 +104,132 @@ import {
 } from "@app/helpers/userTablePreferences";
 import {
   useDebounce,
+  useLocalStorageState,
   usePagination,
   usePopUp,
   useResetPageHelper,
-  useResizableHeaderHeight,
-  useTimedReset,
   useToggle
 } from "@app/hooks";
 import {
   useCreateFolder,
+  useCreateSecretBatch,
   useCreateSecretV3,
+  useDeleteDynamicSecret,
+  useDeleteFolder,
+  useDeleteSecretImport,
   useDeleteSecretV3,
+  useDeleteWsEnvironment,
   useGetImportedSecretsAllEnvs,
   useGetOrCreateFolder,
+  useGetSecretApprovalPolicyOfABoard,
   useGetWsTags,
+  useUpdateSecretBatch,
+  useUpdateSecretImport,
   useUpdateSecretV3
 } from "@app/hooks/api";
-import { useGetProjectSecretsOverview } from "@app/hooks/api/dashboard/queries";
+import {
+  dashboardKeys,
+  fetchDashboardProjectSecretsByKeys,
+  useGetProjectSecretsOverview
+} from "@app/hooks/api/dashboard/queries";
 import { DashboardSecretsOrderBy, ProjectSecretsImportedBy } from "@app/hooks/api/dashboard/types";
+import { TDynamicSecret } from "@app/hooks/api/dynamicSecret/types";
+import { useGetFolderCommitsCount } from "@app/hooks/api/folderCommits";
 import { OrderByDirection } from "@app/hooks/api/generic/types";
+import {
+  useGetVaultExternalMigrationConfigs,
+  useImportVaultSecrets
+} from "@app/hooks/api/migration";
+import { VaultImportStatus } from "@app/hooks/api/migration/types";
 import { ProjectType, ProjectVersion } from "@app/hooks/api/projects/types";
 import { useUpdateFolderBatch } from "@app/hooks/api/secretFolders/queries";
-import { TUpdateFolderBatchDTO } from "@app/hooks/api/secretFolders/types";
+import { PendingAction, TUpdateFolderBatchDTO } from "@app/hooks/api/secretFolders/types";
+import { TSecretImport } from "@app/hooks/api/secretImports/types";
 import {
   SecretRotation as SecretRotationV2,
   TSecretRotationV2
 } from "@app/hooks/api/secretRotationsV2";
-import { ProjectEnv, SecretType, SecretV3RawSanitized, TSecretFolder } from "@app/hooks/api/types";
+import { useCreateCommit } from "@app/hooks/api/secrets/mutations";
+import { fetchProjectSecrets, secretKeys } from "@app/hooks/api/secrets/queries";
+import {
+  ApiErrorTypes,
+  ProjectEnv,
+  SecretType,
+  SecretV3RawSanitized,
+  TApiErrors,
+  TSecretFolder,
+  WsTag
+} from "@app/hooks/api/types";
+import { useNavigationBlocker } from "@app/hooks/useNavigationBlocker";
+import { usePathAccessPolicies } from "@app/hooks/usePathAccessPolicies";
 import {
   useDynamicSecretOverview,
   useFolderOverview,
+  useSecretImportOverview,
   useSecretOverview,
   useSecretRotationOverview
 } from "@app/hooks/utils";
-import { SecretOverviewSecretRotationRow } from "@app/pages/secret-manager/OverviewPage/components/SecretOverviewSecretRotationRow";
-import { getHeaderStyle } from "@app/pages/secret-manager/OverviewPage/components/utils";
+import { RequestAccessModal } from "@app/pages/secret-manager/SecretApprovalsPage/components/AccessApprovalRequest/components/RequestAccessModal";
 
 import { CreateDynamicSecretForm } from "../SecretDashboardPage/components/ActionBar/CreateDynamicSecretForm";
+import { CreateSecretImportForm } from "../SecretDashboardPage/components/ActionBar/CreateSecretImportForm";
 import { FolderForm } from "../SecretDashboardPage/components/ActionBar/FolderForm";
+import { ReplicateFolderFromBoard } from "../SecretDashboardPage/components/ActionBar/ReplicateFolderFromBoard/ReplicateFolderFromBoard";
+import { VaultSecretImportModal } from "../SecretDashboardPage/components/ActionBar/VaultSecretImportModal";
+import { CommitForm } from "../SecretDashboardPage/components/CommitForm";
+import { CreateDynamicSecretLease } from "../SecretDashboardPage/components/DynamicSecretListView/CreateDynamicSecretLease";
+import { DynamicSecretLease } from "../SecretDashboardPage/components/DynamicSecretListView/DynamicSecretLease";
+import { EditDynamicSecretForm } from "../SecretDashboardPage/components/DynamicSecretListView/EditDynamicSecretForm";
 import {
   HIDDEN_SECRET_VALUE,
   HIDDEN_SECRET_VALUE_API_MASK
 } from "../SecretDashboardPage/components/SecretListView/SecretItem";
-import { CreateSecretForm } from "./components/CreateSecretForm";
-import { FolderBreadCrumbs } from "./components/FolderBreadCrumbs";
-import { SecretOverviewDynamicSecretRow } from "./components/SecretOverviewDynamicSecretRow";
-import { SecretOverviewFolderRow } from "./components/SecretOverviewFolderRow";
 import {
-  SecretNoAccessOverviewTableRow,
-  SecretOverviewTableRow
-} from "./components/SecretOverviewTableRow";
-import { SecretSearchInput } from "./components/SecretSearchInput";
-import { SecretTableResourceCount } from "./components/SecretTableResourceCount";
+  PendingChanges,
+  PendingFolderUpdate,
+  StoreProvider,
+  useBatchMode,
+  useBatchModeActions
+} from "../SecretDashboardPage/SecretMainPage.store";
+import { AddResourceButtons } from "./components/AddResourceButtons/AddResourceButtons";
+import { CreateSecretForm } from "./components/CreateSecretForm";
+import { ImportSecretsModal, SecretDropzone } from "./components/SecretDropzone";
 import { SecretV2MigrationSection } from "./components/SecretV2MigrationSection";
 import { SelectionPanel } from "./components/SelectionPanel/SelectionPanel";
+import {
+  DownloadEnvButton,
+  DynamicSecretTableRow,
+  EmptyResourceDisplay,
+  EnvironmentSelect,
+  FolderBreadcrumb,
+  FolderTableRow,
+  ResourceCount,
+  ResourceFilter,
+  ResourceSearchInput,
+  SecretImportTableRow,
+  SecretNoAccessTableRow,
+  SecretRotationTableRow,
+  SecretTableRow
+} from "./components";
+
+type TParsedEnv = { value: string; comments: string[]; secretPath?: string; secretKey: string }[];
+type TParsedFolderEnv = Record<
+  string,
+  Record<string, { value: string; comments: string[]; secretPath?: string }>
+>;
+type TSecOverwriteOpt = { update: TParsedEnv; create: TParsedEnv };
 
 export enum EntryType {
   FOLDER = "folder",
   SECRET = "secret"
 }
 
-enum RowType {
+export enum RowType {
   Folder = "folder",
   DynamicSecret = "dynamic",
   Secret = "secret",
-  SecretRotation = "rotation"
+  SecretRotation = "rotation",
+  SecretImport = "import"
 }
 
 type Filter = {
@@ -153,12 +240,15 @@ const DEFAULT_FILTER_STATE = {
   [RowType.Folder]: false,
   [RowType.DynamicSecret]: false,
   [RowType.Secret]: false,
-  [RowType.SecretRotation]: false
+  [RowType.SecretRotation]: false,
+  [RowType.SecretImport]: false
 };
 
-const DEFAULT_COLLAPSED_HEADER_HEIGHT = 120;
+// const DEFAULT_COLLAPSED_HEADER_HEIGHT = 120;
 
-export const OverviewPage = () => {
+const OVERVIEW_BATCH_MODE_KEY = "overview-batch-mode-enabled";
+
+const OverviewPageContent = () => {
   const { t } = useTranslation();
 
   const router = useRouter();
@@ -169,7 +259,10 @@ export const OverviewPage = () => {
     from: ROUTE_PATHS.SecretManager.OverviewPage.id,
     select: (el) => ({
       secretPath: el.secretPath,
-      search: el.search
+      search: el.search,
+      environments: el.environments,
+      dynamicSecretId: el.dynamicSecretId,
+      filterBy: el.filterBy
     })
   });
 
@@ -177,8 +270,6 @@ export const OverviewPage = () => {
     from: ROUTE_PATHS.SecretManager.OverviewPage.id,
     select: (el) => el.orgId
   });
-  const [scrollOffset, setScrollOffset] = useState(0);
-  const [debouncedScrollOffset] = useDebounce(scrollOffset);
   const { permission } = useProjectPermission();
   const tableRef = useRef<HTMLDivElement>(null);
   const { currentProject, projectId } = useProject();
@@ -188,27 +279,32 @@ export const OverviewPage = () => {
   const [debouncedSearchFilter, setDebouncedSearchFilter] = useDebounce(searchFilter);
   const secretPath = (routerSearch?.secretPath as string) || "/";
   const { subscription } = useSubscription();
-  const [collapseEnvironments, setCollapseEnvironments] = useToggle(
-    Boolean(localStorage.getItem("overview-collapse-environments"))
+  const { hasOrgRole } = useOrgPermission();
+  const isOrgAdmin = hasOrgRole(OrgMembershipRole.Admin);
+  const { data: vaultConfigs = [] } = useGetVaultExternalMigrationConfigs();
+  const hasVaultConnection = vaultConfigs.some((config) => config.connectionId);
+  const { mutateAsync: importVaultSecrets } = useImportVaultSecrets();
+  const prevPageSize = useRef(0);
+
+  const canReadCommits = permission.can(
+    ProjectPermissionCommitsActions.Read,
+    ProjectPermissionSub.Commits
   );
 
-  const handleToggleNarrowHeader = () => {
-    setCollapseEnvironments.toggle();
-    if (collapseEnvironments) {
-      localStorage.removeItem("overview-collapse-environments");
-    } else {
-      localStorage.setItem("overview-collapse-environments", "true");
-    }
-  };
+  const [isSingleEnvSecretsVisible, setIsSingleEnvSecretsVisible] = useToggle();
 
-  const [copiedSlug, , setCopiedSlug] = useTimedReset<string>({
-    initialState: ""
-  });
-
-  const copyToClipboard = (value: string, slug: string) => {
-    navigator.clipboard.writeText(value);
-    setCopiedSlug(slug);
-  };
+  // scott: keeping incase we bring it back
+  // const [collapseEnvironments, setCollapseEnvironments] = useToggle(
+  //   Boolean(localStorage.getItem("overview-collapse-environments"))
+  // );
+  // const handleToggleNarrowHeader = () => {
+  //   setCollapseEnvironments.toggle();
+  //   if (collapseEnvironments) {
+  //     localStorage.removeItem("overview-collapse-environments");
+  //   } else {
+  //     localStorage.setItem("overview-collapse-environments", "true");
+  //   }
+  // };
 
   const [filter, setFilter] = useState<Filter>(DEFAULT_FILTER_STATE);
   const [filterHistory, setFilterHistory] = useState<
@@ -282,25 +378,139 @@ export const OverviewPage = () => {
       })
     )
   );
+  const userAvailableSecretImportEnvs = userAvailableEnvs.filter((env) =>
+    permission.can(
+      ProjectPermissionActions.Create,
+      subject(ProjectPermissionSub.SecretImports, {
+        environment: env.slug,
+        secretPath
+      })
+    )
+  );
 
-  const [filteredEnvs, setFilteredEnvs] = useState<ProjectEnv[]>([]);
+  const [storedEnvIds, setStoredEnvIds] = useLocalStorageState<string[]>(
+    `overview-selected-envs-${projectId}`,
+    userAvailableEnvs?.[0]?.id ? [userAvailableEnvs[0].id] : []
+  );
+
+  useEffect(() => {
+    const envSlugs = routerSearch.environments;
+    if (envSlugs && envSlugs.length > 0) {
+      const envIds = userAvailableEnvs
+        .filter((env) => envSlugs.includes(env.slug))
+        .map((env) => env.id);
+      if (envIds.length > 0) {
+        setStoredEnvIds(envIds);
+      }
+    }
+  }, []);
+
+  const filteredEnvs = useMemo(() => {
+    if (!storedEnvIds.length) return [];
+    return userAvailableEnvs.filter((env) => storedEnvIds.includes(env.id));
+  }, [storedEnvIds, userAvailableEnvs]);
+
+  const setFilteredEnvs = useCallback(
+    (value: SetStateAction<ProjectEnv[]>) => {
+      setStoredEnvIds((prev) => {
+        const prevEnvs = userAvailableEnvs.filter((env) => prev.includes(env.id));
+        const next = typeof value === "function" ? value(prevEnvs) : value;
+        return next.map((env) => env.id);
+      });
+    },
+    [setStoredEnvIds, userAvailableEnvs]
+  );
+
   const visibleEnvs = filteredEnvs.length ? filteredEnvs : userAvailableEnvs;
+  const singleVisibleEnv = visibleEnvs.length === 1 ? visibleEnvs[0] : null;
 
   const {
-    secretImports,
-    isImportedSecretPresentInEnv,
-    getImportedSecretByKey,
-    getEnvImportedSecretKeyCount
-  } = useGetImportedSecretsAllEnvs({
+    data: { count: singleEnvCommitCount, folderId: singleEnvFolderId } = {
+      count: 0,
+      folderId: ""
+    },
+    isPending: isSingleEnvCommitCountPending,
+    isFetching: isSingleEnvCommitCountFetching
+  } = useGetFolderCommitsCount({
+    directory: secretPath,
     projectId,
-    path: secretPath,
-    environments: (userAvailableEnvs || []).map(({ slug }) => slug)
+    environment: singleVisibleEnv?.slug ?? "",
+    isPaused: !singleVisibleEnv || !canReadCommits
   });
+
+  const { data: boardPolicy } = useGetSecretApprovalPolicyOfABoard({
+    projectId,
+    environment: singleVisibleEnv?.slug ?? "",
+    secretPath,
+    options: { enabled: Boolean(singleVisibleEnv) }
+  });
+  const isProtectedBranch = Boolean(boardPolicy);
+
+  const isSingleEnvView = visibleEnvs.length === 1;
+  const singleEnvSlug = isSingleEnvView ? visibleEnvs[0].slug : "";
+  const { pathPolicies, hasPathPolicies } = usePathAccessPolicies({
+    secretPath,
+    environment: singleEnvSlug
+  });
+
+  useEffect(() => {
+    setIsSingleEnvSecretsVisible.off();
+  }, [singleVisibleEnv?.slug]);
+
+  const secretSubject = subject(ProjectPermissionSub.Secrets, {
+    environment: singleEnvSlug,
+    secretPath,
+    secretName: "*",
+    secretTags: ["*"]
+  });
+
+  const canReadSecrets = singleVisibleEnv
+    ? permission.can(ProjectPermissionSecretActions.DescribeSecret, secretSubject)
+    : true;
+
+  const canEditSecrets = singleVisibleEnv
+    ? permission.can(ProjectPermissionSecretActions.Edit, secretSubject)
+    : true;
+
+  const canDeleteSecrets = singleVisibleEnv
+    ? permission.can(ProjectPermissionSecretActions.Delete, secretSubject)
+    : true;
+
+  const canCreateSecrets = singleVisibleEnv
+    ? permission.can(ProjectPermissionSecretActions.Create, secretSubject)
+    : true;
+
+  const singleEnvChangesCount = subscription.pitRecovery ? singleEnvCommitCount : 0;
+  const isSingleEnvChangesCountLoading = subscription.pitRecovery
+    ? isSingleEnvCommitCountPending && isSingleEnvCommitCountFetching
+    : false;
+
+  const { secretImports, isImportedSecretPresentInEnv, getImportedSecretByKey } =
+    useGetImportedSecretsAllEnvs({
+      projectId,
+      path: secretPath,
+      environments: (userAvailableEnvs || []).map(({ slug }) => slug)
+    });
+
+  const importedSecretsFlat = useMemo(
+    () =>
+      secretImports?.flatMap(({ data }, index) =>
+        (data ?? []).map((item) => ({
+          environment: item.environment,
+          secretPath: item.secretPath,
+          sourceEnv: userAvailableEnvs[index].slug,
+          secrets: item.secrets
+        }))
+      ) ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [(secretImports || []).map((response) => response.data)]
+  );
 
   const isFilteredByResources = Object.values(filter).some(Boolean);
   const {
     isPending: isOverviewLoading,
     data: overview,
+    isPlaceholderData,
     isFetching: isOverviewFetching
   } = useGetProjectSecretsOverview(
     {
@@ -312,7 +522,7 @@ export const OverviewPage = () => {
       includeFolders: isFilteredByResources ? filter.folder : true,
       includeDynamicSecrets: isFilteredByResources ? filter.dynamic : true,
       includeSecrets: isFilteredByResources ? filter.secret : true,
-      includeImports: true,
+      includeImports: isFilteredByResources ? (filter[RowType.SecretImport] ?? true) : true,
       includeSecretRotations: isFilteredByResources ? filter.rotation : true,
       search: debouncedSearchFilter,
       limit,
@@ -365,8 +575,12 @@ export const OverviewPage = () => {
   const { folderNamesAndDescriptions, getFolderByNameAndEnv, isFolderPresentInEnv } =
     useFolderOverview(folders);
 
-  const { dynamicSecretNames, isDynamicSecretPresentInEnv } =
-    useDynamicSecretOverview(dynamicSecrets);
+  const {
+    dynamicSecretNames,
+    isDynamicSecretPresentInEnv,
+    getDynamicSecretByName,
+    getDynamicSecretStatusesByName
+  } = useDynamicSecretOverview(dynamicSecrets);
 
   const {
     secretRotationNames,
@@ -375,7 +589,10 @@ export const OverviewPage = () => {
     getSecretRotationStatusesByName
   } = useSecretRotationOverview(secretRotations);
 
-  const { secKeys, getEnvSecretKeyCount } = useSecretOverview(secrets || []);
+  const { secretImportNames, isSecretImportInEnv, getSecretImportByEnv, getSecretImportsForEnv } =
+    useSecretImportOverview(overview?.imports);
+
+  const { secKeys } = useSecretOverview(secrets || []);
 
   const getSecretByKey = useCallback(
     (env: string, key: string) => {
@@ -389,18 +606,100 @@ export const OverviewPage = () => {
     permission.can(ProjectPermissionActions.Read, ProjectPermissionSub.Tags) ? projectId : ""
   );
 
+  const queryClient = useQueryClient();
   const { mutateAsync: createSecretV3 } = useCreateSecretV3();
   const { mutateAsync: updateSecretV3 } = useUpdateSecretV3();
   const { mutateAsync: deleteSecretV3 } = useDeleteSecretV3();
+  const { mutateAsync: createSecretBatch, isPending: isCreatingSecrets } = useCreateSecretBatch();
+  const { mutateAsync: updateSecretBatch, isPending: isUpdatingSecrets } = useUpdateSecretBatch();
   const { mutateAsync: createFolder } = useCreateFolder();
+  const { mutateAsync: deleteFolder } = useDeleteFolder();
   const { mutateAsync: getOrCreateFolder } = useGetOrCreateFolder();
   const { mutateAsync: updateFolderBatch } = useUpdateFolderBatch();
+  const deleteDynamicSecret = useDeleteDynamicSecret();
+  const { mutateAsync: deleteSecretImport } = useDeleteSecretImport();
+  const { mutate: updateSecretImport } = useUpdateSecretImport();
+  const { mutateAsync: deleteWsEnvironment } = useDeleteWsEnvironment();
+
+  // Batch mode state and hooks
+  const [isOverviewBatchMode, setIsOverviewBatchMode] = useState(
+    () => localStorage.getItem(OVERVIEW_BATCH_MODE_KEY) === "true"
+  );
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const { pendingChanges } = useBatchMode();
+  const {
+    addPendingChange,
+    loadPendingChanges,
+    clearAllPendingChanges,
+    setExistingKeys,
+    removePendingChange
+  } = useBatchModeActions();
+  const { mutateAsync: createCommit, isPending: isCommitPending } = useCreateCommit();
+
+  const isBatchModeActive = isOverviewBatchMode && isSingleEnvView;
+  const hasPendingBatchChanges =
+    isBatchModeActive && (pendingChanges.secrets.length > 0 || pendingChanges.folders.length > 0);
+
+  useEffect(() => {
+    if (hasPendingBatchChanges) {
+      resetSelectedEntries();
+    }
+  }, [hasPendingBatchChanges, resetSelectedEntries]);
+
+  useNavigationBlocker({
+    shouldBlock:
+      isBatchModeActive && (pendingChanges.secrets.length > 0 || pendingChanges.folders.length > 0),
+    message:
+      "You have unsaved changes. If you leave now, your work will be lost. Do you want to continue?",
+    context: {
+      projectId,
+      environment: singleVisibleEnv?.slug ?? "",
+      secretPath
+    }
+  });
+
+  useEffect(() => {
+    if (isBatchModeActive && singleVisibleEnv) {
+      loadPendingChanges({
+        projectId,
+        environment: singleVisibleEnv.slug,
+        secretPath
+      });
+    }
+  }, [isBatchModeActive, singleVisibleEnv?.slug, secretPath, projectId, loadPendingChanges]);
+
+  useEffect(() => {
+    if (isBatchModeActive) {
+      setExistingKeys(
+        secKeys,
+        folderNamesAndDescriptions.map((f) => f.name)
+      );
+    }
+  }, [isBatchModeActive, secKeys, folderNamesAndDescriptions, setExistingKeys]);
+
+  const singleEnvImports = useMemo(
+    () => (isSingleEnvView ? getSecretImportsForEnv(singleEnvSlug) : []),
+    [isSingleEnvView, singleEnvSlug, getSecretImportsForEnv]
+  );
+  const [sortableImportItems, setSortableImportItems] = useState<TSecretImport[]>([]);
+
+  useEffect(() => {
+    if (!isOverviewFetching) {
+      setSortableImportItems(singleEnvImports);
+    }
+  }, [isOverviewFetching, singleEnvImports]);
+
+  const [importParsedSecrets, setImportParsedSecrets] = useState<Record<
+    string,
+    { value: string; comments: string[] }
+  > | null>(null);
 
   const { handlePopUpOpen, handlePopUpToggle, handlePopUpClose, popUp } = usePopUp([
     "addSecretsInAllEnvs",
     "addFolder",
     "misc",
     "updateFolder",
+    "deleteFolder",
     "addDynamicSecret",
     "addSecretRotation",
     "editSecretRotation",
@@ -408,11 +707,138 @@ export const OverviewPage = () => {
     "viewSecretRotationGeneratedCredentials",
     "deleteSecretRotation",
     "upgradePlan",
-    "reconcileSecretRotation"
+    "reconcileSecretRotation",
+    "importSecrets",
+    "editDynamicSecret",
+    "dynamicSecretLeases",
+    "createDynamicSecretLease",
+    "deleteDynamicSecret",
+    "snapshots",
+    "replicateFolder",
+    "confirmReplicateUpload",
+    "deleteSecretImport",
+    "addSecretImport",
+    "deleteEnv",
+    "requestAccess",
+    "importFromVault",
+    "confirmDisableBatchMode"
   ] as const);
 
+  // Auto-open dynamic secret leases modal when linked via notification/email
+  useEffect(() => {
+    if (routerSearch.dynamicSecretId && dynamicSecrets?.length) {
+      const match = dynamicSecrets.find((ds) => ds.id === routerSearch.dynamicSecretId);
+      if (match) {
+        handlePopUpOpen("dynamicSecretLeases", match);
+        navigate({ search: (prev) => ({ ...prev, dynamicSecretId: undefined }), replace: true });
+      }
+    }
+  }, [routerSearch.dynamicSecretId, dynamicSecrets?.map((ds) => ds.id).join(",")]);
+
+  // Apply search and/or resource type filter when linked via notification/email
+  useEffect(() => {
+    if (routerSearch.search || routerSearch.filterBy) {
+      const { search, filterBy, ...query } = routerSearch;
+      // temp workaround until we transition state to query params
+      navigate({ search: query, replace: true });
+
+      const initialFilter = { ...DEFAULT_FILTER_STATE };
+      if (filterBy) {
+        const rowType = Object.values(RowType).find((rt) => rt === filterBy);
+        if (rowType) {
+          initialFilter[rowType] = true;
+        }
+      }
+      setFilter(initialFilter);
+
+      if (search) {
+        setSearchFilter(search as string);
+        setDebouncedSearchFilter(search as string);
+      }
+    }
+  }, [routerSearch.search, routerSearch.filterBy]);
+
+  const handleViewCommitHistory = async (envSlug: string, preloadedFolderId?: string) => {
+    if (!subscription?.pitRecovery) {
+      handlePopUpOpen("upgradePlan", {
+        text: "You can use point-in-time recovery if you upgrade your Infisical plan."
+      });
+      return;
+    }
+
+    if (!canReadCommits) return;
+
+    let targetFolderId = preloadedFolderId;
+    if (!targetFolderId) {
+      try {
+        const res = await apiRequest.get<{ count: number; folderId: string }>(
+          "/api/v1/pit/commits/count",
+          { params: { environment: envSlug, path: secretPath, projectId } }
+        );
+        targetFolderId = res.data.folderId;
+      } catch {
+        createNotification({ type: "error", text: "Failed to load commit history" });
+        return;
+      }
+    }
+
+    navigate({
+      to: "/organizations/$orgId/projects/secret-management/$projectId/commits/$environment/$folderId",
+      params: { orgId, projectId, folderId: targetFolderId, environment: envSlug },
+      search: (query: Record<string, string | string[]>) => ({ ...query, secretPath })
+    });
+  };
+
+  const handleAddSecretImport = () => {
+    handlePopUpOpen("addSecretImport");
+  };
+
+  const handleVaultImport = async (vaultPath: string, namespace: string) => {
+    const result = await importVaultSecrets({
+      projectId,
+      environment: singleEnvSlug,
+      secretPath,
+      vaultNamespace: namespace,
+      vaultSecretPath: vaultPath
+    });
+
+    if (result.status === VaultImportStatus.ApprovalRequired) {
+      createNotification({
+        type: "info",
+        text: "Secret change request created successfully. Awaiting approval."
+      });
+    } else {
+      createNotification({
+        type: "success",
+        text: "Successfully imported secrets from HashiCorp Vault"
+      });
+    }
+  };
+
   const handleFolderCreate = async (folderName: string, description: string | null) => {
-    const promises = userAvailableEnvs
+    if (isBatchModeActive && singleVisibleEnv) {
+      if (isFolderPresentInEnv(folderName, singleVisibleEnv.slug)) {
+        createNotification({ type: "info", text: "Folder already exists" });
+        handlePopUpClose("addFolder");
+        return;
+      }
+      addPendingChange(
+        {
+          id: crypto.randomUUID(),
+          resourceType: "folder",
+          type: PendingAction.Create,
+          folderName,
+          description: description ?? undefined,
+          parentPath: secretPath,
+          timestamp: Date.now()
+        },
+        { projectId, environment: singleVisibleEnv.slug, secretPath }
+      );
+      handlePopUpClose("addFolder");
+      return;
+    }
+
+    const promises = visibleEnvs
       .map((env) => {
         const environment = env.slug;
         const isFolderPresent = isFolderPresentInEnv(folderName, environment);
@@ -456,7 +882,315 @@ export const OverviewPage = () => {
     }
   };
 
+  // Replicate Secrets Logic
+  const replicateCreateCount = (
+    (popUp.confirmReplicateUpload?.data as TSecOverwriteOpt)?.create || []
+  ).length;
+  const replicateUpdateCount = (
+    (popUp.confirmReplicateUpload?.data as TSecOverwriteOpt)?.update || []
+  ).length;
+  const isReplicateNonConflicting = !replicateUpdateCount;
+  const isReplicateSubmitting = isCreatingSecrets || isUpdatingSecrets;
+
+  const handleParsedEnvMultiFolder = async (envByPath: TParsedFolderEnv) => {
+    if (Object.keys(envByPath).length === 0) {
+      createNotification({
+        type: "error",
+        text: "Failed to find secrets"
+      });
+      return;
+    }
+
+    try {
+      const allUpdateSecrets: TParsedEnv = [];
+      const allCreateSecrets: TParsedEnv = [];
+
+      await Promise.all(
+        Object.entries(envByPath).map(async ([folderPath, boardSecrets]) => {
+          let normalizedPath = folderPath;
+
+          if (normalizedPath === "/") {
+            normalizedPath = secretPath;
+          } else {
+            const baseSecretPath = secretPath.endsWith("/") ? secretPath.slice(0, -1) : secretPath;
+            const cleanFolderPath = folderPath.startsWith("/")
+              ? folderPath.substring(1)
+              : folderPath;
+            normalizedPath = `${baseSecretPath}/${cleanFolderPath}`;
+          }
+
+          const secretFolderKeys = Object.keys(boardSecrets);
+
+          if (secretFolderKeys.length === 0) return;
+
+          const batchSize = 50;
+          const secretBatches = Array.from(
+            { length: Math.ceil(secretFolderKeys.length / batchSize) },
+            (_, i) => secretFolderKeys.slice(i * batchSize, (i + 1) * batchSize)
+          );
+
+          const existingSecretLookup = new Set<string>();
+
+          await secretBatches.reduce(async (previous, batch) => {
+            await previous;
+            try {
+              const { secrets: batchSecrets } = await fetchDashboardProjectSecretsByKeys({
+                secretPath: normalizedPath,
+                environment: singleVisibleEnv!.slug,
+                projectId,
+                keys: batch
+              });
+
+              batchSecrets.forEach((secret) => {
+                existingSecretLookup.add(`${normalizedPath}-${secret.secretKey}`);
+              });
+            } catch (error) {
+              if (!(error instanceof AxiosError && error.response?.status === 404)) {
+                throw error;
+              }
+            }
+          }, Promise.resolve());
+
+          secretFolderKeys.forEach((secretKey) => {
+            const secretData = boardSecrets[secretKey];
+            const secretWithPath = {
+              ...secretData,
+              secretPath: normalizedPath,
+              secretKey
+            };
+
+            if (existingSecretLookup.has(`${normalizedPath}-${secretKey}`)) {
+              allUpdateSecrets.push(secretWithPath);
+            } else {
+              allCreateSecrets.push(secretWithPath);
+            }
+          });
+        })
+      );
+      handlePopUpOpen("confirmReplicateUpload", {
+        update: allUpdateSecrets,
+        create: allCreateSecrets
+      });
+    } catch (e) {
+      console.error(e);
+      createNotification({
+        text: "Failed to check for secret conflicts",
+        type: "error"
+      });
+      handlePopUpClose("confirmReplicateUpload");
+    }
+  };
+
+  const handleSaveReplicateImport = async () => {
+    const { update, create } = popUp?.confirmReplicateUpload?.data as TSecOverwriteOpt;
+    const environment = singleVisibleEnv!.slug;
+
+    const groupedCreateSecrets: Record<
+      string,
+      Array<{
+        type: SecretType;
+        secretComment: string;
+        secretValue: string;
+        secretKey: string;
+      }>
+    > = {};
+
+    const groupedUpdateSecrets: Record<
+      string,
+      Array<{
+        type: SecretType;
+        secretComment: string;
+        secretValue: string;
+        secretKey: string;
+      }>
+    > = {};
+
+    const allPaths = new Set<string>();
+
+    create.forEach((secData) => {
+      if (secData.secretPath && secData.secretPath !== secretPath) {
+        allPaths.add(secData.secretPath);
+      }
+    });
+
+    const folderPaths = Array.from(allPaths).map((path) => {
+      const normalizedPath = path.endsWith("/") ? path.slice(0, -1) : path;
+      const segments = normalizedPath.split("/");
+      const folderName = segments[segments.length - 1];
+      const parentPath = segments.slice(0, -1).join("/");
+
+      return {
+        folderName,
+        fullPath: normalizedPath,
+        parentPath: parentPath || "/"
+      };
+    });
+
+    folderPaths.sort(
+      (a, b) => (a.fullPath.match(/\//g) || []).length - (b.fullPath.match(/\//g) || []).length
+    );
+
+    const createdFolders = new Set<string>();
+
+    await folderPaths.reduce(async (previousPromise, { folderName, fullPath, parentPath }) => {
+      await previousPromise;
+
+      if (createdFolders.has(fullPath)) return Promise.resolve();
+
+      try {
+        await createFolder({
+          name: folderName,
+          path: parentPath,
+          environment,
+          projectId
+        });
+
+        createdFolders.add(fullPath);
+      } catch (err) {
+        console.log(`Folder ${folderName} may already exist:`, err);
+      }
+
+      return Promise.resolve();
+    }, Promise.resolve());
+
+    if (create.length > 0) {
+      create.forEach((secData) => {
+        const path = secData.secretPath || secretPath;
+
+        if (!groupedCreateSecrets[path]) {
+          groupedCreateSecrets[path] = [];
+        }
+
+        groupedCreateSecrets[path].push({
+          type: SecretType.Shared,
+          secretComment: secData.comments.join("\n"),
+          secretValue: secData.value,
+          secretKey: secData.secretKey
+        });
+      });
+
+      await Promise.all(
+        Object.entries(groupedCreateSecrets).map(([path, batchSecrets]) =>
+          createSecretBatch({
+            secretPath: path,
+            projectId,
+            environment,
+            secrets: batchSecrets
+          })
+        )
+      );
+    }
+
+    if (update.length > 0) {
+      update.forEach((secData) => {
+        const path = secData.secretPath || secretPath;
+
+        if (!groupedUpdateSecrets[path]) {
+          groupedUpdateSecrets[path] = [];
+        }
+
+        groupedUpdateSecrets[path].push({
+          type: SecretType.Shared,
+          secretComment: secData.comments.join("\n"),
+          secretValue: secData.value,
+          secretKey: secData.secretKey
+        });
+      });
+
+      await Promise.all(
+        Object.entries(groupedUpdateSecrets).map(([path, batchSecrets]) =>
+          updateSecretBatch({
+            secretPath: path,
+            projectId,
+            environment,
+            secrets: batchSecrets
+          })
+        )
+      );
+    }
+
+    queryClient.invalidateQueries({
+      queryKey: secretKeys.getProjectSecret({ projectId, environment, secretPath })
+    });
+
+    handlePopUpClose("confirmReplicateUpload");
+    createNotification({
+      type: "success",
+      text: "Successfully replicated secrets"
+    });
+  };
+
   const handleFolderUpdate = async (newFolderName: string, description: string | null) => {
+    if (isBatchModeActive && singleVisibleEnv) {
+      const { name: oldFolderName } = popUp.updateFolder.data as TSecretFolder;
+      const folder = getFolderByNameAndEnv(oldFolderName, singleVisibleEnv.slug);
+
+      if (!folder) {
+        // Folder might be a pending create — find it in pending changes
+        const pendingCreate = pendingChanges.folders.find(
+          (c) => c.type === PendingAction.Create && c.folderName === oldFolderName
+        );
+        if (pendingCreate) {
+          // Send as an Update so the store merges it into the existing Create
+          addPendingChange(
+            {
+              id: pendingCreate.id,
+              resourceType: "folder",
+              type: PendingAction.Update,
+              originalFolderName: oldFolderName,
+              folderName: newFolderName,
+              description: description ?? undefined,
+              timestamp: Date.now()
+            },
+            { projectId, environment: singleVisibleEnv.slug, secretPath }
+          );
+          handlePopUpClose("updateFolder");
+          return;
+        }
+
+        // Folder might be a pending update (already renamed) — find by displayed name
+        const pendingUpdate = pendingChanges.folders.find(
+          (c) => c.type === PendingAction.Update && c.folderName === oldFolderName
+        ) as PendingFolderUpdate | undefined;
+        if (pendingUpdate) {
+          addPendingChange(
+            {
+              id: pendingUpdate.id,
+              resourceType: "folder",
+              type: PendingAction.Update,
+              originalFolderName: pendingUpdate.originalFolderName,
+              folderName: newFolderName,
+              originalDescription: pendingUpdate.originalDescription,
+              description: description ?? undefined,
+              timestamp: Date.now()
+            },
+            { projectId, environment: singleVisibleEnv.slug, secretPath }
+          );
+          handlePopUpClose("updateFolder");
+          return;
+        }
+
+        handlePopUpClose("updateFolder");
+        return;
+      }
+
+      addPendingChange(
+        {
+          id: folder.id,
+          resourceType: "folder",
+          type: PendingAction.Update,
+          originalFolderName: oldFolderName,
+          folderName: newFolderName,
+          originalDescription: folder.description,
+          description: description ?? undefined,
+          timestamp: Date.now()
+        },
+        { projectId, environment: singleVisibleEnv.slug, secretPath }
+      );
+      handlePopUpClose("updateFolder");
+      return;
+    }
+
     const { name: oldFolderName } = popUp.updateFolder.data as TSecretFolder;
 
     const updatedFolders: TUpdateFolderBatchDTO["folders"] = [];
@@ -509,7 +1243,200 @@ export const OverviewPage = () => {
     }
   };
 
-  const handleSecretCreate = async (env: string, key: string, value: string) => {
+  const handleFolderDelete = async () => {
+    const folderName = (popUp.deleteFolder?.data as { name: string })?.name;
+    if (!folderName) return;
+
+    if (isBatchModeActive && singleVisibleEnv) {
+      const folder = getFolderByNameAndEnv(folderName, singleVisibleEnv.slug);
+
+      if (!folder) {
+        // Folder might be a pending create — just remove it
+        const pendingCreate = pendingChanges.folders.find(
+          (c) => c.type === PendingAction.Create && c.folderName === folderName
+        );
+        if (pendingCreate) {
+          removePendingChange(pendingCreate.id, "folder", {
+            projectId,
+            environment: singleVisibleEnv.slug,
+            secretPath
+          });
+        }
+        handlePopUpClose("deleteFolder");
+        return;
+      }
+
+      addPendingChange(
+        {
+          id: folder.id,
+          resourceType: "folder",
+          type: PendingAction.Delete,
+          folderName,
+          folderPath: secretPath,
+          timestamp: Date.now()
+        },
+        { projectId, environment: singleVisibleEnv.slug, secretPath }
+      );
+      handlePopUpClose("deleteFolder");
+      return;
+    }
+
+    const promises = userAvailableEnvs
+      .filter((env) =>
+        permission.can(
+          ProjectPermissionActions.Delete,
+          subject(ProjectPermissionSub.SecretFolders, {
+            environment: env.slug,
+            secretPath
+          })
+        )
+      )
+      .map((env) => {
+        const folder = getFolderByNameAndEnv(folderName, env.slug);
+        if (!folder) return undefined;
+
+        return deleteFolder({
+          folderId: folder.id,
+          path: secretPath,
+          environment: env.slug,
+          projectId
+        });
+      })
+      .filter(Boolean);
+
+    if (promises.length === 0) {
+      createNotification({
+        type: "info",
+        text: "You don't have access to delete this folder in any environment"
+      });
+      handlePopUpClose("deleteFolder");
+      return;
+    }
+
+    try {
+      await Promise.all(promises);
+      createNotification({
+        type: "success",
+        text: "Successfully deleted folder"
+      });
+    } catch {
+      createNotification({
+        type: "error",
+        text: "Failed to delete folder"
+      });
+    } finally {
+      handlePopUpClose("deleteFolder");
+    }
+  };
+
+  const handleDynamicSecretDelete = async () => {
+    const { name, environment, isForced } = popUp.deleteDynamicSecret.data as TDynamicSecret & {
+      environment: string;
+      isForced?: boolean;
+    };
+    try {
+      await deleteDynamicSecret.mutateAsync({
+        environmentSlug: environment,
+        projectSlug,
+        path: secretPath,
+        name,
+        isForced
+      });
+      handlePopUpClose("deleteDynamicSecret");
+      createNotification({
+        type: "success",
+        text: "Successfully deleted dynamic secret"
+      });
+    } catch {
+      createNotification({
+        type: "error",
+        text: "Failed to delete dynamic secret"
+      });
+    }
+  };
+
+  const handleSecretImportDelete = async () => {
+    const secretImportData = popUp.deleteSecretImport?.data as TSecretImport;
+    if (!secretImportData || !secretImportData.environment) return;
+
+    try {
+      await deleteSecretImport({
+        projectId,
+        environment: secretImportData.environment,
+        path: secretPath,
+        id: secretImportData.id
+      });
+      handlePopUpClose("deleteSecretImport");
+      createNotification({
+        type: "success",
+        text: "Successfully removed secret link"
+      });
+    } catch {
+      createNotification({
+        type: "error",
+        text: "Failed to remove secret link"
+      });
+    }
+  };
+
+  const handleDeleteEnvironment = async () => {
+    const { id } = popUp.deleteEnv.data as { id: string };
+    if (!id) return;
+
+    await deleteWsEnvironment({ projectId: currentProject.id, id });
+    createNotification({ text: "Successfully removed environment", type: "success" });
+    handlePopUpClose("deleteEnv");
+  };
+
+  const handleSecretImportReorder: DragEndEvent = (event) => {
+    if (event.canceled) return;
+    const { source } = event.operation;
+    if (!source || !isSortable(source)) return;
+
+    const oldIndex = source.sortable.initialIndex;
+    const newIndex = source.sortable.index;
+    if (oldIndex === newIndex) return;
+
+    // sortableImportItems excludes reserved imports, so UI indices don't map 1:1
+    // to DB positions when replications are present. Use the DB position of the
+    // item currently at the target slot.
+    const targetPosition = Number(sortableImportItems[newIndex].position);
+
+    const newImportOrder = arrayMove(sortableImportItems, oldIndex, newIndex);
+    setSortableImportItems(newImportOrder);
+    updateSecretImport({
+      projectId,
+      environment: singleEnvSlug,
+      path: secretPath,
+      id: source.id as string,
+      import: {
+        position: targetPosition
+      }
+    });
+  };
+
+  const handleSecretCreate = async (
+    env: string,
+    key: string,
+    value: string,
+    type = SecretType.Shared
+  ) => {
+    if (isBatchModeActive) {
+      addPendingChange(
+        {
+          id: crypto.randomUUID(),
+          resourceType: "secret",
+          type: PendingAction.Create,
+          secretKey: key,
+          secretValue: value,
+          secretComment: "",
+          timestamp: Date.now()
+        },
+        { projectId, environment: env, secretPath }
+      );
+      return;
+    }
+
     // create folder if not existing
     if (secretPath !== "/") {
       // /hello/world -> [hello","world"]
@@ -539,7 +1466,7 @@ export const OverviewPage = () => {
       secretKey: key,
       secretValue: value,
       secretComment: "",
-      type: SecretType.Shared
+      type
     });
 
     if ("approval" in result) {
@@ -555,21 +1482,110 @@ export const OverviewPage = () => {
     }
   };
 
-  const handleEnvSelect = (envId: string) => {
-    if (filteredEnvs.map((env) => env.id).includes(envId)) {
-      setFilteredEnvs(filteredEnvs.filter((env) => env.id !== envId));
-    } else {
-      setFilteredEnvs(filteredEnvs.concat(userAvailableEnvs.filter((env) => env.id === envId)));
-    }
-  };
+  const handleSecretUpdate = async ({
+    env,
+    key,
+    value,
+    secretValueHidden,
+    type = SecretType.Shared,
+    newSecretName,
+    secretComment,
+    tags: updatedTags,
+    secretMetadata: updatedMetadata,
+    skipMultilineEncoding: updatedSkipMultilineEncoding,
+    originalValue: providedOriginalValue
+  }: {
+    env: string;
+    key: string;
+    value: string | undefined;
+    secretValueHidden: boolean;
+    type?: SecretType;
+    secretId?: string;
+    newSecretName?: string;
+    secretComment?: string;
+    tags?: { id: string; slug: string }[];
+    secretMetadata?: { key: string; value: string; isEncrypted?: boolean }[];
+    skipMultilineEncoding?: boolean | null;
+    originalValue?: string;
+  }) => {
+    if (isBatchModeActive) {
+      const existingSecret = getSecretByKey(env, key);
 
-  const handleSecretUpdate = async (
-    env: string,
-    key: string,
-    value: string,
-    secretValueHidden: boolean,
-    type = SecretType.Shared
-  ) => {
+      let batchSecretValue: string | undefined = value;
+      if (
+        secretValueHidden &&
+        (value === HIDDEN_SECRET_VALUE_API_MASK || value === HIDDEN_SECRET_VALUE)
+      ) {
+        batchSecretValue = undefined;
+      }
+
+      if (!existingSecret) {
+        // Secret might be a pending create — find it in pending changes
+        const pendingCreate = pendingChanges.secrets.find(
+          (c) => c.type === PendingAction.Create && c.secretKey === key
+        );
+        if (!pendingCreate) return;
+
+        // Send as an Update so the store merges it into the existing Create
+        addPendingChange(
+          {
+            id: pendingCreate.id,
+            resourceType: "secret",
+            type: PendingAction.Update,
+            secretKey: key,
+            newSecretName,
+            originalValue: "",
+            secretValue: batchSecretValue,
+            originalComment: "",
+            secretComment,
+            originalSkipMultilineEncoding: false,
+            skipMultilineEncoding:
+              updatedSkipMultilineEncoding !== undefined
+                ? (updatedSkipMultilineEncoding ?? false)
+                : undefined,
+            originalTags: [],
+            tags: updatedTags,
+            originalSecretMetadata: [],
+            secretMetadata: updatedMetadata,
+            existingSecret: undefined as unknown as SecretV3RawSanitized, // scott: using "update" to update a pending create
+            timestamp: Date.now()
+          },
+          { projectId, environment: env, secretPath }
+        );
+        return;
+      }
+
+      addPendingChange(
+        {
+          id: existingSecret.id,
+          resourceType: "secret",
+          type: PendingAction.Update,
+          secretKey: key,
+          newSecretName,
+          originalValue: providedOriginalValue ?? existingSecret.value,
+          secretValue: batchSecretValue,
+          originalComment: existingSecret.comment,
+          secretComment,
+          originalSkipMultilineEncoding: existingSecret.skipMultilineEncoding ?? false,
+          skipMultilineEncoding:
+            updatedSkipMultilineEncoding !== undefined
+              ? (updatedSkipMultilineEncoding ?? false)
+              : undefined,
+          originalTags: existingSecret.tags?.map((tag) => ({ id: tag.id, slug: tag.slug })),
+          tags: updatedTags,
+          originalSecretMetadata: existingSecret.secretMetadata?.map((m) => ({
+            key: m.key,
+            value: m.value
+          })),
+          secretMetadata: updatedMetadata,
+          existingSecret,
+          timestamp: Date.now()
+        },
+        { projectId, environment: env, secretPath }
+      );
+      return;
+    }
+
     let secretValue: string | undefined = value;
 
     if (
@@ -585,7 +1601,8 @@ export const OverviewPage = () => {
       secretPath,
       secretKey: key,
       secretValue,
-      type
+      type,
+      newSecretName
     });
 
     if ("approval" in result) {
@@ -601,14 +1618,56 @@ export const OverviewPage = () => {
     }
   };
 
-  const handleSecretDelete = async (env: string, key: string, secretId?: string) => {
+  const handleSecretDelete = async (
+    env: string,
+    key: string,
+    secretId?: string,
+    type = SecretType.Shared
+  ) => {
+    if (isBatchModeActive) {
+      const existingSecret = getSecretByKey(env, key);
+
+      if (!existingSecret) {
+        // Secret might be a pending create — just remove it
+        const pendingCreate = pendingChanges.secrets.find(
+          (c) => c.type === PendingAction.Create && c.secretKey === key
+        );
+        if (pendingCreate) {
+          removePendingChange(pendingCreate.id, "secret", {
+            projectId,
+            environment: env,
+            secretPath
+          });
+        }
+        return;
+      }
+
+      addPendingChange(
+        {
+          id: existingSecret.id,
+          resourceType: "secret",
+          type: PendingAction.Delete,
+          secretKey: key,
+          secretValue: existingSecret.value ?? "",
+          secretValueHidden: !existingSecret.value,
+          tags: existingSecret.tags?.map((tag) => ({ id: tag.id, slug: tag.slug })) ?? [],
+          secretMetadata: existingSecret.secretMetadata ?? [],
+          skipMultilineEncoding: existingSecret.skipMultilineEncoding ?? false,
+          comment: existingSecret.comment ?? "",
+          timestamp: Date.now()
+        },
+        { projectId, environment: env, secretPath }
+      );
+      return;
+    }
+
     const result = await deleteSecretV3({
       environment: env,
       projectId,
       secretPath,
       secretKey: key,
       secretId,
-      type: SecretType.Shared
+      type
     });
 
     if ("approval" in result) {
@@ -623,6 +1682,288 @@ export const OverviewPage = () => {
       });
     }
   };
+
+  // Batch mode: merged data for display
+  const mergedSecKeys = useMemo(() => {
+    if (!isBatchModeActive) return secKeys;
+
+    // If resource filter is active and secrets are excluded, don't add pending creates
+    if (isFilteredByResources && !filter.secret) return secKeys;
+
+    const result = [...secKeys];
+    const searchLower = debouncedSearchFilter.toLowerCase();
+    pendingChanges.secrets.forEach((change) => {
+      if (change.type === PendingAction.Create && !result.includes(change.secretKey)) {
+        if (!searchLower || change.secretKey.toLowerCase().includes(searchLower)) {
+          result.unshift(change.secretKey);
+        }
+      }
+    });
+    return result;
+  }, [
+    secKeys,
+    isBatchModeActive,
+    pendingChanges.secrets,
+    debouncedSearchFilter,
+    isFilteredByResources,
+    filter.secret
+  ]);
+
+  const getSecretByKeyWithPending = useCallback(
+    (env: string, key: string) => {
+      if (!isBatchModeActive) return getSecretByKey(env, key);
+
+      // Check for pending create
+      const pendingCreate = pendingChanges.secrets.find(
+        (c) => c.type === PendingAction.Create && c.secretKey === key
+      );
+      if (pendingCreate && pendingCreate.type === PendingAction.Create) {
+        return {
+          id: pendingCreate.id,
+          key: pendingCreate.secretKey,
+          value: pendingCreate.secretValue,
+          comment: pendingCreate.secretComment || "",
+          env,
+          type: SecretType.Shared,
+          tags:
+            pendingCreate.tags?.map((tag) => ({ ...tag, createdAt: "", updatedAt: "" }) as WsTag) ??
+            [],
+          secretMetadata: pendingCreate.secretMetadata ?? [],
+          skipMultilineEncoding: pendingCreate.skipMultilineEncoding ?? false,
+          version: 0,
+          createdAt: "",
+          updatedAt: "",
+          secretValueHidden: false,
+          isPending: true,
+          pendingAction: PendingAction.Create
+        } as SecretV3RawSanitized;
+      }
+
+      const existing = getSecretByKey(env, key);
+      if (!existing) return existing;
+
+      // Check for pending update
+      const pendingUpdate = pendingChanges.secrets.find(
+        (c) => c.type === PendingAction.Update && c.secretKey === key
+      );
+      if (pendingUpdate && pendingUpdate.type === PendingAction.Update) {
+        return {
+          ...existing,
+          key: pendingUpdate.newSecretName || existing.key,
+          value:
+            pendingUpdate.secretValue !== undefined ? pendingUpdate.secretValue : existing.value,
+          comment:
+            pendingUpdate.secretComment !== undefined
+              ? pendingUpdate.secretComment
+              : existing.comment,
+          tags: pendingUpdate.tags !== undefined ? pendingUpdate.tags : existing.tags,
+          secretMetadata:
+            pendingUpdate.secretMetadata !== undefined
+              ? pendingUpdate.secretMetadata
+              : existing.secretMetadata,
+          skipMultilineEncoding:
+            pendingUpdate.skipMultilineEncoding !== undefined
+              ? pendingUpdate.skipMultilineEncoding
+              : existing.skipMultilineEncoding,
+          isPending: true,
+          hasPendingValueChange: pendingUpdate.secretValue !== undefined,
+          pendingAction: PendingAction.Update
+        } as SecretV3RawSanitized;
+      }
+
+      // Check for pending delete
+      const pendingDelete = pendingChanges.secrets.find(
+        (c) => c.type === PendingAction.Delete && c.secretKey === key
+      );
+      if (pendingDelete) {
+        return {
+          ...existing,
+          isPending: true,
+          pendingAction: PendingAction.Delete
+        } as SecretV3RawSanitized;
+      }
+
+      return existing;
+    },
+    [getSecretByKey, isBatchModeActive, pendingChanges.secrets]
+  );
+
+  const mergedFolderNamesAndDescriptions = useMemo(() => {
+    if (!isBatchModeActive)
+      return folderNamesAndDescriptions.map((f) => ({ ...f, pendingAction: undefined }));
+
+    const result = folderNamesAndDescriptions.map((f) => ({
+      ...f,
+      pendingAction: undefined as PendingAction | undefined
+    }));
+
+    // If resource filter is active and folders are excluded, skip pending folder creates
+    const includePendingFolderCreates = !isFilteredByResources || filter.folder;
+
+    const searchLower = debouncedSearchFilter.toLowerCase();
+    pendingChanges.folders.forEach((change) => {
+      if (change.type === PendingAction.Create) {
+        if (
+          includePendingFolderCreates &&
+          (!searchLower || change.folderName.toLowerCase().includes(searchLower))
+        ) {
+          result.unshift({
+            name: change.folderName,
+            description: change.description,
+            pendingAction: PendingAction.Create
+          });
+        }
+      } else if (change.type === PendingAction.Update) {
+        const idx = result.findIndex((f) => f.name === change.originalFolderName);
+        if (idx >= 0) {
+          result[idx] = {
+            ...result[idx],
+            name: change.folderName,
+            description:
+              change.description !== undefined ? change.description : result[idx].description,
+            pendingAction: PendingAction.Update
+          };
+        }
+      } else if (change.type === PendingAction.Delete) {
+        const idx = result.findIndex((f) => f.name === change.folderName);
+        if (idx >= 0) {
+          result[idx] = {
+            ...result[idx],
+            pendingAction: PendingAction.Delete
+          };
+        }
+      }
+    });
+
+    return result;
+  }, [
+    folderNamesAndDescriptions,
+    isBatchModeActive,
+    pendingChanges.folders,
+    debouncedSearchFilter,
+    isFilteredByResources,
+    filter.folder
+  ]);
+
+  // Batch mode: revert a pending change (e.g. when user reverts value to original)
+  const handleBatchRevert = useCallback(
+    (env: string, key: string) => {
+      if (!isBatchModeActive) return;
+      const pendingSecret = pendingChanges.secrets.find((c) => c.secretKey === key);
+      if (pendingSecret) {
+        removePendingChange(pendingSecret.id, "secret", {
+          projectId,
+          environment: env,
+          secretPath
+        });
+      }
+    },
+    [isBatchModeActive, pendingChanges.secrets, removePendingChange, projectId, secretPath]
+  );
+
+  const handleBatchFolderRevert = useCallback(
+    (folderName: string) => {
+      if (!isBatchModeActive || !singleVisibleEnv) return;
+      const pendingFolder = pendingChanges.folders.find(
+        (c) =>
+          c.folderName === folderName ||
+          (c.type === PendingAction.Update && c.originalFolderName === folderName)
+      );
+      if (pendingFolder) {
+        removePendingChange(pendingFolder.id, "folder", {
+          projectId,
+          environment: singleVisibleEnv.slug,
+          secretPath
+        });
+      }
+    },
+    [
+      isBatchModeActive,
+      singleVisibleEnv,
+      pendingChanges.folders,
+      removePendingChange,
+      projectId,
+      secretPath
+    ]
+  );
+
+  // Batch mode: commit handler
+  const handleCreateCommit = useCallback(
+    async (changes: PendingChanges, message: string) => {
+      if (!singleVisibleEnv) return;
+
+      await createCommit({
+        projectId,
+        environment: singleVisibleEnv.slug,
+        secretPath,
+        pendingChanges: changes,
+        message
+      });
+
+      const hasOnlyFolderChanges = changes.folders.length > 0 && changes.secrets.length === 0;
+      const requiresApproval = isProtectedBranch && !hasOnlyFolderChanges;
+
+      if (!requiresApproval) {
+        changes.secrets.forEach((secret) => {
+          if (secret.type === PendingAction.Update && secret.secretValue !== undefined) {
+            queryClient.setQueryData(
+              dashboardKeys.getSecretValue({
+                projectId,
+                environment: singleVisibleEnv.slug,
+                secretPath,
+                secretKey: secret.newSecretName ?? secret.secretKey,
+                isOverride: false
+              }),
+              { value: secret.secretValue }
+            );
+          }
+        });
+      }
+
+      // Invalidate overview queries
+      await queryClient.invalidateQueries({
+        queryKey: dashboardKeys.getDashboardSecrets({ projectId, secretPath })
+      });
+
+      createNotification({
+        text: requiresApproval
+          ? "Requested changes have been sent for review"
+          : "Changes saved successfully",
+        type: "success"
+      });
+    },
+    [singleVisibleEnv, projectId, secretPath, isProtectedBranch, queryClient, createCommit]
+  );
+
+  // Batch mode: toggle
+  const toggleBatchMode = useCallback(() => {
+    if (isOverviewBatchMode && singleVisibleEnv) {
+      const totalChanges = pendingChanges.secrets.length + pendingChanges.folders.length;
+      if (totalChanges > 0) {
+        handlePopUpOpen("confirmDisableBatchMode");
+        return;
+      }
+    }
+    setIsOverviewBatchMode((prev) => {
+      const next = !prev;
+      if (next) localStorage.setItem(OVERVIEW_BATCH_MODE_KEY, "true");
+      else localStorage.removeItem(OVERVIEW_BATCH_MODE_KEY);
+      return next;
+    });
+  }, [isOverviewBatchMode, singleVisibleEnv, pendingChanges, handlePopUpOpen]);
+
+  const handleConfirmDisableBatchMode = useCallback(() => {
+    if (singleVisibleEnv) {
+      clearAllPendingChanges({
+        projectId,
+        environment: singleVisibleEnv.slug,
+        secretPath
+      });
+    }
+    setIsOverviewBatchMode(false);
+    localStorage.removeItem(OVERVIEW_BATCH_MODE_KEY);
+    handlePopUpClose("confirmDisableBatchMode");
+  }, [singleVisibleEnv, clearAllPendingChanges, projectId, secretPath, handlePopUpClose]);
 
   const handleResetSearch = (path: string) => {
     const restore = filterHistory.get(path);
@@ -652,43 +1993,6 @@ export const OverviewPage = () => {
       setSearchFilter("");
       setDebouncedSearchFilter("");
     });
-  };
-
-  const handleExploreEnvClick = async (slug: string) => {
-    if (secretPath !== "/") {
-      const pathSegment = secretPath.split("/").filter(Boolean);
-      const parentPath = `/${pathSegment.slice(0, -1).join("/")}`;
-      const folderName = pathSegment.at(-1);
-      const canCreateFolder = permission.can(
-        ProjectPermissionActions.Create,
-        subject(ProjectPermissionSub.SecretFolders, {
-          environment: slug,
-          secretPath: parentPath
-        })
-      );
-      if (folderName && parentPath && canCreateFolder) {
-        await getOrCreateFolder({
-          projectId,
-          environment: slug,
-          path: parentPath,
-          name: folderName
-        });
-      }
-    }
-
-    const query: Record<string, string> = { ...routerSearch, search: searchFilter };
-    const envIndex = visibleEnvs.findIndex((el) => slug === el.slug);
-    if (envIndex !== -1) {
-      navigate({
-        to: "/organizations/$orgId/projects/secret-management/$projectId/secrets/$envSlug",
-        params: {
-          orgId,
-          projectId,
-          envSlug: slug
-        },
-        search: query
-      });
-    }
   };
 
   const handleToggleRowType = useCallback(
@@ -752,9 +2056,6 @@ export const OverviewPage = () => {
 
     userAvailableEnvs.forEach((env) => {
       secrets?.forEach((secret) => {
-        // bulk actions don't apply to rotation secrets (move/delete)
-        if (secret.isRotatedSecret) return;
-
         if (allRowsSelectedOnPage.isChecked) {
           delete newChecks[EntryType.SECRET][secret.key];
         } else {
@@ -783,19 +2084,6 @@ export const OverviewPage = () => {
 
     setSelectedEntries(newChecks);
   };
-
-  useEffect(() => {
-    if (routerSearch.search) {
-      const { search, ...query } = routerSearch;
-      // temp workaround until we transition state to query params
-      navigate({
-        search: query
-      });
-      setFilter(DEFAULT_FILTER_STATE);
-      setSearchFilter(routerSearch.search as string);
-      setDebouncedSearchFilter(routerSearch.search as string);
-    }
-  }, [routerSearch.search]);
 
   const selectedKeysCount = Object.keys(selectedEntries.secret).length;
 
@@ -889,37 +2177,54 @@ export const OverviewPage = () => {
     );
   }, [importedByEnvs, selectedEntries, selectedKeysCount]);
 
-  const storedHeight = Number.parseInt(
-    localStorage.getItem("overview-header-height") ?? DEFAULT_COLLAPSED_HEADER_HEIGHT.toString(),
-    10
-  );
-  const { headerHeight, handleMouseDown, isResizing } = useResizableHeaderHeight({
-    initialHeight: Number.isNaN(storedHeight) ? DEFAULT_COLLAPSED_HEADER_HEIGHT : storedHeight,
-    minHeight: DEFAULT_COLLAPSED_HEADER_HEIGHT,
-    maxHeight: 288
-  });
+  // scott: keeping incase we add back header adjustments
+  // const storedHeight = Number.parseInt(
+  //   localStorage.getItem("overview-header-height") ?? DEFAULT_COLLAPSED_HEADER_HEIGHT.toString(),
+  //   10
+  // );
+  // const { headerHeight, handleMouseDown, isResizing } = useResizableHeaderHeight({
+  //   initialHeight: Number.isNaN(storedHeight) ? DEFAULT_COLLAPSED_HEADER_HEIGHT : storedHeight,
+  //   minHeight: DEFAULT_COLLAPSED_HEADER_HEIGHT,
+  //   maxHeight: 288
+  // });
+  // const debouncedHeaderHeight = useDebounce(headerHeight);
+  // useEffect(() => {
+  //   localStorage.setItem("overview-header-height", debouncedHeaderHeight.toString());
+  // }, [debouncedHeaderHeight]);
 
-  const debouncedHeaderHeight = useDebounce(headerHeight);
+  const [tableWidth, setTableWidth] = useState(0);
+
+  const hasPendingCreates =
+    mergedSecKeys.length > secKeys.length ||
+    mergedFolderNamesAndDescriptions.some((f) => f.pendingAction === PendingAction.Create);
+  const isTableEmpty = totalCount === 0 && !hasPendingCreates && !isOverviewLoading;
 
   useEffect(() => {
-    localStorage.setItem("overview-header-height", debouncedHeaderHeight.toString());
-  }, [debouncedHeaderHeight]);
+    // track previous page size to make navigation loading rows less janky
+    if (!isOverviewLoading) prevPageSize.current = Math.min(perPage, totalCount);
+  }, [isOverviewLoading, totalCount, perPage]);
 
-  if (isProjectV3 && visibleEnvs.length > 0 && isOverviewLoading) {
-    return (
-      <div className="container mx-auto flex h-screen w-full items-center justify-center px-8 text-mineshaft-50 dark:scheme-dark">
-        <Lottie isAutoPlay icon="infisical_loading" className="h-32 w-32" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    const element = tableRef.current;
+    if (!element) return;
 
-  const canViewOverviewPage = Boolean(userAvailableEnvs.length);
+    const handleResize = () => {
+      setTableWidth(element.clientWidth);
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(element);
+
+    // eslint-disable-next-line consistent-return
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [tableRef, isTableEmpty]);
+
   // This is needed to also show imports from other paths – right now those are missing.
   // const combinedKeys = [...secKeys, ...secretImports.map((impSecrets) => impSecrets?.data?.map((impSec) => impSec.secrets?.map((impSecKey) => impSecKey.key))).flat().flat()];
 
-  const isTableEmpty = totalCount === 0;
-
-  const isTableFiltered = isFilteredByResources || filteredEnvs.length > 0;
+  const isTableFiltered = isFilteredByResources;
 
   if (!isProjectV3)
     return (
@@ -927,6 +2232,11 @@ export const OverviewPage = () => {
         <SecretV2MigrationSection />
       </div>
     );
+
+  const dynamicSecretLeaseData = popUp.dynamicSecretLeases?.data as
+    | (TDynamicSecret & { environment: string })
+    | undefined;
+
   return (
     <div className="">
       <Helmet>
@@ -934,7 +2244,7 @@ export const OverviewPage = () => {
         <meta property="og:title" content={String(t("dashboard.og-title"))} />
         <meta name="og:description" content={String(t("dashboard.og-description"))} />
       </Helmet>
-      <div className="relative mx-auto max-w-8xl text-mineshaft-50 dark:scheme-dark">
+      <div className="relative mx-auto mb-18 max-w-8xl text-mineshaft-50 dark:scheme-dark">
         <div className="flex w-full items-baseline justify-between">
           <PageHeader
             scope={ProjectType.SecretManager}
@@ -982,246 +2292,7 @@ export const OverviewPage = () => {
             }
           />
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <FolderBreadCrumbs secretPath={secretPath} onResetSearch={handleResetSearch} />
-          <div className="flex flex-row flex-wrap items-center gap-2">
-            {isTableFiltered && (
-              <Button
-                variant="plain"
-                colorSchema="secondary"
-                onClick={() => {
-                  setFilteredEnvs([]);
-                  setFilter(DEFAULT_FILTER_STATE);
-                }}
-              >
-                Clear Filters
-              </Button>
-            )}
-            {userAvailableEnvs.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline_bg"
-                    className={twMerge(
-                      "flex h-10",
-                      isTableFiltered && "border-primary/40 bg-primary/10"
-                    )}
-                    leftIcon={
-                      <FontAwesomeIcon
-                        icon={faFilter}
-                        className={isTableFiltered ? "text-primary/80" : undefined}
-                      />
-                    }
-                  >
-                    Filters
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  className="max-h-[70vh] thin-scrollbar overflow-y-auto"
-                  align="end"
-                  sideOffset={2}
-                >
-                  {/* <DropdownMenuItem className="px-1.5" asChild>
-                    <Button
-                      size="xs"
-                      className="w-full"
-                      colorSchema="primary"
-                      variant="outline_bg"
-                      leftIcon={<FontAwesomeIcon icon={faHockeyPuck} />}
-                      // onClick={onCreateTag}
-                    >
-                      Create an environment
-                    </Button>
-                  </DropdownMenuItem> */}
-                  <DropdownMenuLabel>Filter by Resource</DropdownMenuLabel>
 
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleToggleRowType(RowType.Folder);
-                    }}
-                    icon={filter[RowType.Folder] && <FontAwesomeIcon icon={faCheckCircle} />}
-                    iconPos="right"
-                  >
-                    <div className="flex items-center gap-2">
-                      <FontAwesomeIcon icon={faFolder} className="text-yellow-700" />
-                      <span>Folders</span>
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleToggleRowType(RowType.DynamicSecret);
-                    }}
-                    icon={filter[RowType.DynamicSecret] && <FontAwesomeIcon icon={faCheckCircle} />}
-                    iconPos="right"
-                  >
-                    <div className="flex items-center gap-2">
-                      <FontAwesomeIcon icon={faFingerprint} className="text-yellow-700" />
-                      <span>Dynamic Secrets</span>
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleToggleRowType(RowType.SecretRotation);
-                    }}
-                    icon={
-                      filter[RowType.SecretRotation] && <FontAwesomeIcon icon={faCheckCircle} />
-                    }
-                    iconPos="right"
-                  >
-                    <div className="flex items-center gap-2">
-                      <FontAwesomeIcon icon={faRotate} className="text-mineshaft-400" />
-                      <span>Secret Rotations</span>
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleToggleRowType(RowType.Secret);
-                    }}
-                    icon={filter[RowType.Secret] && <FontAwesomeIcon icon={faCheckCircle} />}
-                    iconPos="right"
-                  >
-                    <div className="flex items-center gap-2">
-                      <FontAwesomeIcon icon={faKey} className="text-bunker-300" />
-                      <span>Secrets</span>
-                    </div>
-                  </DropdownMenuItem>
-                  <DropdownMenuLabel>Filter by Environment</DropdownMenuLabel>
-                  {userAvailableEnvs.map((availableEnv) => {
-                    const { id: envId, name } = availableEnv;
-
-                    const isEnvSelected = filteredEnvs.map((env) => env.id).includes(envId);
-                    return (
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleEnvSelect(envId);
-                        }}
-                        key={envId}
-                        icon={isEnvSelected && <FontAwesomeIcon icon={faCheckCircle} />}
-                        iconPos="right"
-                      >
-                        <div className="flex items-center">{name}</div>
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            <SecretSearchInput
-              value={searchFilter}
-              tags={tags}
-              onChange={setSearchFilter}
-              environments={userAvailableEnvs}
-              projectId={currentProject?.id}
-            />
-            {userAvailableEnvs.length > 0 && (
-              <div>
-                <Button
-                  variant="outline_bg"
-                  leftIcon={<FontAwesomeIcon icon={faPlus} />}
-                  onClick={() => handlePopUpOpen("addSecretsInAllEnvs")}
-                  className="h-10 rounded-r-none"
-                >
-                  Add Secret
-                </Button>
-                <DropdownMenu
-                  open={popUp.misc.isOpen}
-                  onOpenChange={(isOpen) => handlePopUpToggle("misc", isOpen)}
-                >
-                  <DropdownMenuTrigger asChild>
-                    <IconButton
-                      ariaLabel="add-folder-or-import"
-                      variant="outline_bg"
-                      className="rounded-l-none bg-mineshaft-600 p-3"
-                    >
-                      <FontAwesomeIcon icon={faAngleDown} />
-                    </IconButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <div className="flex flex-col space-y-1 p-1.5">
-                      <ProjectPermissionCan
-                        I={ProjectPermissionActions.Create}
-                        a={ProjectPermissionSub.SecretFolders}
-                      >
-                        {(isAllowed) => (
-                          <Button
-                            leftIcon={<FontAwesomeIcon icon={faFolderPlus} className="pr-2" />}
-                            onClick={() => {
-                              handlePopUpOpen("addFolder");
-                              handlePopUpClose("misc");
-                            }}
-                            isDisabled={!isAllowed}
-                            variant="outline_bg"
-                            className="h-10 text-left"
-                            isFullWidth
-                          >
-                            Add Folder
-                          </Button>
-                        )}
-                      </ProjectPermissionCan>
-                      <Tooltip
-                        content={
-                          userAvailableDynamicSecretEnvs.length === 0 ? "Access restricted" : ""
-                        }
-                      >
-                        <Button
-                          leftIcon={<FontAwesomeIcon icon={faFingerprint} className="pr-2" />}
-                          onClick={() => {
-                            if (subscription?.dynamicSecret) {
-                              handlePopUpOpen("addDynamicSecret");
-                              handlePopUpClose("misc");
-                              return;
-                            }
-                            handlePopUpOpen("upgradePlan", {
-                              isEnterpriseFeature: true,
-                              text: "Adding dynamic secrets can be unlocked if you upgrade to Infisical Enterprise plan."
-                            });
-                          }}
-                          isDisabled={userAvailableDynamicSecretEnvs.length === 0}
-                          variant="outline_bg"
-                          className="h-10 text-left"
-                          isFullWidth
-                        >
-                          Add Dynamic Secret
-                        </Button>
-                      </Tooltip>
-                      <Tooltip
-                        content={
-                          userAvailableSecretRotationEnvs.length === 0 ? "Access restricted" : ""
-                        }
-                      >
-                        <Button
-                          leftIcon={<FontAwesomeIcon icon={faRotate} className="pr-2" />}
-                          onClick={() => {
-                            if (subscription?.secretRotation) {
-                              handlePopUpOpen("addSecretRotation");
-                              handlePopUpClose("misc");
-                              return;
-                            }
-                            handlePopUpOpen("upgradePlan", {
-                              text: "Adding secret rotations can be unlocked if you upgrade to Infisical Pro plan."
-                            });
-                          }}
-                          isDisabled={userAvailableSecretRotationEnvs.length === 0}
-                          variant="outline_bg"
-                          className="h-10 text-left"
-                          isFullWidth
-                        >
-                          Add Secret Rotation
-                        </Button>
-                      </Tooltip>
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
-          </div>
-        </div>
         <SelectionPanel
           secretPath={secretPath}
           selectedEntries={selectedEntries}
@@ -1230,448 +2301,727 @@ export const OverviewPage = () => {
           secretsToDeleteKeys={secretsToDeleteKeys}
           usedBySecretSyncs={usedBySecretSyncs}
         />
-        <div ref={tableRef} className="mt-4">
-          <TableContainer
-            onScroll={(e) => setScrollOffset(e.currentTarget.scrollLeft)}
-            className="max-h-[66vh] thin-scrollbar overflow-y-auto rounded-b-none"
-          >
-            <Table>
-              <THead
-                className="sticky top-0 z-20"
-                style={{ height: collapseEnvironments ? headerHeight : undefined }}
-              >
-                <Tr
-                  className="sticky top-0 z-20 border-0"
-                  style={{ height: collapseEnvironments ? headerHeight : undefined }}
-                >
-                  <Th
-                    className="sticky left-0 z-20 min-w-[20rem] border-b-0 p-0"
-                    style={{ height: collapseEnvironments ? headerHeight : undefined }}
-                  >
-                    <div
-                      className={twMerge(
-                        "flex h-full border-b border-mineshaft-600 pr-5 pb-3 pl-3",
-                        !collapseEnvironments && "border-r pt-3.5"
-                      )}
+
+        <UnstableCard>
+          <UnstableCardHeader>
+            <div className="flex flex-col gap-3 overflow-hidden dashboard:flex-row dashboard:items-center">
+              <div className="flex flex-1 items-center gap-x-3 overflow-hidden whitespace-nowrap dashboard:mr-auto">
+                <EnvironmentSelect
+                  selectedEnvs={filteredEnvs}
+                  setSelectedEnvs={setFilteredEnvs}
+                  isDisabled={
+                    isBatchModeActive &&
+                    (pendingChanges.secrets.length > 0 || pendingChanges.folders.length > 0)
+                  }
+                />
+                <FolderBreadcrumb secretPath={secretPath} onResetSearch={handleResetSearch} />
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                {userAvailableEnvs.length > 0 && (
+                  <DownloadEnvButton
+                    secretPath={secretPath}
+                    environments={visibleEnvs}
+                    projectId={projectId}
+                  />
+                )}
+                {userAvailableEnvs.length > 0 && (
+                  <ResourceFilter rowTypeFilter={filter} onToggleRowType={handleToggleRowType} />
+                )}
+                <ResourceSearchInput
+                  value={searchFilter}
+                  tags={tags}
+                  onChange={setSearchFilter}
+                  environments={userAvailableEnvs}
+                  projectId={currentProject?.id}
+                />
+                {userAvailableEnvs.length > 0 && (
+                  <AddResourceButtons
+                    onAddSecret={() => handlePopUpOpen("addSecretsInAllEnvs")}
+                    onAddFolder={() => {
+                      handlePopUpOpen("addFolder");
+                    }}
+                    onImportSecrets={() => handlePopUpOpen("importSecrets")}
+                    onAddDyanamicSecret={() => {
+                      if (subscription?.dynamicSecret) {
+                        handlePopUpOpen("addDynamicSecret");
+                        return;
+                      }
+                      handlePopUpOpen("upgradePlan", {
+                        isEnterpriseFeature: true,
+                        text: "Adding dynamic secrets can be unlocked if you upgrade to Infisical Enterprise plan."
+                      });
+                    }}
+                    onAddSecretRotation={() => {
+                      if (subscription?.secretRotation) {
+                        handlePopUpOpen("addSecretRotation");
+                        return;
+                      }
+                      handlePopUpOpen("upgradePlan", {
+                        text: "Adding secret rotations can be unlocked if you upgrade to Infisical Pro plan."
+                      });
+                    }}
+                    onReplicateSecrets={() => handlePopUpOpen("replicateFolder")}
+                    isDyanmicSecretAvailable={userAvailableDynamicSecretEnvs.length > 0}
+                    isSecretRotationAvailable={userAvailableSecretRotationEnvs.length > 0}
+                    isReplicateSecretsAvailable={visibleEnvs.length === 1}
+                    onAddSecretImport={handleAddSecretImport}
+                    isSecretImportAvailable={userAvailableSecretImportEnvs.length > 0}
+                    isSingleEnvSelected={isSingleEnvView}
+                    hasVaultConnection={hasVaultConnection}
+                    isOrgAdmin={isOrgAdmin}
+                    onImportFromVault={() => handlePopUpOpen("importFromVault")}
+                  />
+                )}
+              </div>
+            </div>
+          </UnstableCardHeader>
+          <UnstableCardContent>
+            {isSingleEnvView &&
+              hasPathPolicies &&
+              // eslint-disable-next-line no-nested-ternary
+              (!canReadSecrets ? (
+                <UnstableAlert variant="info" className="mb-6 py-1.5">
+                  <InfoIcon className="mt-1" />
+                  <UnstableAlertTitle className="flex items-center">
+                    <span>You do not have permission to read secrets in this folder</span>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      className="ml-auto"
+                      onClick={() =>
+                        handlePopUpOpen("requestAccess", [ProjectPermissionActions.Read])
+                      }
                     >
-                      <div
-                        className={twMerge("flex items-center", collapseEnvironments && "mt-auto")}
-                      >
-                        <Tooltip
-                          className="max-w-[20rem] whitespace-nowrap capitalize"
-                          content={
-                            totalCount > 0
-                              ? `${
-                                  !allRowsSelectedOnPage.isChecked ? "Select" : "Unselect"
-                                } all folders and secrets on page`
-                              : ""
-                          }
-                        >
-                          <div className="mr-4 ml-2">
+                      Request Access
+                    </Button>
+                  </UnstableAlertTitle>
+                </UnstableAlert>
+              ) : !canCreateSecrets || !canEditSecrets || !canDeleteSecrets ? (
+                <UnstableAlert variant="info" className="mb-6 py-1.5">
+                  <InfoIcon className="mt-1" />
+                  <UnstableAlertTitle className="flex items-center">
+                    <span>
+                      You do not have permission to{" "}
+                      {(() => {
+                        const missing = [
+                          ...(!canCreateSecrets ? ["create"] : []),
+                          ...(!canEditSecrets ? ["edit"] : []),
+                          ...(!canDeleteSecrets ? ["delete"] : [])
+                        ];
+                        if (missing.length <= 2) return missing.join(" or ");
+                        return `${missing.slice(0, -1).join(", ")}, or ${missing[missing.length - 1]}`;
+                      })()}{" "}
+                      secrets in this folder
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      className="ml-auto"
+                      onClick={() =>
+                        handlePopUpOpen("requestAccess", [
+                          ...(!canCreateSecrets ? [ProjectPermissionActions.Create] : []),
+                          ...(!canEditSecrets ? [ProjectPermissionActions.Edit] : []),
+                          ...(!canDeleteSecrets ? [ProjectPermissionActions.Delete] : [])
+                        ])
+                      }
+                    >
+                      Request Access
+                    </Button>
+                  </UnstableAlertTitle>
+                </UnstableAlert>
+              ) : null)}
+            {
+              // eslint-disable-next-line no-nested-ternary
+              isTableEmpty ? (
+                isTableFiltered ||
+                debouncedSearchFilter ||
+                permission.cannot(
+                  ProjectPermissionSecretActions.Create,
+                  ProjectPermissionSub.Secrets
+                ) ? (
+                  <EmptyResourceDisplay
+                    isFiltered={isTableFiltered || Boolean(debouncedSearchFilter)}
+                  />
+                ) : (
+                  <div className="relative">
+                    {isSingleEnvView && (
+                      <div className="absolute top-2 right-3 z-50 mb-4 flex items-center justify-end gap-2">
+                        {isProtectedBranch && (
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Badge variant="info">
+                                <LockIcon />
+                                Protected
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Protected
+                              {boardPolicy?.name ? ` by policy ${boardPolicy.name}` : ""}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <Badge asChild variant="neutral">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (singleVisibleEnv) {
+                                handleViewCommitHistory(singleVisibleEnv.slug, singleEnvFolderId);
+                              }
+                            }}
+                          >
+                            <GitCommitIcon />
+                            {/* eslint-disable-next-line no-nested-ternary */}
+                            {subscription.pitRecovery
+                              ? isSingleEnvChangesCountLoading
+                                ? "Loading..."
+                                : `${singleEnvChangesCount} Commit${singleEnvChangesCount === 1 ? "" : "s"}`
+                              : "Commit History"}
+                          </button>
+                        </Badge>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              asChild
+                              className={isOverviewBatchMode ? "" : "opacity-75"}
+                              variant={isOverviewBatchMode ? "warning" : "neutral"}
+                            >
+                              <button type="button" onClick={toggleBatchMode}>
+                                <GroupIcon />
+                                Batch Edit Mode
+                              </button>
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isOverviewBatchMode
+                              ? "Changes are batched together into a single commit. Click to switch to single edit mode."
+                              : "Click to enable batch edit mode. Changes will be grouped into a single commit."}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    )}
+                    <SecretDropzone
+                      onParsedSecrets={(env) => {
+                        setImportParsedSecrets(env);
+                        handlePopUpOpen("importSecrets");
+                      }}
+                      onAddSecret={() => handlePopUpOpen("addSecretsInAllEnvs")}
+                    />
+                  </div>
+                )
+              ) : (
+                <>
+                  <DragDropProvider onDragEnd={handleSecretImportReorder}>
+                    <UnstableTable ref={tableRef} className="border-separate border-spacing-0">
+                      <UnstableTableHeader>
+                        <UnstableTableRow className="h-10">
+                          <UnstableTableHead className="sticky left-0 z-10 w-[40px] max-w-[40px] min-w-[40px] bg-container">
                             <Checkbox
-                              isDisabled={totalCount === 0}
+                              variant="project"
+                              isDisabled={totalCount === 0 || hasPendingBatchChanges}
                               id="checkbox-select-all-rows"
                               isChecked={allRowsSelectedOnPage.isChecked}
                               isIndeterminate={allRowsSelectedOnPage.isIndeterminate}
                               onCheckedChange={toggleSelectAllRows}
                             />
-                          </div>
-                        </Tooltip>
-                        Name
-                        <IconButton
-                          variant="plain"
-                          className="ml-2"
-                          ariaLabel="sort"
-                          onClick={() =>
-                            setOrderDirection((prev) =>
-                              prev === OrderByDirection.ASC
-                                ? OrderByDirection.DESC
-                                : OrderByDirection.ASC
-                            )
-                          }
-                        >
-                          <FontAwesomeIcon
-                            icon={orderDirection === "asc" ? faArrowDown : faArrowUp}
-                          />
-                        </IconButton>
-                      </div>
-                      <Tooltip
-                        content={
-                          collapseEnvironments ? "Expand Environments" : "Collapse Environments"
-                        }
-                        className="capitalize"
-                      >
-                        <IconButton
-                          ariaLabel="Toggle Environment View"
-                          variant="plain"
-                          colorSchema="secondary"
-                          className="mt-auto ml-auto h-min p-1"
-                          onClick={handleToggleNarrowHeader}
-                        >
-                          <FontAwesomeIcon
-                            icon={collapseEnvironments ? faArrowLeft : faArrowRight}
-                          />
-                        </IconButton>
-                      </Tooltip>
-                    </div>
-                  </Th>
-                  {visibleEnvs?.map(({ name, slug }, index) => {
-                    const envSecKeyCount = getEnvSecretKeyCount(slug);
-                    const importedSecKeyCount = getEnvImportedSecretKeyCount(slug);
-                    const missingKeyCount = secKeys.length - envSecKeyCount - importedSecKeyCount;
-
-                    const isLast = index === visibleEnvs.length - 1;
-
-                    return (
-                      <Th
-                        className={twMerge(
-                          "min-table-row border-b-0 p-0 text-xs",
-                          collapseEnvironments && index === visibleEnvs.length - 1 && "mr-8!",
-                          !collapseEnvironments && "min-w-44 text-center"
-                        )}
-                        style={
-                          collapseEnvironments
-                            ? {
-                                height: headerHeight,
-                                width: "w-4"
-                              }
-                            : undefined
-                        }
-                        key={`secret-overview-${name}-${index + 1}`}
-                      >
-                        <Tooltip
-                          content={
-                            <div className="flex flex-col gap-2">
-                              {collapseEnvironments ? (
-                                <p className="whitespace-break-spaces text-mineshaft-300">{name}</p>
-                              ) : (
-                                ""
-                              )}
-                              <div className="flex items-center gap-2">
-                                <p className="text-xs text-mineshaft-300">{slug}</p>
-                                <IconButton
-                                  variant="plain"
-                                  colorSchema="secondary"
-                                  ariaLabel="Copy environment slug"
-                                  onClick={() => copyToClipboard(slug, slug)}
-                                >
-                                  <FontAwesomeIcon icon={copiedSlug === slug ? faCheck : faCopy} />
-                                </IconButton>
-                              </div>
-                            </div>
-                          }
-                          side="bottom"
-                          sideOffset={5}
-                          align="center"
-                          className="max-w-xl text-xs normal-case"
-                          rootProps={{
-                            disableHoverableContent: false
-                          }}
-                          key={`tooltip-${name}-${index + 1}`}
-                        >
-                          <div
-                            className={twMerge(
-                              "border-b border-mineshaft-600",
-                              collapseEnvironments
-                                ? "relative"
-                                : "flex items-center justify-center px-5 pt-3.5 pb-[0.82rem]",
-                              collapseEnvironments && isLast && "overflow-clip"
-                            )}
-                            style={{
-                              height: collapseEnvironments ? headerHeight : undefined,
-                              minWidth: collapseEnvironments ? "2.9rem" : undefined,
-                              width: collapseEnvironments && isLast ? headerHeight * 0.3 : undefined
-                            }}
-                          >
-                            <div
-                              className={twMerge(
-                                "border-mineshaft-600",
-                                collapseEnvironments
-                                  ? "-skew-x-[16rad] transform border-l text-xs"
-                                  : "flex items-center justify-center"
-                              )}
-                              style={{
-                                height: collapseEnvironments ? headerHeight : undefined,
-                                marginLeft: collapseEnvironments ? headerHeight * 0.145 : undefined
-                              }}
-                            />
-                            <button
-                              type="button"
-                              className={twMerge(
-                                "duration-100 hover:text-mineshaft-100",
-                                collapseEnvironments
-                                  ? "absolute -rotate-[72.75deg] text-left text-sm font-normal"
-                                  : "flex items-center text-center text-sm font-medium"
-                              )}
-                              style={getHeaderStyle({
-                                collapseEnvironments,
-                                isLast,
-                                headerHeight
-                              })}
-                              onClick={() => handleExploreEnvClick(slug)}
-                            >
-                              <p className="truncate font-medium underline">{name}</p>
-                            </button>
-                            {!collapseEnvironments && missingKeyCount > 0 && (
-                              <Tooltip
-                                className="max-w-none lowercase"
-                                content={`${missingKeyCount} secrets missing\n compared to other environments`}
-                              >
-                                <div className="ml-2 flex h-[1.1rem] cursor-default items-center justify-center rounded-xs border border-red-400 bg-red-600 p-1 text-xs font-medium text-bunker-100">
-                                  <span className="text-bunker-100">{missingKeyCount}</span>
-                                </div>
-                              </Tooltip>
-                            )}
-                          </div>
-                        </Tooltip>
-                      </Th>
-                    );
-                  })}
-                </Tr>
-                {collapseEnvironments && (
-                  <HeaderResizer
-                    onMouseDown={handleMouseDown}
-                    isActive={isResizing}
-                    scrollOffset={scrollOffset}
-                    heightOffset={(tableRef.current?.clientTop ?? 0) + headerHeight - 2.5}
-                  />
-                )}
-              </THead>
-              <TBody>
-                {canViewOverviewPage && isOverviewLoading && (
-                  <TableSkeleton
-                    columns={visibleEnvs.length + 1}
-                    innerKey="secret-overview-loading"
-                    rows={5}
-                    className="bg-mineshaft-700"
-                  />
-                )}
-                {userAvailableEnvs.length === 0 && (
-                  <Tr>
-                    <Td colSpan={visibleEnvs.length + 1}>
-                      <EmptyState
-                        title="You have no environments, start by adding some"
-                        iconSize="3x"
-                      >
-                        <Link
-                          to="/organizations/$orgId/projects/secret-management/$projectId/settings"
-                          params={{
-                            orgId,
-                            projectId
-                          }}
-                          hash="environments"
-                        >
-                          <Button
-                            className="mt-4"
-                            variant="outline_bg"
-                            colorSchema="primary"
-                            size="md"
-                          >
-                            Add environments
-                          </Button>
-                        </Link>
-                      </EmptyState>
-                    </Td>
-                  </Tr>
-                )}
-                {isTableEmpty && !isOverviewLoading && visibleEnvs.length > 0 && (
-                  <Tr>
-                    <Td colSpan={visibleEnvs.length + 1}>
-                      <EmptyState
-                        title={
-                          isTableFiltered || debouncedSearchFilter
-                            ? "No secrets found for your search, add one now"
-                            : "Let's add some secrets"
-                        }
-                        icon={faFolderBlank}
-                        iconSize="3x"
-                      >
-                        <Button
-                          className="mt-4"
-                          variant="outline_bg"
-                          colorSchema="primary"
-                          size="md"
-                          onClick={() => handlePopUpOpen("addSecretsInAllEnvs")}
-                        >
-                          Add Secrets
-                        </Button>
-                      </EmptyState>
-                    </Td>
-                  </Tr>
-                )}
-                {!isOverviewLoading && visibleEnvs.length > 0 && (
-                  <>
-                    {folderNamesAndDescriptions.map(({ name: folderName, description }, index) => (
-                      <SecretOverviewFolderRow
-                        folderName={folderName}
-                        isFolderPresentInEnv={isFolderPresentInEnv}
-                        isSelected={Boolean(selectedEntries.folder[folderName])}
-                        onToggleFolderSelect={() =>
-                          toggleSelectedEntry(EntryType.FOLDER, folderName)
-                        }
-                        environments={visibleEnvs}
-                        key={`overview-${folderName}-${index + 1}`}
-                        onClick={handleFolderClick}
-                        onToggleFolderEdit={(name: string) =>
-                          handlePopUpOpen("updateFolder", { name, description })
-                        }
-                      />
-                    ))}
-                    {dynamicSecretNames.map((dynamicSecretName, index) => (
-                      <SecretOverviewDynamicSecretRow
-                        dynamicSecretName={dynamicSecretName}
-                        isDynamicSecretInEnv={isDynamicSecretPresentInEnv}
-                        environments={visibleEnvs}
-                        key={`overview-${dynamicSecretName}-${index + 1}`}
-                      />
-                    ))}
-                    {secretRotationNames.map((secretRotationName, index) => (
-                      <SecretOverviewSecretRotationRow
-                        secretRotationName={secretRotationName}
-                        isSecretRotationInEnv={isSecretRotationPresentInEnv}
-                        environments={visibleEnvs}
-                        getSecretRotationByName={getSecretRotationByName}
-                        getSecretRotationStatusesByName={getSecretRotationStatusesByName}
-                        key={`overview-${secretRotationName}-${index + 1}`}
-                        scrollOffset={scrollOffset}
-                        onEdit={(secretRotation) =>
-                          handlePopUpOpen("editSecretRotation", secretRotation)
-                        }
-                        onRotate={(secretRotation) =>
-                          handlePopUpOpen("rotateSecretRotation", secretRotation)
-                        }
-                        onReconcile={(secretRotation) =>
-                          handlePopUpOpen("reconcileSecretRotation", secretRotation)
-                        }
-                        onViewGeneratedCredentials={(secretRotation) =>
-                          handlePopUpOpen("viewSecretRotationGeneratedCredentials", secretRotation)
-                        }
-                        onDelete={(secretRotation) =>
-                          handlePopUpOpen("deleteSecretRotation", secretRotation)
-                        }
-                      />
-                    ))}
-                    {secKeys.map((key, index) => (
-                      <SecretOverviewTableRow
-                        isSelected={Boolean(selectedEntries.secret[key])}
-                        onToggleSecretSelect={() => toggleSelectedEntry(EntryType.SECRET, key)}
-                        secretPath={secretPath}
-                        getImportedSecretByKey={getImportedSecretByKey}
-                        isImportedSecretPresentInEnv={handleIsImportedSecretPresentInEnv}
-                        onSecretCreate={handleSecretCreate}
-                        onSecretDelete={handleSecretDelete}
-                        onSecretUpdate={handleSecretUpdate}
-                        key={`overview-${key}-${index + 1}`}
-                        environments={visibleEnvs}
-                        secretKey={key}
-                        getSecretByKey={getSecretByKey}
-                        scrollOffset={debouncedScrollOffset}
-                        importedBy={importedBy}
-                      />
-                    ))}
-                    <SecretNoAccessOverviewTableRow
-                      environments={visibleEnvs}
-                      count={Math.max(
-                        (page * perPage > totalCount ? totalCount % perPage : perPage) -
-                          (totalUniqueFoldersInPage || 0) -
-                          (totalUniqueDynamicSecretsInPage || 0) -
-                          (totalUniqueSecretsInPage || 0) -
-                          (totalUniqueSecretImportsInPage || 0) -
-                          (totalUniqueSecretRotationsInPage || 0),
-                        0
-                      )}
-                    />
-                  </>
-                )}
-              </TBody>
-              <TFoot>
-                <Tr className="sticky bottom-0 z-10 border-0 bg-mineshaft-800">
-                  <Td className="sticky left-0 z-10 border-0 bg-mineshaft-800 p-0">
-                    <div
-                      className="w-full border-t border-r border-mineshaft-600"
-                      style={{ height: "45px" }}
-                    />
-                  </Td>
-                  {visibleEnvs?.map(({ name, slug }, i) => (
-                    <Td
-                      key={`explore-${name}-btn-${i + 1}`}
-                      className="border-0 border-r border-mineshaft-600 p-0"
-                    >
-                      <div
-                        className={twMerge(
-                          "flex w-full items-center justify-center border-t border-mineshaft-600 py-2"
-                        )}
-                      >
-                        {collapseEnvironments ? (
-                          <Tooltip className="normal-case" content="Explore Environment">
-                            <IconButton
-                              ariaLabel="Explore Environment"
-                              size="xs"
-                              variant="outline_bg"
-                              className="mx-auto h-[1.76rem] rounded-sm"
-                              onClick={() => handleExploreEnvClick(slug)}
-                            >
-                              <FontAwesomeIcon icon={faArrowRightToBracket} />
-                            </IconButton>
-                          </Tooltip>
-                        ) : (
-                          <Button
-                            leftIcon={
-                              <FontAwesomeIcon className="mr-1" icon={faArrowRightToBracket} />
+                          </UnstableTableHead>
+                          <UnstableTableHead
+                            className="sticky left-10 z-10 max-w-60 min-w-60 border-r bg-container lg:max-w-none lg:min-w-96"
+                            onClick={() =>
+                              setOrderDirection((prev) =>
+                                prev === OrderByDirection.ASC
+                                  ? OrderByDirection.DESC
+                                  : OrderByDirection.ASC
+                              )
                             }
-                            variant="outline_bg"
-                            size="xs"
-                            className="mx-2 w-full"
-                            onClick={() => handleExploreEnvClick(slug)}
                           >
-                            Explore
-                          </Button>
+                            Name
+                            <ChevronDownIcon
+                              className={twMerge(
+                                orderDirection === OrderByDirection.DESC && "rotate-180",
+                                "transition-transform"
+                              )}
+                            />
+                          </UnstableTableHead>
+                          {visibleEnvs.length > 1 ? (
+                            visibleEnvs?.map(({ name, slug, id }, index) => {
+                              return (
+                                <UnstableTableHead
+                                  className="w-40 max-w-40 border-r p-0 text-center last:border-r-0"
+                                  isTruncatable
+                                  key={`secret-overview-${name}-${index + 1}`}
+                                >
+                                  <UnstableDropdownMenu>
+                                    <Tooltip>
+                                      <TooltipTrigger className="h-full">
+                                        <UnstableDropdownMenuTrigger asChild>
+                                          <div className="flex h-full w-40 cursor-pointer items-center justify-center gap-x-2 px-3 hover:bg-foreground/5">
+                                            <span className="truncate">{name}</span>
+                                            <SettingsIcon className="size-3.5 shrink-0" />
+                                          </div>
+                                        </UnstableDropdownMenuTrigger>
+                                      </TooltipTrigger>
+                                      <TooltipContent>{name}</TooltipContent>
+                                    </Tooltip>
+                                    <UnstableDropdownMenuContent align="end">
+                                      <UnstableDropdownMenuItem
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(slug);
+                                          createNotification({
+                                            type: "info",
+                                            text: "Environment slug copied to clipboard"
+                                          });
+                                        }}
+                                      >
+                                        <CopyIcon />
+                                        Copy Environment Slug
+                                      </UnstableDropdownMenuItem>
+                                      <UnstableDropdownMenuItem
+                                        onClick={async () => {
+                                          try {
+                                            const {
+                                              secrets: envSecrets,
+                                              imports: importedSecrets
+                                            } = await fetchProjectSecrets({
+                                              projectId,
+                                              expandSecretReferences: true,
+                                              includeImports: true,
+                                              environment: slug,
+                                              secretPath
+                                            });
+                                            downloadSecretEnvFile(
+                                              slug,
+                                              envSecrets,
+                                              importedSecrets
+                                            );
+                                          } catch (err) {
+                                            if (err instanceof AxiosError) {
+                                              const error = err?.response?.data as TApiErrors;
+                                              if (
+                                                error?.error === ApiErrorTypes.ForbiddenError &&
+                                                error.message.includes("readValue")
+                                              ) {
+                                                createNotification({
+                                                  title:
+                                                    "You don't have permission to download secrets",
+                                                  text: "You don't have permission to view one or more of the secrets in the current folder. Please contact your administrator.",
+                                                  type: "error"
+                                                });
+                                                return;
+                                              }
+                                            }
+                                            createNotification({
+                                              title: "Failed to download secrets",
+                                              text: "Please try again later.",
+                                              type: "error"
+                                            });
+                                          }
+                                        }}
+                                      >
+                                        <DownloadIcon />
+                                        Download as .env
+                                      </UnstableDropdownMenuItem>
+                                      <UnstableDropdownMenuItem
+                                        onClick={() => handleViewCommitHistory(slug)}
+                                      >
+                                        <GitCommitIcon />
+                                        View Commit History
+                                      </UnstableDropdownMenuItem>
+                                      <ProjectPermissionCan
+                                        I={ProjectPermissionActions.Delete}
+                                        a={ProjectPermissionSub.Environments}
+                                      >
+                                        {(isAllowed) => (
+                                          <Tooltip open={!isAllowed ? undefined : false}>
+                                            <TooltipTrigger className="block w-full">
+                                              <UnstableDropdownMenuItem
+                                                isDisabled={!isAllowed}
+                                                onClick={() =>
+                                                  handlePopUpOpen("deleteEnv", {
+                                                    name,
+                                                    slug,
+                                                    id
+                                                  })
+                                                }
+                                              >
+                                                <TrashIcon />
+                                                Delete Environment
+                                              </UnstableDropdownMenuItem>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">
+                                              Access Restricted
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        )}
+                                      </ProjectPermissionCan>
+                                    </UnstableDropdownMenuContent>
+                                  </UnstableDropdownMenu>
+                                </UnstableTableHead>
+                              );
+                            })
+                          ) : (
+                            <UnstableTableHead className="w-full">
+                              <div className="flex w-full items-center justify-between">
+                                Value
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="ghost" asChild>
+                                    <button
+                                      type="button"
+                                      onClick={setIsSingleEnvSecretsVisible.toggle}
+                                    >
+                                      {isSingleEnvSecretsVisible ? (
+                                        <>
+                                          <EyeOffIcon />
+                                          Hide
+                                        </>
+                                      ) : (
+                                        <>
+                                          <EyeIcon />
+                                          Reveal
+                                        </>
+                                      )}{" "}
+                                      Values
+                                    </button>
+                                  </Badge>
+                                  {isProtectedBranch && (
+                                    <Tooltip>
+                                      <TooltipTrigger>
+                                        <Badge variant="info">
+                                          <LockIcon />
+                                          Protected
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Protected
+                                        {boardPolicy?.name ? ` by policy ${boardPolicy.name}` : ""}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  <Badge
+                                    asChild
+                                    className="float-right cursor-pointer"
+                                    variant="neutral"
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (singleVisibleEnv) {
+                                          handleViewCommitHistory(
+                                            singleVisibleEnv.slug,
+                                            singleEnvFolderId
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      <GitCommitIcon />
+                                      {/* eslint-disable-next-line no-nested-ternary */}
+                                      {subscription.pitRecovery
+                                        ? isSingleEnvChangesCountLoading
+                                          ? "Loading..."
+                                          : `${singleEnvChangesCount} Commit${singleEnvChangesCount === 1 ? "" : "s"}`
+                                        : "Commit History"}
+                                    </button>
+                                  </Badge>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Badge
+                                        asChild
+                                        className={isOverviewBatchMode ? "" : "opacity-75"}
+                                        variant={isOverviewBatchMode ? "warning" : "neutral"}
+                                      >
+                                        <button type="button" onClick={toggleBatchMode}>
+                                          <GroupIcon />
+                                          Batch Edit Mode
+                                        </button>
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {isOverviewBatchMode
+                                        ? "Changes are batched together into a single commit. Click to switch to single edit mode."
+                                        : "Click to enable batch edit mode. Changes will be grouped into a single commit."}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </div>
+                            </UnstableTableHead>
+                          )}
+                        </UnstableTableRow>
+                      </UnstableTableHeader>
+                      <UnstableTableBody className="transition-all duration-500">
+                        {isOverviewLoading || isPlaceholderData ? (
+                          Array.from({ length: prevPageSize.current || perPage }).map(
+                            (_, index) => (
+                              <UnstableTableRow className="group" key={`loading-row-${index + 1}`}>
+                                <UnstableTableCell className="sticky left-0 z-10 bg-container group-hover:bg-container-hover">
+                                  <Skeleton className="h-4 w-full" />
+                                </UnstableTableCell>
+                                <UnstableTableCell className="sticky left-10 z-10 border-r bg-container group-hover:bg-container-hover">
+                                  <Skeleton className="h-4 w-full" />
+                                </UnstableTableCell>
+                                {visibleEnvs.map((env) => {
+                                  return (
+                                    <UnstableTableCell
+                                      className="border-r last:border-r-0"
+                                      key={`loading-env-row-${env.slug}+${index + 1}`}
+                                    >
+                                      <Skeleton className="h-4 w-full" />
+                                    </UnstableTableCell>
+                                  );
+                                })}
+                              </UnstableTableRow>
+                            )
+                          )
+                        ) : (
+                          <>
+                            {isSingleEnvView &&
+                              sortableImportItems.map((imp, idx) => (
+                                <SecretImportTableRow
+                                  key={`overview-import-${imp.id}`}
+                                  index={idx}
+                                  secretImport={imp}
+                                  importEnvSlug={imp.importEnv.slug}
+                                  importEnvName={imp.importEnv.name}
+                                  importPath={imp.importPath}
+                                  environments={visibleEnvs}
+                                  isSecretImportInEnv={isSecretImportInEnv}
+                                  getSecretImportByEnv={getSecretImportByEnv}
+                                  tableWidth={tableWidth}
+                                  secretPath={secretPath}
+                                  searchFilter={debouncedSearchFilter}
+                                  onDelete={(secretImport) =>
+                                    handlePopUpOpen("deleteSecretImport", secretImport)
+                                  }
+                                  importedSecrets={importedSecretsFlat}
+                                />
+                              ))}
+                            {!isSingleEnvView &&
+                              secretImportNames.map(
+                                ({ importEnvSlug, importEnvName, importPath }, index) => (
+                                  <SecretImportTableRow
+                                    key={`overview-import-${importEnvSlug}-${importPath}-${index + 1}`}
+                                    index={index}
+                                    importEnvSlug={importEnvSlug}
+                                    importEnvName={importEnvName}
+                                    importPath={importPath}
+                                    environments={visibleEnvs}
+                                    isSecretImportInEnv={isSecretImportInEnv}
+                                    getSecretImportByEnv={getSecretImportByEnv}
+                                    tableWidth={tableWidth}
+                                    secretPath={secretPath}
+                                    searchFilter={debouncedSearchFilter}
+                                    onDelete={(secretImport) =>
+                                      handlePopUpOpen("deleteSecretImport", secretImport)
+                                    }
+                                    importedSecrets={importedSecretsFlat}
+                                  />
+                                )
+                              )}
+                            {mergedFolderNamesAndDescriptions.map(
+                              (
+                                {
+                                  name: folderName,
+                                  description,
+                                  pendingAction: folderPendingAction
+                                },
+                                index
+                              ) => (
+                                <FolderTableRow
+                                  folderName={folderName}
+                                  description={description}
+                                  isFolderPresentInEnv={isFolderPresentInEnv}
+                                  isSelected={
+                                    !hasPendingBatchChanges &&
+                                    Boolean(selectedEntries.folder[folderName])
+                                  }
+                                  onToggleFolderSelect={() => {
+                                    if (!hasPendingBatchChanges)
+                                      toggleSelectedEntry(EntryType.FOLDER, folderName);
+                                  }}
+                                  environments={visibleEnvs}
+                                  key={`overview-${folderName}-${index + 1}`}
+                                  onClick={handleFolderClick}
+                                  onToggleFolderEdit={(name: string) =>
+                                    handlePopUpOpen("updateFolder", { name, description })
+                                  }
+                                  onToggleFolderDelete={(name: string) =>
+                                    handlePopUpOpen("deleteFolder", { name })
+                                  }
+                                  pendingAction={folderPendingAction}
+                                  onBatchRevert={handleBatchFolderRevert}
+                                  isSelectionDisabled={hasPendingBatchChanges}
+                                />
+                              )
+                            )}
+                            {dynamicSecretNames.map((dynamicSecretName, index) => (
+                              <DynamicSecretTableRow
+                                dynamicSecretName={dynamicSecretName}
+                                isDynamicSecretInEnv={isDynamicSecretPresentInEnv}
+                                getDynamicSecretByName={getDynamicSecretByName}
+                                getDynamicSecretStatusesByName={getDynamicSecretStatusesByName}
+                                environments={visibleEnvs}
+                                tableWidth={tableWidth}
+                                secretPath={secretPath}
+                                key={`overview-${dynamicSecretName}-${index + 1}`}
+                                onEdit={(dynamicSecret) =>
+                                  handlePopUpOpen("editDynamicSecret", dynamicSecret)
+                                }
+                                onViewLeases={(dynamicSecret) =>
+                                  handlePopUpOpen("dynamicSecretLeases", dynamicSecret)
+                                }
+                                onGenerateLease={(dynamicSecret) =>
+                                  handlePopUpOpen("createDynamicSecretLease", dynamicSecret)
+                                }
+                                onDelete={(dynamicSecret) =>
+                                  handlePopUpOpen("deleteDynamicSecret", dynamicSecret)
+                                }
+                                onForceDelete={(dynamicSecret) =>
+                                  handlePopUpOpen("deleteDynamicSecret", {
+                                    ...dynamicSecret,
+                                    isForced: true
+                                  })
+                                }
+                              />
+                            ))}
+                            {secretRotationNames.map((secretRotationName, index) => (
+                              <SecretRotationTableRow
+                                secretRotationName={secretRotationName}
+                                isSecretRotationInEnv={isSecretRotationPresentInEnv}
+                                environments={visibleEnvs}
+                                getSecretRotationByName={getSecretRotationByName}
+                                getSecretRotationStatusesByName={getSecretRotationStatusesByName}
+                                key={`overview-${secretRotationName}-${index + 1}`}
+                                tableWidth={tableWidth}
+                                onEdit={(secretRotation) =>
+                                  handlePopUpOpen("editSecretRotation", secretRotation)
+                                }
+                                onRotate={(secretRotation) =>
+                                  handlePopUpOpen("rotateSecretRotation", secretRotation)
+                                }
+                                onReconcile={(secretRotation) =>
+                                  handlePopUpOpen("reconcileSecretRotation", secretRotation)
+                                }
+                                onViewGeneratedCredentials={(secretRotation) =>
+                                  handlePopUpOpen(
+                                    "viewSecretRotationGeneratedCredentials",
+                                    secretRotation
+                                  )
+                                }
+                                onDelete={(secretRotation) =>
+                                  handlePopUpOpen("deleteSecretRotation", secretRotation)
+                                }
+                              />
+                            ))}
+                            {mergedSecKeys.map((key, index) => (
+                              <SecretTableRow
+                                isSelected={
+                                  !hasPendingBatchChanges && Boolean(selectedEntries.secret[key])
+                                }
+                                onToggleSecretSelect={() => {
+                                  if (!hasPendingBatchChanges)
+                                    toggleSelectedEntry(EntryType.SECRET, key);
+                                }}
+                                secretPath={secretPath}
+                                getImportedSecretByKey={getImportedSecretByKey}
+                                isImportedSecretPresentInEnv={handleIsImportedSecretPresentInEnv}
+                                onSecretCreate={handleSecretCreate}
+                                onSecretDelete={handleSecretDelete}
+                                onSecretUpdate={handleSecretUpdate}
+                                key={`overview-${key}-${index + 1}`}
+                                environments={visibleEnvs}
+                                secretKey={key}
+                                getSecretByKey={getSecretByKeyWithPending}
+                                tableWidth={tableWidth}
+                                importedBy={importedBy}
+                                isSingleEnvSecretsVisible={isSingleEnvSecretsVisible}
+                                isBatchMode={isBatchModeActive}
+                                onBatchRevert={handleBatchRevert}
+                                isSelectionDisabled={hasPendingBatchChanges}
+                              />
+                            ))}
+                            <SecretNoAccessTableRow
+                              environments={visibleEnvs}
+                              count={Math.max(
+                                (page * perPage > totalCount ? totalCount % perPage : perPage) -
+                                  (totalUniqueFoldersInPage || 0) -
+                                  (totalUniqueDynamicSecretsInPage || 0) -
+                                  (totalUniqueSecretsInPage || 0) -
+                                  (totalUniqueSecretImportsInPage || 0) -
+                                  (totalUniqueSecretRotationsInPage || 0),
+                                0
+                              )}
+                            />
+                          </>
                         )}
-                      </div>
-                    </Td>
-                  ))}
-                </Tr>
-              </TFoot>
-            </Table>
-          </TableContainer>
-          {!isOverviewLoading && totalCount > 0 && (
-            <Pagination
-              startAdornment={
-                <SecretTableResourceCount
-                  dynamicSecretCount={totalDynamicSecretCount}
-                  secretCount={totalSecretCount}
-                  folderCount={totalFolderCount}
-                  importCount={totalImportCount}
-                  secretRotationCount={totalSecretRotationCount}
-                />
-              }
-              className="rounded-b-md border-t border-solid border-t-mineshaft-600"
-              count={totalCount}
-              page={page}
-              perPage={perPage}
-              onChangePage={(newPage) => setPage(newPage)}
-              onChangePerPage={handlePerPageChange}
-            />
-          )}
-        </div>
+                      </UnstableTableBody>
+                    </UnstableTable>
+                    <DragOverlay
+                      tag="table"
+                      className="w-full caption-bottom text-sm"
+                      style={{ width: tableWidth }}
+                    >
+                      {null}
+                    </DragOverlay>
+                  </DragDropProvider>
+                  <UnstablePagination
+                    startAdornment={
+                      <ResourceCount
+                        dynamicSecretCount={totalDynamicSecretCount}
+                        secretCount={totalSecretCount}
+                        folderCount={totalFolderCount}
+                        importCount={totalImportCount}
+                        secretRotationCount={totalSecretRotationCount}
+                      />
+                    }
+                    count={totalCount}
+                    page={page}
+                    perPage={perPage}
+                    onChangePage={(newPage) => setPage(newPage)}
+                    onChangePerPage={handlePerPageChange}
+                  />
+                </>
+              )
+            }
+          </UnstableCardContent>
+        </UnstableCard>
       </div>
-      <Modal
-        isOpen={popUp.addSecretsInAllEnvs.isOpen}
+      <Sheet
+        modal={false}
+        open={popUp.addSecretsInAllEnvs.isOpen}
         onOpenChange={(isOpen) => handlePopUpToggle("addSecretsInAllEnvs", isOpen)}
       >
-        <ModalContent
-          className="max-h-[80vh]"
-          bodyClassName="overflow-visible"
-          title="Create Secrets"
-          subTitle="Create a secret across multiple environments"
-          onPointerDownOutside={(e) => e.preventDefault()}
-        >
+        <SheetContent className="flex h-full flex-col gap-y-0 overflow-y-auto sm:max-w-lg">
+          <SheetHeader className="border-b">
+            <SheetTitle>Create Secret</SheetTitle>
+            <SheetDescription>
+              {filteredEnvs.length === 1
+                ? `Create a secret in ${filteredEnvs[0].name}`
+                : "Create a secret across multiple environments"}
+            </SheetDescription>
+          </SheetHeader>
           <CreateSecretForm
             secretPath={secretPath}
+            defaultSelectedEnvs={filteredEnvs}
             onClose={() => handlePopUpClose("addSecretsInAllEnvs")}
+            isBatchMode={isBatchModeActive}
+            onBatchSecretCreate={(params) => {
+              addPendingChange(
+                {
+                  id: crypto.randomUUID(),
+                  resourceType: "secret",
+                  type: PendingAction.Create,
+                  secretKey: params.key,
+                  secretValue: params.value,
+                  secretComment: params.comment,
+                  skipMultilineEncoding: params.skipMultilineEncoding ?? undefined,
+                  tags: params.tags,
+                  secretMetadata: params.metadata,
+                  timestamp: Date.now()
+                },
+                { projectId, environment: params.env, secretPath }
+              );
+            }}
           />
-        </ModalContent>
-      </Modal>
+        </SheetContent>
+      </Sheet>
       <Modal
         isOpen={popUp.addFolder.isOpen}
         onOpenChange={(isOpen) => handlePopUpToggle("addFolder", isOpen)}
@@ -1703,6 +3053,137 @@ export const OverviewPage = () => {
         environments={userAvailableDynamicSecretEnvs}
         secretPath={secretPath}
       />
+      <Modal
+        isOpen={popUp.dynamicSecretLeases.isOpen}
+        onOpenChange={(state) => handlePopUpToggle("dynamicSecretLeases", state)}
+      >
+        <ModalContent
+          title={
+            <div className="flex items-center space-x-2">
+              <p>Dynamic secret leases</p>
+              <Badge variant="neutral">{dynamicSecretLeaseData?.name}</Badge>
+            </div>
+          }
+          subTitle="Revoke or renew your secret leases"
+          className="max-w-3xl"
+        >
+          {dynamicSecretLeaseData && (
+            <DynamicSecretLease
+              dynamicSecret={dynamicSecretLeaseData}
+              onClickNewLease={() =>
+                handlePopUpOpen("createDynamicSecretLease", dynamicSecretLeaseData)
+              }
+              onClose={() => handlePopUpClose("dynamicSecretLeases")}
+              projectSlug={projectSlug}
+              key={dynamicSecretLeaseData.id}
+              dynamicSecretName={dynamicSecretLeaseData.name}
+              secretPath={secretPath}
+              environment={dynamicSecretLeaseData.environment}
+            />
+          )}
+        </ModalContent>
+      </Modal>
+      <Modal
+        isOpen={popUp.editDynamicSecret.isOpen}
+        onOpenChange={(state) => handlePopUpToggle("editDynamicSecret", state)}
+      >
+        <ModalContent title="Edit dynamic secret" className="max-w-3xl">
+          <EditDynamicSecretForm
+            onClose={() => handlePopUpClose("editDynamicSecret")}
+            projectSlug={projectSlug}
+            dynamicSecretName={
+              (popUp.editDynamicSecret?.data as TDynamicSecret & { environment: string })?.name
+            }
+            secretPath={secretPath}
+            environment={
+              (popUp.editDynamicSecret?.data as TDynamicSecret & { environment: string })
+                ?.environment
+            }
+          />
+        </ModalContent>
+      </Modal>
+      <Modal
+        isOpen={popUp.createDynamicSecretLease.isOpen}
+        onOpenChange={(state) => handlePopUpToggle("createDynamicSecretLease", state)}
+      >
+        <ModalContent title="Provision lease">
+          <CreateDynamicSecretLease
+            provider={
+              (popUp.createDynamicSecretLease?.data as TDynamicSecret & { environment: string })
+                ?.type
+            }
+            onClose={() => handlePopUpClose("createDynamicSecretLease")}
+            projectSlug={projectSlug}
+            dynamicSecretName={
+              (popUp.createDynamicSecretLease?.data as TDynamicSecret & { environment: string })
+                ?.name
+            }
+            secretPath={secretPath}
+            environment={
+              (popUp.createDynamicSecretLease?.data as TDynamicSecret & { environment: string })
+                ?.environment
+            }
+          />
+        </ModalContent>
+      </Modal>
+      <DeleteActionModal
+        isOpen={popUp.deleteDynamicSecret.isOpen}
+        deleteKey={
+          (popUp.deleteDynamicSecret?.data as TDynamicSecret & { environment: string })?.name
+        }
+        title={
+          (popUp.deleteDynamicSecret?.data as { isForced?: boolean })?.isForced
+            ? "Do you want to force delete this dynamic secret?"
+            : "Do you want to delete this dynamic secret?"
+        }
+        onChange={(isOpen) => handlePopUpToggle("deleteDynamicSecret", isOpen)}
+        onDeleteApproved={handleDynamicSecretDelete}
+      />
+      <AlertDialog
+        open={popUp.deleteSecretImport.isOpen}
+        onOpenChange={(isOpen) => handlePopUpToggle("deleteSecretImport", isOpen)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <TrashIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Remove Secret Import</AlertDialogTitle>
+            <AlertDialogDescription className="max-w-full overflow-hidden">
+              This will unlink secrets imported from{" "}
+              <span className="inline-block max-w-full truncate align-bottom text-foreground">
+                {(popUp.deleteSecretImport?.data as TSecretImport)?.importEnv?.name}
+              </span>
+              . The source secrets will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="danger" onClick={handleSecretImportDelete}>
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <CreateSecretImportForm
+        environment={singleEnvSlug}
+        projectId={projectId}
+        secretPath={secretPath}
+        isOpen={popUp.addSecretImport.isOpen}
+        onClose={() => {
+          handlePopUpClose("addSecretImport");
+        }}
+        onTogglePopUp={(isOpen) => {
+          if (!isOpen) {
+            handlePopUpClose("addSecretImport");
+          }
+        }}
+        onUpgradePlan={() =>
+          handlePopUpOpen("upgradePlan", {
+            text: "Secret import replication requires an upgraded plan."
+          })
+        }
+      />
       {subscription && (
         <UpgradePlanModal
           isOpen={popUp.upgradePlan.isOpen}
@@ -1727,11 +3208,13 @@ export const OverviewPage = () => {
         secretRotation={popUp.rotateSecretRotation.data as TSecretRotationV2}
         onOpenChange={(isOpen) => handlePopUpToggle("rotateSecretRotation", isOpen)}
       />
-      <ReconcileUnixLinuxLocalAccountRotationModal
+      <ReconcileLocalAccountRotationModal
         isOpen={
           popUp.reconcileSecretRotation.isOpen &&
-          (popUp.reconcileSecretRotation.data as TSecretRotationV2)?.type ===
-            SecretRotationV2.UnixLinuxLocalAccount
+          ((popUp.reconcileSecretRotation.data as TSecretRotationV2)?.type ===
+            SecretRotationV2.UnixLinuxLocalAccount ||
+            (popUp.reconcileSecretRotation.data as TSecretRotationV2)?.type ===
+              SecretRotationV2.WindowsLocalAccount)
         }
         secretRotation={popUp.reconcileSecretRotation.data as TSecretRotationV2}
         onOpenChange={(isOpen) => handlePopUpToggle("reconcileSecretRotation", isOpen)}
@@ -1748,6 +3231,186 @@ export const OverviewPage = () => {
         secretRotation={popUp.deleteSecretRotation.data as TSecretRotationV2}
         onOpenChange={(isOpen) => handlePopUpToggle("deleteSecretRotation", isOpen)}
       />
+      <ImportSecretsModal
+        isOpen={popUp.importSecrets.isOpen}
+        onOpenChange={(isOpen) => {
+          handlePopUpToggle("importSecrets", isOpen);
+          if (!isOpen) setImportParsedSecrets(null);
+        }}
+        environments={userAvailableEnvs}
+        projectId={projectId}
+        secretPath={secretPath}
+        initialParsedSecrets={importParsedSecrets}
+      />
+      <ReplicateFolderFromBoard
+        isOpen={popUp.replicateFolder.isOpen}
+        onToggle={(isOpen) => handlePopUpToggle("replicateFolder", isOpen)}
+        onParsedEnv={handleParsedEnvMultiFolder}
+        environment={singleVisibleEnv?.slug ?? ""}
+        environments={userAvailableEnvs}
+        projectId={projectId}
+        secretPath={secretPath}
+      />
+      <Modal
+        isOpen={popUp?.confirmReplicateUpload?.isOpen}
+        onOpenChange={(open) => handlePopUpToggle("confirmReplicateUpload", open)}
+      >
+        <ModalContent
+          title="Confirm Secret Upload"
+          footerContent={[
+            <ButtonV2
+              isLoading={isReplicateSubmitting}
+              isDisabled={isReplicateSubmitting}
+              colorSchema={isReplicateNonConflicting ? "primary" : "danger"}
+              key="overwrite-btn"
+              onClick={handleSaveReplicateImport}
+            >
+              {isReplicateNonConflicting ? "Upload" : "Overwrite"}
+            </ButtonV2>,
+            <ButtonV2
+              key="keep-old-btn"
+              className="ml-4"
+              onClick={() => handlePopUpClose("confirmReplicateUpload")}
+              variant="outline_bg"
+              isDisabled={isReplicateSubmitting}
+            >
+              Cancel
+            </ButtonV2>
+          ]}
+        >
+          {isReplicateNonConflicting ? (
+            <div>
+              Are you sure you want to import {replicateCreateCount} secret
+              {replicateCreateCount > 1 ? "s" : ""} to this environment?
+            </div>
+          ) : (
+            <div className="flex flex-col text-gray-300">
+              <div>Your project already contains the following {replicateUpdateCount} secrets:</div>
+              <div className="mt-2 text-sm text-gray-400">
+                {(popUp?.confirmReplicateUpload?.data as TSecOverwriteOpt)?.update
+                  ?.map((sec) => sec.secretKey)
+                  .join(", ")}
+              </div>
+              <div className="mt-6">
+                Are you sure you want to overwrite these secrets
+                {replicateCreateCount > 0
+                  ? ` and import ${replicateCreateCount} new
+                one${replicateCreateCount > 1 ? "s" : ""}`
+                  : ""}
+                ?
+              </div>
+            </div>
+          )}
+        </ModalContent>
+      </Modal>
+      <VaultSecretImportModal
+        isOpen={popUp.importFromVault.isOpen}
+        onOpenChange={(isOpen) => handlePopUpToggle("importFromVault", isOpen)}
+        environment={singleEnvSlug}
+        secretPath={secretPath}
+        onImport={handleVaultImport}
+      />
+      <AlertDialog
+        open={popUp.deleteFolder.isOpen}
+        onOpenChange={(isOpen) => handlePopUpToggle("deleteFolder", isOpen)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <TrashIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Delete Folder</AlertDialogTitle>
+            <AlertDialogDescription>
+              {subscription?.pitRecovery
+                ? "This folder and all its contents will be removed. You can reverse this action by rolling back to a previous commit."
+                : "This folder and all its contents will be removed. Rolling back to a previous commit isn't available on your current plan. Upgrade to enable this feature."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="danger" onClick={handleFolderDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog
+        open={popUp.deleteEnv.isOpen}
+        onOpenChange={(isOpen) => handlePopUpToggle("deleteEnv", isOpen)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <TrashIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Delete Environment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete{" "}
+              <span className="font-medium text-foreground">
+                {(popUp?.deleteEnv?.data as { name: string })?.name}
+              </span>
+              ? This action is irreversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="danger" onClick={handleDeleteEnvironment}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {!!pathPolicies && pathPolicies.length > 0 && (
+        <RequestAccessModal
+          policies={pathPolicies}
+          isOpen={popUp.requestAccess.isOpen}
+          onOpenChange={() => {
+            handlePopUpClose("requestAccess");
+          }}
+          selectedActions={popUp.requestAccess.data as ProjectPermissionActions[] | undefined}
+          secretPath={pathPolicies[0].secretPath}
+        />
+      )}
+      {isBatchModeActive && singleVisibleEnv && (
+        <CommitForm
+          onCommit={handleCreateCommit}
+          environment={singleVisibleEnv.slug}
+          projectId={projectId}
+          secretPath={secretPath}
+          isCommitting={isCommitPending}
+          isReviewOpen={isReviewOpen}
+          onReviewOpenChange={setIsReviewOpen}
+        />
+      )}
+      <AlertDialog
+        open={popUp.confirmDisableBatchMode.isOpen}
+        onOpenChange={(isOpen) => handlePopUpToggle("confirmDisableBatchMode", isOpen)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <LayersIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Disable Batch Mode</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have pending changes that will be discarded. Are you sure you want to disable
+              batch mode?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="danger" onClick={handleConfirmDisableBatchMode}>
+              Discard & Disable
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
+
+export const OverviewPage = () => (
+  <StoreProvider>
+    <OverviewPageContent />
+  </StoreProvider>
+);

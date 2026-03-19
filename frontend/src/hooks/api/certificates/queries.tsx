@@ -4,6 +4,7 @@ import { apiRequest } from "@app/config/request";
 
 import {
   TCertificate,
+  TCertificateByIdResponse,
   TCertificateRequestDetails,
   TListCertificateRequestsParams,
   TListCertificateRequestsResponse
@@ -13,6 +14,7 @@ export const certKeys = {
   getCertById: (serialNumber: string) => [{ serialNumber }, "cert"],
   getCertBody: (serialNumber: string) => [{ serialNumber }, "certBody"],
   getCertBundle: (serialNumber: string) => [{ serialNumber }, "certBundle"],
+  getCertificateById: (certificateId: string) => [{ certificateId }, "certificateById"],
   getCertificateRequest: (requestId: string, projectSlug: string) => [
     { requestId, projectSlug },
     "certificateRequest"
@@ -29,7 +31,8 @@ export const certKeys = {
     params.toDate,
     params.profileIds,
     params.sortBy,
-    params.sortOrder
+    params.sortOrder,
+    params.metadataFilter
   ]
 };
 
@@ -79,6 +82,19 @@ export const useGetCertBundle = (serialNumber: string) => {
   });
 };
 
+export const useGetCertificateById = (certificateId: string) => {
+  return useQuery({
+    queryKey: certKeys.getCertificateById(certificateId),
+    queryFn: async () => {
+      const { data } = await apiRequest.get<TCertificateByIdResponse>(
+        `/api/v1/cert-manager/certificates/${certificateId}`
+      );
+      return data;
+    },
+    enabled: Boolean(certificateId)
+  });
+};
+
 const DATE_RANGE_DAYS = 90;
 
 export const useListCertificateRequests = (params: TListCertificateRequestsParams) => {
@@ -88,21 +104,20 @@ export const useListCertificateRequests = (params: TListCertificateRequestsParam
       const now = Date.now();
       const daysInMs = DATE_RANGE_DAYS * 24 * 60 * 60 * 1000;
 
-      const { data } = await apiRequest.get<TListCertificateRequestsResponse>(
-        "/api/v1/cert-manager/certificates/certificate-requests",
+      const { data } = await apiRequest.post<TListCertificateRequestsResponse>(
+        "/api/v1/cert-manager/certificates/certificate-requests/search",
         {
-          params: {
-            projectSlug: params.projectSlug,
-            offset: params.offset,
-            limit: params.limit,
-            search: params.search,
-            status: params.status,
-            fromDate: (params.fromDate || new Date(now - daysInMs)).toISOString(),
-            toDate: (params.toDate || new Date(now)).toISOString(),
-            profileIds: params.profileIds?.join(","),
-            sortBy: params.sortBy,
-            sortOrder: params.sortOrder
-          }
+          projectSlug: params.projectSlug,
+          offset: params.offset,
+          limit: params.limit,
+          search: params.search,
+          status: params.status,
+          fromDate: (params.fromDate || new Date(now - daysInMs)).toISOString(),
+          toDate: (params.toDate || new Date(now)).toISOString(),
+          ...(params.profileIds?.length && { profileIds: params.profileIds }),
+          sortBy: params.sortBy,
+          sortOrder: params.sortOrder,
+          ...(params.metadataFilter?.length && { metadata: params.metadataFilter })
         }
       );
       return data;

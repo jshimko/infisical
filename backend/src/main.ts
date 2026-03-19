@@ -12,6 +12,7 @@ import { runMigrations } from "./auto-start-migrations";
 import { initAuditLogDbConnection, initDbConnection } from "./db";
 import { hsmServiceFactory } from "./ee/services/hsm/hsm-service";
 import { keyStoreFactory } from "./keystore/keystore";
+import { buildClickHouseFromConfig } from "./lib/config/clickhouse";
 import { formatSmtpConfig, getDatabaseCredentials, getHsmConfig, initEnvConfig } from "./lib/config/env";
 import { buildRedisFromConfig } from "./lib/config/redis";
 import { axiosResponseInterceptor } from "./lib/config/request";
@@ -19,6 +20,7 @@ import { removeTemporaryBaseDirectory } from "./lib/files";
 import { initLogger } from "./lib/logger";
 import { CustomLogger } from "./lib/logger/logger";
 import { queueServiceFactory } from "./queue";
+import { queueJobsDALFactory } from "./queue/queue-jobs-dal";
 import { main } from "./server/app";
 import { bootstrapCheck } from "./server/boot-strap-check";
 import { kmsRootConfigDALFactory } from "./services/kms/kms-root-config-dal";
@@ -60,6 +62,10 @@ const run = async () => {
   const kmsRootConfigDAL = kmsRootConfigDALFactory(db);
   const envConfig = await initEnvConfig(hsmService, kmsRootConfigDAL, superAdminDAL, logger);
 
+  logger.info(
+    `Running Infisical ${envConfig.INFISICAL_PLATFORM_VERSION ? `v${envConfig.INFISICAL_PLATFORM_VERSION}` : "Development Mode"}`
+  );
+
   const auditLogDb = envConfig.AUDIT_LOGS_DB_CONNECTION_URI
     ? initAuditLogDbConnection({
         dbConnectionUri: envConfig.AUDIT_LOGS_DB_CONNECTION_URI,
@@ -67,16 +73,18 @@ const run = async () => {
       })
     : undefined;
 
-  await runMigrations({ applicationDb: db, auditLogDb, logger });
+  const clickhouse = buildClickHouseFromConfig(envConfig);
+  await runMigrations({
+    applicationDb: db,
+    auditLogDb,
+    clickhouseClient: clickhouse,
+    logger
+  });
 
   const smtp = smtpServiceFactory(formatSmtpConfig());
 
-  const queue = queueServiceFactory(envConfig, {
-    dbConnectionUrl: envConfig.DB_CONNECTION_URI,
-    dbRootCert: envConfig.DB_ROOT_CERT
-  });
-
-  await queue.initialize();
+  const queueJobsDAL = queueJobsDALFactory(db);
+  const queue = queueServiceFactory(envConfig, queueJobsDAL);
 
   const keyValueStoreDAL = keyValueStoreDALFactory(db);
   const keyStore = keyStoreFactory(envConfig, keyValueStoreDAL);
@@ -93,8 +101,11 @@ const run = async () => {
     queue,
     keyStore,
     redis,
+    clickhouse,
     envConfig
   });
+
+  await queue.initialize();
   const bootstrap = await bootstrapCheck({ db });
 
   // eslint-disable-next-line

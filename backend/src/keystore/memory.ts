@@ -8,6 +8,7 @@ import { TKeyStoreFactory } from "./keystore";
 
 export const inMemoryKeyStore = (): TKeyStoreFactory => {
   const store: Record<string, string | number | Buffer> = {};
+  const listStore: Record<string, string[]> = {};
   const getRegex = (pattern: string) =>
     new RE2(`^${pattern.replace(/[-[\]/{}()+?.\\^$|]/g, "\\$&").replace(/\*/g, ".*")}$`);
 
@@ -18,6 +19,11 @@ export const inMemoryKeyStore = (): TKeyStoreFactory => {
     },
     setExpiry: async () => 0,
     setItemWithExpiry: async (key, value) => {
+      store[key] = value;
+      return "OK";
+    },
+    setItemWithExpiryNX: async (key, _expiryInSeconds, value) => {
+      if (store[key] !== undefined) return null;
       store[key] = value;
       return "OK";
     },
@@ -91,6 +97,30 @@ export const inMemoryKeyStore = (): TKeyStoreFactory => {
         return null;
       });
       return values;
-    }
+    },
+    listPush: async (key, value) => {
+      if (!listStore[key]) listStore[key] = [];
+      listStore[key].push(value);
+      return listStore[key].length;
+    },
+    listRange: async (key, start, stop) => {
+      if (!listStore[key]) return [];
+      const list = listStore[key];
+      const end = stop === -1 ? list.length : stop + 1;
+      return list.slice(start, end);
+    },
+    listRemove: async (key, _count, value) => {
+      if (!listStore[key]) return 0;
+      const originalLength = listStore[key].length;
+      listStore[key] = listStore[key].filter((v) => v !== value);
+      return originalLength - listStore[key].length;
+    },
+    listLength: async (key) => {
+      return listStore[key]?.length ?? 0;
+    },
+    streamAdd: async () => null,
+    streamRange: async () => [],
+    streamTrim: async () => 0,
+    streamCollect: async () => ({ entries: [], lastId: null })
   };
 };

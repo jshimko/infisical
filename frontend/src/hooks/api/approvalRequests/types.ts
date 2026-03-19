@@ -11,7 +11,7 @@ export enum ApprovalRequestStatus {
 export enum ApprovalRequestStepStatus {
   Pending = "pending",
   InProgress = "in-progress",
-  Approved = "approved",
+  Completed = "completed",
   Rejected = "rejected"
 }
 
@@ -24,7 +24,7 @@ export type ApprovalRequestApproval = {
   id: string;
   stepId: string;
   approverUserId: string;
-  decision: ApprovalRequestApprovalDecision.Approved;
+  decision: ApprovalRequestApprovalDecision;
   comment?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -50,8 +50,46 @@ export type ApprovalRequestStep = {
 };
 
 export type PamAccessRequestData = {
-  accountPath: string;
   accessDuration: string;
+  resourceName?: string;
+  accountName?: string;
+};
+
+export type CertRequestRequestData = {
+  profileId: string;
+  profileName: string;
+  certificateRequest: {
+    commonName?: string;
+    organization?: string;
+    organizationalUnit?: string;
+    country?: string;
+    state?: string;
+    locality?: string;
+    keyUsages?: string[];
+    extendedKeyUsages?: string[];
+    altNames?: Array<{ type: string; value: string }>;
+    validity: { ttl: string };
+    notBefore?: string;
+    notAfter?: string;
+    signatureAlgorithm?: string;
+    keyAlgorithm?: string;
+    basicConstraints?: {
+      isCA: boolean;
+      pathLength?: number;
+    };
+  };
+  removeRootsFromChain?: boolean;
+  certificateRequestId: string;
+};
+
+export type CodeSigningRequestData = {
+  signerId: string;
+  approvalPolicyId: string;
+  signerName: string;
+  justification?: string;
+  requestedWindowStart?: string;
+  requestedWindowEnd?: string;
+  requestedSignings?: number;
 };
 
 export type TApprovalRequest = {
@@ -67,7 +105,7 @@ export type TApprovalRequest = {
   expiresAt?: string | null;
   requestData: {
     version: number;
-    requestData: PamAccessRequestData;
+    requestData: PamAccessRequestData | CertRequestRequestData | CodeSigningRequestData;
   };
   steps: ApprovalRequestStep[];
   createdAt: string;
@@ -79,7 +117,7 @@ export type TCreateApprovalRequestDTO = {
   projectId: string;
   justification?: string | null;
   requestDuration?: string | null;
-  requestData: PamAccessRequestData;
+  requestData: PamAccessRequestData | CertRequestRequestData | CodeSigningRequestData;
 };
 
 export type TGetApprovalRequestByIdDTO = {

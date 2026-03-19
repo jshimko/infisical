@@ -9,6 +9,7 @@ export enum AppConnection {
   AzureClientSecrets = "azure-client-secrets",
   AzureDevOps = "azure-devops",
   AzureADCS = "azure-adcs",
+  AzureDNS = "azure-dns",
   Humanitec = "humanitec",
   TerraformCloud = "terraform-cloud",
   Vercel = "vercel",
@@ -44,7 +45,13 @@ export enum AppConnection {
   Chef = "chef",
   Northflank = "northflank",
   OctopusDeploy = "octopus-deploy",
-  SSH = "ssh"
+  SSH = "ssh",
+  Dbt = "dbt",
+  SMB = "smb",
+  OpenRouter = "open-router",
+  CircleCI = "circleci",
+  AzureEntraId = "azure-entra-id",
+  Venafi = "venafi"
 }
 
 export enum AWSRegion {

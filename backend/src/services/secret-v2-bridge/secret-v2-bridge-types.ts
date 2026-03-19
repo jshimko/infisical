@@ -4,13 +4,17 @@ import { SecretType, TSecretsV2, TSecretsV2Insert, TSecretsV2Update } from "@app
 import { ProjectPermissionSecretActions } from "@app/ee/services/permission/project-permission";
 import { OrderByDirection, TProjectPermission } from "@app/lib/types";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
-import { SecretsOrderBy } from "@app/services/secret/secret-types";
+import {
+  PersonalOverridesBehavior,
+  SecretImportReferencesBehavior,
+  SecretsOrderBy
+} from "@app/services/secret/secret-types";
 import { TSecretFolderDALFactory } from "@app/services/secret-folder/secret-folder-dal";
 import { TSecretTagDALFactory } from "@app/services/secret-tag/secret-tag-dal";
 
 import { TCommitResourceChangeDTO, TFolderCommitServiceFactory } from "../folder-commit/folder-commit-service";
 import { TResourceMetadataDALFactory } from "../resource-metadata/resource-metadata-dal";
-import { ResourceMetadataDTO } from "../resource-metadata/resource-metadata-schema";
+import { ResourceMetadataWithEncryptionDTO } from "../resource-metadata/resource-metadata-schema";
 import { TSecretV2BridgeDALFactory } from "./secret-v2-bridge-dal";
 import { TSecretVersionV2DALFactory } from "./secret-version-dal";
 import { TSecretVersionV2TagDALFactory } from "./secret-version-tag-dal";
@@ -33,6 +37,9 @@ export enum SecretUpdateMode {
 
 export type TGetSecretsDTO = {
   expandSecretReferences?: boolean;
+  personalOverridesBehavior: PersonalOverridesBehavior;
+  secretImportReferencesBehavior: SecretImportReferencesBehavior;
+  expandPersonalOverrides?: boolean;
   path: string;
   environment: string;
   includeImports?: boolean;
@@ -63,6 +70,7 @@ export type TGetASecretDTO = {
   path: string;
   environment: string;
   expandSecretReferences?: boolean;
+  expandPersonalOverrides?: boolean;
   type: "shared" | "personal";
   includeImports?: boolean;
   version?: number;
@@ -78,10 +86,10 @@ export type TCreateSecretDTO = TProjectPermission & {
   type: SecretType;
   tagIds?: string[];
   secretComment?: string;
-  skipMultilineEncoding?: boolean;
+  skipMultilineEncoding?: boolean | null;
   secretReminderRepeatDays?: number | null;
   secretReminderNote?: string | null;
-  secretMetadata?: ResourceMetadataDTO;
+  secretMetadata?: ResourceMetadataWithEncryptionDTO;
 };
 
 export type TUpdateSecretDTO = TProjectPermission & {
@@ -93,14 +101,14 @@ export type TUpdateSecretDTO = TProjectPermission & {
   secretComment?: string;
   type: SecretType;
   tagIds?: string[];
-  skipMultilineEncoding?: boolean;
+  skipMultilineEncoding?: boolean | null;
   secretReminderRepeatDays?: number | null;
   secretReminderNote?: string | null;
   secretReminderRecipients?: string[] | null;
   metadata?: {
     source?: string;
   };
-  secretMetadata?: ResourceMetadataDTO;
+  secretMetadata?: ResourceMetadataWithEncryptionDTO;
 };
 
 export type TDeleteSecretDTO = TProjectPermission & {
@@ -118,9 +126,9 @@ export type TCreateManySecretDTO = Omit<TProjectPermission, "projectId"> & {
     secretKey: string;
     secretValue: string;
     secretComment?: string;
-    skipMultilineEncoding?: boolean;
+    skipMultilineEncoding?: boolean | null;
     tagIds?: string[];
-    secretMetadata?: ResourceMetadataDTO;
+    secretMetadata?: ResourceMetadataWithEncryptionDTO;
     metadata?: {
       source?: string;
     };
@@ -137,11 +145,11 @@ export type TUpdateManySecretDTO = Omit<TProjectPermission, "projectId"> & {
     newSecretName?: string;
     secretValue?: string;
     secretComment?: string;
-    skipMultilineEncoding?: boolean;
+    skipMultilineEncoding?: boolean | null;
     tagIds?: string[];
     secretReminderRepeatDays?: number | null;
     secretReminderNote?: string | null;
-    secretMetadata?: ResourceMetadataDTO;
+    secretMetadata?: ResourceMetadataWithEncryptionDTO;
     secretPath?: string;
   }[];
 };
@@ -171,10 +179,11 @@ export type TFnSecretBulkInsert = {
   tx?: Knex;
   commitChanges?: TCommitResourceChangeDTO[];
   inputSecrets: Array<
-    Omit<TSecretsV2Insert, "folderId"> & {
+    Omit<TSecretsV2Insert, "folderId" | "metadata"> & {
       tagIds?: string[];
       references: TSecretReference[];
-      secretMetadata?: ResourceMetadataDTO;
+      secretMetadata?: { key: string; value?: string | null; encryptedValue?: Buffer | null }[];
+      parentSecretVersionId?: string;
     }
   >;
   resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "insertMany">;
@@ -190,11 +199,11 @@ export type TFnSecretBulkInsert = {
 };
 
 type TRequireReferenceIfValue =
-  | (Omit<TSecretsV2Update, "encryptedValue"> & {
+  | (Omit<TSecretsV2Update, "encryptedValue" | "metadata"> & {
       encryptedValue: Buffer | null;
       references: TSecretReference[];
     })
-  | (Omit<TSecretsV2Update, "encryptedValue"> & {
+  | (Omit<TSecretsV2Update, "encryptedValue" | "metadata"> & {
       encryptedValue?: never;
       references?: never;
     });
@@ -204,10 +213,15 @@ export type TFnSecretBulkUpdate = {
   orgId: string;
   inputSecrets: {
     filter: Partial<TSecretsV2>;
-    data: TRequireReferenceIfValue & { tags?: string[]; secretMetadata?: ResourceMetadataDTO };
+    data: TRequireReferenceIfValue & {
+      tags?: string[];
+      secretMetadata?: { key: string; value?: string | null; encryptedValue?: Buffer | null }[];
+      parentSecretVersionId?: string;
+    };
   }[];
   resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "insertMany" | "delete">;
-  secretDAL: Pick<TSecretV2BridgeDALFactory, "bulkUpdate" | "upsertSecretReferences" | "find">;
+  secretDAL: Pick<TSecretV2BridgeDALFactory, "bulkUpdate" | "upsertSecretReferences" | "find"> &
+    Partial<Pick<TSecretV2BridgeDALFactory, "bulkUpdateById">>;
   secretVersionDAL: Pick<TSecretVersionV2DALFactory, "insertMany">;
   secretTagDAL: Pick<TSecretTagDALFactory, "saveTagsToSecretV2" | "deleteTagsToSecretV2" | "find">;
   secretVersionTagDAL: Pick<TSecretVersionV2TagDALFactory, "insertMany">;
@@ -274,7 +288,7 @@ export type TCreateManySecretsFn = {
     secretValue: string;
     type: SecretType;
     secretComment?: string;
-    skipMultilineEncoding?: boolean;
+    skipMultilineEncoding?: boolean | null;
     tags?: string[];
     metadata?: {
       source?: string;
@@ -309,7 +323,7 @@ export type TUpdateManySecretsFn = {
     secretValue: string;
     type: SecretType;
     secretComment?: string;
-    skipMultilineEncoding?: boolean;
+    skipMultilineEncoding?: boolean | null;
     secretReminderRepeatDays?: number | null;
     secretReminderNote?: string | null;
     tags?: string[];
@@ -352,6 +366,13 @@ export type TGetSecretReferencesTreeDTO = {
   secretPath: string;
 } & Omit<TProjectPermission, "projectId">;
 
+export type TGetSecretReferencesDTO = {
+  projectId: string;
+  secretName: string;
+  environment: string;
+  secretPath: string;
+} & Omit<TProjectPermission, "projectId">;
+
 export type TFindSecretsByFolderIdsFilter = {
   limit?: number;
   offset?: number;
@@ -381,3 +402,13 @@ export type TGetAccessibleSecretsDTO = {
   recursive?: boolean;
   filterByAction: ProjectPermissionSecretActions.DescribeSecret | ProjectPermissionSecretActions.ReadValue;
 } & TProjectPermission;
+
+export type TUpdateLinkedSecretReferencesDTO = {
+  projectId: string;
+  environment: string;
+  secretPath: string;
+  folderId: string;
+  secretId: string;
+  oldSecretKey: string;
+  newSecretKey: string;
+};

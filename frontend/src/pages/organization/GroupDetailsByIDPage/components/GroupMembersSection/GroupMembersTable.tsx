@@ -5,7 +5,7 @@ import { twMerge } from "tailwind-merge";
 import { OrgPermissionCan } from "@app/components/permissions";
 import { Lottie } from "@app/components/v2";
 import {
-  UnstableButton,
+  Button,
   UnstableDropdownMenu,
   UnstableDropdownMenuCheckboxItem,
   UnstableDropdownMenuContent,
@@ -51,9 +51,15 @@ type Props = {
     popUpName: keyof UsePopUpState<["removeMemberFromGroup", "addGroupMembers"]>,
     data?: object
   ) => void;
+  isLinkedGroup?: boolean;
 };
 
-export const GroupMembersTable = ({ groupId, groupSlug, handlePopUpOpen }: Props) => {
+export const GroupMembersTable = ({
+  groupId,
+  groupSlug,
+  handlePopUpOpen,
+  isLinkedGroup = false
+}: Props) => {
   const {
     search,
     setSearch,
@@ -188,12 +194,14 @@ export const GroupMembersTable = ({ groupId, groupSlug, handlePopUpOpen }: Props
                   key={`user-group-membership-${userGroupMembership.id}`}
                   user={userGroupMembership}
                   handlePopUpOpen={handlePopUpOpen}
+                  isLinkedGroup={isLinkedGroup}
                 />
               ) : (
                 <GroupMembershipIdentityRow
                   key={`identity-group-membership-${userGroupMembership.id}`}
                   identity={userGroupMembership}
                   handlePopUpOpen={handlePopUpOpen}
+                  isLinkedGroup={isLinkedGroup}
                 />
               )
             )}
@@ -210,14 +218,14 @@ export const GroupMembersTable = ({ groupId, groupSlug, handlePopUpOpen }: Props
                 ? "Adjust search filters to view members."
                 : "Add users or machine identities to this group."}
             </UnstableEmptyDescription>
-            {!isFiltered && (
+            {!isFiltered && !isLinkedGroup && (
               <UnstableEmptyContent>
                 <OrgPermissionCan
                   I={OrgPermissionGroupActions.Edit}
                   a={OrgPermissionSubjects.Groups}
                 >
                   {(isAllowed) => (
-                    <UnstableButton
+                    <Button
                       variant={isSubOrganization ? "sub-org" : "org"}
                       size="xs"
                       isDisabled={!isAllowed}
@@ -230,7 +238,7 @@ export const GroupMembersTable = ({ groupId, groupSlug, handlePopUpOpen }: Props
                     >
                       <PlusIcon />
                       Add Member
-                    </UnstableButton>
+                    </Button>
                   )}
                 </OrgPermissionCan>
               </UnstableEmptyContent>

@@ -8,16 +8,16 @@ import { Button, Modal, ModalContent } from "@app/components/v2";
 import { useProject } from "@app/context";
 import {
   ApprovalPolicyType,
+  PamAccessPolicyConditions,
+  PamAccessPolicyConstraints,
   TApprovalPolicy,
   useCreateApprovalPolicy,
   useUpdateApprovalPolicy
 } from "@app/hooks/api/approvalPolicies";
 import { UsePopUpState } from "@app/hooks/usePopUp";
 
-import { PolicyApprovalSteps } from "./PolicySteps/PolicyApprovalSteps";
-import { PolicyDetailsStep } from "./PolicySteps/PolicyDetailsStep";
-import { PolicyReviewStep } from "./PolicySteps/PolicyReviewStep";
 import { PolicyFormSchema, TPolicyForm } from "./PolicySchema";
+import { PolicyApprovalSteps, PolicyDetailsStep, PolicyReviewStep } from "./PolicySteps";
 
 type Props = {
   popUp: UsePopUpState<["policy"]>;
@@ -48,7 +48,7 @@ export const PolicyModal = ({ popUp, handlePopUpToggle }: Props) => {
     defaultValues: {
       name: "",
       maxRequestTtl: null,
-      conditions: [{ accountPaths: [] }],
+      conditions: [{ resourceNames: [], accountNames: [] }],
       constraints: {
         accessDuration: {
           min: "30s",
@@ -73,11 +73,15 @@ export const PolicyModal = ({ popUp, handlePopUpToggle }: Props) => {
 
   useEffect(() => {
     if (policyData?.policy) {
+      const conditions = policyData.policy.conditions.conditions as PamAccessPolicyConditions;
       reset({
         name: policyData.policy.name,
         maxRequestTtl: policyData.policy.maxRequestTtl,
-        conditions: policyData.policy.conditions.conditions,
-        constraints: policyData.policy.constraints.constraints,
+        conditions: conditions.map((c) => ({
+          resourceNames: c.resourceNames || [],
+          accountNames: c.accountNames || []
+        })),
+        constraints: policyData.policy.constraints.constraints as PamAccessPolicyConstraints,
         steps: policyData.policy.steps.map((step) => ({
           ...step,
           name: step.name || ""
@@ -87,7 +91,7 @@ export const PolicyModal = ({ popUp, handlePopUpToggle }: Props) => {
       reset({
         name: "",
         maxRequestTtl: null,
-        conditions: [{ accountPaths: [] }],
+        conditions: [{ resourceNames: [], accountNames: [] }],
         constraints: {
           accessDuration: {
             min: "30s",

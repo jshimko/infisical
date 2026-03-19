@@ -6,6 +6,7 @@ export {
   OrgPermissionBillingActions,
   OrgPermissionGroupActions,
   OrgPermissionIdentityActions,
+  OrgPermissionSsoActions,
   OrgPermissionSubjects,
   useOrgPermission
 } from "./OrgPermissionContext";
@@ -19,12 +20,15 @@ export {
   ProjectPermissionCertificatePolicyActions,
   ProjectPermissionCertificateProfileActions,
   ProjectPermissionCmekActions,
+  ProjectPermissionCodeSigningActions,
   ProjectPermissionDynamicSecretActions,
   ProjectPermissionGroupActions,
   ProjectPermissionIdentityActions,
   ProjectPermissionKmipActions,
   ProjectPermissionMcpEndpointActions,
   ProjectPermissionMemberActions,
+  ProjectPermissionPkiCertificateInstallationActions,
+  ProjectPermissionPkiDiscoveryActions,
   ProjectPermissionPkiSubscriberActions,
   ProjectPermissionPkiSyncActions,
   ProjectPermissionPkiTemplateActions,

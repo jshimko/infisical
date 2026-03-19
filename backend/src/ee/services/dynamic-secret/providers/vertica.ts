@@ -138,7 +138,11 @@ export const VerticaProvider = ({ gatewayService }: TVerticaProviderDTO): TDynam
   const validateProviderInputs = async (inputs: unknown) => {
     const providerInputs = await DynamicSecretVerticaSchema.parseAsync(inputs);
 
-    const [hostIp] = await verifyHostInputValidity(providerInputs.host, Boolean(providerInputs.gatewayId));
+    const [hostIp] = await verifyHostInputValidity({
+      host: providerInputs.host,
+      isGateway: Boolean(providerInputs.gatewayId),
+      isDynamicSecret: true
+    });
     validateHandlebarTemplate("Vertica creation", providerInputs.creationStatement, {
       allowedExpressions: (val) => ["username", "password"].includes(val)
     });
@@ -191,24 +195,15 @@ export const VerticaProvider = ({ gatewayService }: TVerticaProviderDTO): TDynam
     gatewayCallback: (host: string, port: number) => Promise<void>
   ) => {
     const relayDetails = await gatewayService.fnGetGatewayClientTlsByGatewayId(providerInputs.gatewayId as string);
-    const [relayHost, relayPort] = relayDetails.relayAddress.split(":");
     await withGatewayProxy(
       async (port) => {
         await gatewayCallback("localhost", port);
       },
       {
+        relayDetails,
         protocol: GatewayProxyProtocol.Tcp,
         targetHost: providerInputs.host,
-        targetPort: providerInputs.port,
-        relayHost,
-        relayPort: Number(relayPort),
-        identityId: relayDetails.identityId,
-        orgId: relayDetails.orgId,
-        tlsOptions: {
-          ca: relayDetails.certChain,
-          cert: relayDetails.certificate,
-          key: relayDetails.privateKey.toString()
-        }
+        targetPort: providerInputs.port
       }
     );
   };

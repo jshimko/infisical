@@ -59,7 +59,7 @@ export const LogsTableRow = ({ auditLog, rowNumber, timezone }: Props) => {
         </Td>
         <Td className="align-top">{formatDateTime({ timestamp: auditLog.createdAt, timezone })}</Td>
         <Td>
-          <div className="flex flex-wrap gap-4 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
             <Tag label="event" value={auditLog.event.type} />
             <Tag label="actor" value={auditLog.actor.type} />
             {auditLog.actor.type === ActorType.USER && (
@@ -73,6 +73,9 @@ export const LogsTableRow = ({ auditLog, rowNumber, timezone }: Props) => {
             )}
             {auditLog.actor.type === ActorType.ACME_ACCOUNT && (
               <Tag label="acme_account_id" value={auditLog.actor.metadata.accountId} />
+            )}
+            {auditLog.actor.type === ActorType.EST_ACCOUNT && (
+              <Tag label="est_profile_id" value={auditLog.actor.metadata.profileId} />
             )}
           </div>
         </Td>

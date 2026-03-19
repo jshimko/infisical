@@ -48,9 +48,27 @@ export const secretRotationV2QueueServiceFactory = async ({
     logger.warn("Secret Rotation V2 is in development mode.");
   }
 
-  await queueService.startPg<QueueName.SecretRotationV2>(
-    QueueJobs.SecretRotationV2QueueRotations,
-    async () => {
+  queueService.start(
+    QueueName.SecretRotationV2RotateSecrets,
+    async (job) => {
+      await rotateSecretsFns({
+        job: {
+          id: job.id || job.data?.rotationId,
+          retryCount: job.attemptsMade + 1,
+          retryLimit: job.opts.attempts || 1,
+          data: job.data
+        },
+        secretRotationV2DAL,
+        secretRotationV2Service
+      });
+    },
+    {
+      persistence: true
+    }
+  );
+
+  queueService.start(QueueName.SecretRotationV2, async (job) => {
+    if (job.name === QueueJobs.SecretRotationV2QueueRotations) {
       try {
         const rotateBy = getNextUtcRotationInterval();
 
@@ -89,7 +107,8 @@ export const secretRotationV2QueueServiceFactory = async ({
               secretRotationV2Service
             });
           } else {
-            await queueService.queuePg(
+            await queueService.queue(
+              QueueName.SecretRotationV2RotateSecrets,
               QueueJobs.SecretRotationV2RotateSecrets,
               {
                 rotationId: rotation.id,
@@ -103,36 +122,7 @@ export const secretRotationV2QueueServiceFactory = async ({
         logger.error(error, "secretRotationV2Queue: Queue Rotations Error:");
         throw error;
       }
-    },
-    {
-      batchSize: 1,
-      workerCount: 1,
-      pollingIntervalSeconds: appCfg.isRotationDevelopmentMode ? 0.5 : 30
-    }
-  );
-
-  await queueService.startPg<QueueName.SecretRotationV2>(
-    QueueJobs.SecretRotationV2RotateSecrets,
-    async ([job]) => {
-      await rotateSecretsFns({
-        job: {
-          ...job,
-          data: job.data as TSecretRotationRotateSecretsJobPayload
-        },
-        secretRotationV2DAL,
-        secretRotationV2Service
-      });
-    },
-    {
-      batchSize: 1,
-      workerCount: 2,
-      pollingIntervalSeconds: 0.5
-    }
-  );
-
-  await queueService.startPg<QueueName.SecretRotationV2>(
-    QueueJobs.SecretRotationV2SendNotification,
-    async ([job]) => {
+    } else if (job.name === QueueJobs.SecretRotationV2SendNotification) {
       const { secretRotation } = job.data as TSecretRotationSendNotificationJobPayload;
       try {
         const {
@@ -156,7 +146,7 @@ export const secretRotationV2QueueServiceFactory = async ({
 
         const rotationType = SECRET_ROTATION_NAME_MAP[type as SecretRotation];
 
-        const rotationPath = `/organizations/${project.orgId}/projects/secret-management/${projectId}/secrets/${environment.slug}`;
+        const rotationPath = `/organizations/${project.orgId}/projects/secret-management/${projectId}/overview`;
 
         await notificationService.createUserNotifications(
           projectAdmins.map((admin) => ({
@@ -181,6 +171,7 @@ export const secretRotationV2QueueServiceFactory = async ({
             ).toISOString()}. Please check the rotation status in Infisical for more details.`,
             secretPath: folder.path,
             environment: environment.name,
+            environmentSlug: environment.slug,
             projectName: project.name,
             rotationUrl: encodeURI(`${appCfg.SITE_URL}${rotationPath}`)
           }
@@ -192,18 +183,14 @@ export const secretRotationV2QueueServiceFactory = async ({
         );
         throw error;
       }
-    },
-    {
-      batchSize: 1,
-      workerCount: 2,
-      pollingIntervalSeconds: 1
     }
-  );
+  });
 
-  await queueService.schedulePg(
-    QueueJobs.SecretRotationV2QueueRotations,
-    appCfg.isRotationDevelopmentMode ? "* * * * *" : "0 0 * * *",
-    undefined,
-    { tz: "UTC" }
-  );
+  await queueService.queue(QueueName.SecretRotationV2, QueueJobs.SecretRotationV2QueueRotations, undefined, {
+    jobId: "secret-rotation-v2-cron",
+    repeat: {
+      pattern: appCfg.isRotationDevelopmentMode ? "* * * * *" : "0 0 * * *",
+      key: "secret-rotation-v2-cron"
+    }
+  });
 };

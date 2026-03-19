@@ -123,7 +123,11 @@ export const SqlDatabaseProvider = ({
   const validateProviderInputs = async (inputs: unknown) => {
     const providerInputs = await DynamicSecretSqlDBSchema.parseAsync(inputs);
 
-    const [hostIp] = await verifyHostInputValidity(providerInputs.host, Boolean(providerInputs.gatewayId));
+    const [hostIp] = await verifyHostInputValidity({
+      host: providerInputs.host,
+      isGateway: Boolean(providerInputs.gatewayId),
+      isDynamicSecret: true
+    });
     validateHandlebarTemplate("SQL creation", providerInputs.creationStatement, {
       allowedExpressions: (val) => ["username", "password", "expiration", "database"].includes(val)
     });
@@ -217,24 +221,15 @@ export const SqlDatabaseProvider = ({
     }
 
     const relayDetails = await gatewayService.fnGetGatewayClientTlsByGatewayId(providerInputs.gatewayId as string);
-    const [relayHost, relayPort] = relayDetails.relayAddress.split(":");
     await withGatewayProxy(
       async (port) => {
         await gatewayCallback("localhost", port);
       },
       {
+        relayDetails,
         protocol: GatewayProxyProtocol.Tcp,
         targetHost: providerInputs.host,
-        targetPort: providerInputs.port,
-        relayHost,
-        relayPort: Number(relayPort),
-        identityId: relayDetails.identityId,
-        orgId: relayDetails.orgId,
-        tlsOptions: {
-          ca: relayDetails.certChain,
-          cert: relayDetails.certificate,
-          key: relayDetails.privateKey.toString()
-        }
+        targetPort: providerInputs.port
       }
     );
   };

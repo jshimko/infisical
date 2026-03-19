@@ -11,13 +11,14 @@ import { addUsersToGroupByUserIds, removeUsersFromGroupByUserIds } from "@app/ee
 import { TUserGroupMembershipDALFactory } from "@app/ee/services/group/user-group-membership-dal";
 import { throwOnPlanSeatLimitReached } from "@app/ee/services/license/license-fns";
 import { TLicenseServiceFactory } from "@app/ee/services/license/license-service";
-import { OrgPermissionActions, OrgPermissionSubjects } from "@app/ee/services/permission/org-permission";
+import { OrgPermissionSsoActions, OrgPermissionSubjects } from "@app/ee/services/permission/org-permission";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { getConfig } from "@app/lib/config/env";
 import { crypto } from "@app/lib/crypto";
 import { BadRequestError, ForbiddenRequestError, NotFoundError, OidcAuthError } from "@app/lib/errors";
 import { AuthAttemptAuthMethod, AuthAttemptAuthResult, authAttemptCounter } from "@app/lib/telemetry/metrics";
 import { OrgServiceActor } from "@app/lib/types";
+import { matchesAllowedEmailDomain } from "@app/lib/validator";
 import { ActorType, AuthMethod, AuthTokenType } from "@app/services/auth/auth-type";
 import { TAuthTokenServiceFactory } from "@app/services/auth-token/auth-token-service";
 import { TokenType } from "@app/services/auth-token/auth-token-types";
@@ -128,7 +129,7 @@ export const oidcConfigServiceFactory = ({
         actorAuthMethod: dto.actorAuthMethod,
         scope: OrganizationActionScope.ParentOrganization
       });
-      ForbiddenError.from(permission).throwUnlessCan(OrgPermissionActions.Read, OrgPermissionSubjects.Sso);
+      ForbiddenError.from(permission).throwUnlessCan(OrgPermissionSsoActions.Read, OrgPermissionSubjects.Sso);
     }
 
     const { decryptor } = await kmsService.createCipherPairWithDataKey({
@@ -528,7 +529,7 @@ export const oidcConfigServiceFactory = ({
       actorAuthMethod,
       scope: OrganizationActionScope.ParentOrganization
     });
-    ForbiddenError.from(permission).throwUnlessCan(OrgPermissionActions.Edit, OrgPermissionSubjects.Sso);
+    ForbiddenError.from(permission).throwUnlessCan(OrgPermissionSsoActions.Edit, OrgPermissionSubjects.Sso);
 
     if (org.googleSsoAuthEnforced && isActive) {
       throw new BadRequestError({
@@ -623,7 +624,7 @@ export const oidcConfigServiceFactory = ({
       actorAuthMethod,
       scope: OrganizationActionScope.ParentOrganization
     });
-    ForbiddenError.from(permission).throwUnlessCan(OrgPermissionActions.Create, OrgPermissionSubjects.Sso);
+    ForbiddenError.from(permission).throwUnlessCan(OrgPermissionSsoActions.Create, OrgPermissionSubjects.Sso);
 
     if (org.googleSsoAuthEnforced && isActive) {
       throw new BadRequestError({
@@ -737,13 +738,10 @@ export const oidcConfigServiceFactory = ({
           });
         }
 
-        if (oidcCfg.allowedEmailDomains) {
-          const allowedDomains = oidcCfg.allowedEmailDomains.split(", ");
-          if (!allowedDomains.includes(claims.email.split("@")[1])) {
-            throw new ForbiddenRequestError({
-              message: "Email not allowed."
-            });
-          }
+        if (!matchesAllowedEmailDomain(claims.email, oidcCfg.allowedEmailDomains ?? "")) {
+          throw new ForbiddenRequestError({
+            message: "Email not allowed."
+          });
         }
 
         const name = claims?.given_name || claims?.name;

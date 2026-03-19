@@ -48,6 +48,9 @@ import {
   TWindmillSyncWithCredentials
 } from "@app/services/secret-sync/windmill";
 
+import { TAppConnectionDALFactory } from "../app-connection/app-connection-dal";
+import { TKmsServiceFactory } from "../kms/kms-service";
+import { TSecretV2BridgeDALFactory } from "../secret-v2-bridge/secret-v2-bridge-dal";
 import {
   TOnePassSync,
   TOnePassSyncInput,
@@ -73,6 +76,12 @@ import {
   TAzureDevOpsSyncWithCredentials
 } from "./azure-devops";
 import {
+  TAzureEntraIdScimSync,
+  TAzureEntraIdScimSyncInput,
+  TAzureEntraIdScimSyncListItem,
+  TAzureEntraIdScimSyncWithCredentials
+} from "./azure-entra-id-scim";
+import {
   TAzureKeyVaultSync,
   TAzureKeyVaultSyncInput,
   TAzureKeyVaultSyncListItem,
@@ -90,6 +99,7 @@ import {
   TChecklySyncListItem,
   TChecklySyncWithCredentials
 } from "./checkly/checkly-sync-types";
+import { TCircleCISync, TCircleCISyncInput, TCircleCISyncListItem, TCircleCISyncWithCredentials } from "./circleci";
 import {
   TCloudflarePagesSync,
   TCloudflarePagesSyncInput,
@@ -208,7 +218,9 @@ export type TSecretSync =
   | TNetlifySync
   | TNorthflankSync
   | TBitbucketSync
-  | TOctopusDeploySync;
+  | TOctopusDeploySync
+  | TCircleCISync
+  | TAzureEntraIdScimSync;
 
 export type TSecretSyncWithCredentials =
   | TAwsParameterStoreSyncWithCredentials
@@ -244,7 +256,9 @@ export type TSecretSyncWithCredentials =
   | TNorthflankSyncWithCredentials
   | TBitbucketSyncWithCredentials
   | TLaravelForgeSyncWithCredentials
-  | TOctopusDeploySyncWithCredentials;
+  | TOctopusDeploySyncWithCredentials
+  | TCircleCISyncWithCredentials
+  | TAzureEntraIdScimSyncWithCredentials;
 
 export type TSecretSyncInput =
   | TAwsParameterStoreSyncInput
@@ -280,7 +294,9 @@ export type TSecretSyncInput =
   | TNorthflankSyncInput
   | TBitbucketSyncInput
   | TLaravelForgeSyncInput
-  | TOctopusDeploySyncInput;
+  | TOctopusDeploySyncInput
+  | TCircleCISyncInput
+  | TAzureEntraIdScimSyncInput;
 
 export type TSecretSyncListItem =
   | TAwsParameterStoreSyncListItem
@@ -316,10 +332,15 @@ export type TSecretSyncListItem =
   | TNetlifySyncListItem
   | TNorthflankSyncListItem
   | TBitbucketSyncListItem
-  | TOctopusDeploySyncListItem;
+  | TOctopusDeploySyncListItem
+  | TCircleCISyncListItem
+  | TAzureEntraIdScimSyncListItem;
 
 export type TSyncOptionsConfig = {
   canImportSecrets: boolean;
+  canRemoveSecretsOnDeletion?: boolean;
+  supportsKeySchema?: boolean;
+  supportsDisableSecretDeletion?: boolean;
 };
 
 export type TListSecretSyncsByProjectId = {
@@ -383,6 +404,12 @@ export enum SecretSyncAction {
   ImportSecrets = "import-secrets",
   RemoveSecrets = "remove-secrets"
 }
+
+export type TSyncSecretsResult = {
+  createdSecretKeys: string[];
+  updatedSecretKeys: string[];
+  deletedSecretKeys: string[];
+};
 
 export type TSecretSyncRaw = NonNullable<Awaited<ReturnType<TSecretSyncDALFactory["findById"]>>>;
 
@@ -450,6 +477,7 @@ export type TSecretMap = Record<
   string,
   {
     value: string;
+    id?: string;
     comment?: string;
     skipMultilineEncoding?: boolean | null | undefined;
     secretMetadata?: ResourceMetadataDTO;
@@ -460,3 +488,30 @@ export type DestinationDuplicateCheckFn = (
   existingConfig: Record<string, unknown>,
   newConfig: Record<string, unknown>
 ) => boolean;
+
+export type TPreSaveTransformDeps = {
+  secretV2BridgeDAL: Pick<TSecretV2BridgeDALFactory, "findOne">;
+  appConnectionDAL: Pick<TAppConnectionDALFactory, "findById" | "updateById">;
+  kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">;
+};
+
+export type TPreSaveTransformSyncOptionsParams = {
+  syncOptions: Record<string, unknown> | undefined;
+  existingSyncOptions?: Record<string, unknown>;
+  folderId: string;
+};
+
+export type TPreSaveTransformDestinationConfigParams = {
+  destinationConfig: Record<string, unknown> | undefined;
+  connectionId: string;
+};
+
+export type TPreSaveTransformSyncOptionsFn = (
+  params: TPreSaveTransformSyncOptionsParams,
+  deps: TPreSaveTransformDeps
+) => Promise<Record<string, unknown> | undefined>;
+
+export type TPreSaveTransformDestinationConfigFn = (
+  params: TPreSaveTransformDestinationConfigParams,
+  deps: TPreSaveTransformDeps
+) => Promise<Record<string, unknown> | undefined>;

@@ -20,9 +20,11 @@ import { BadRequestError } from "@app/lib/errors";
 import { logger } from "@app/lib/logger";
 import { AuthAttemptAuthMethod, AuthAttemptAuthResult, authAttemptCounter } from "@app/lib/telemetry/metrics";
 import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
+import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { SanitizedSamlConfigSchema } from "@app/server/routes/sanitizedSchema/directory-config";
 import { AuthMode } from "@app/services/auth/auth-type";
+import { PostHogEventTypes } from "@app/services/telemetry/telemetry-types";
 
 type TSAMLConfig = {
   callbackUrl: string;
@@ -83,6 +85,10 @@ export const registerSamlRouter = async (server: FastifyZodProvider) => {
             }
             if (ssoConfig.authProvider === SamlProviders.AZURE_SAML) {
               samlConfig.disableRequestedAuthnContext = true;
+              // Azure AD/Entra ID can be configured to sign only the assertion (not the response).
+              // Setting wantAuthnResponseSigned to false allows both "Sign SAML assertion" and
+              // "Sign SAML response and assertion" configurations to work.
+              samlConfig.wantAuthnResponseSigned = false;
               if (req.body?.RelayState && JSON.parse(req.body.RelayState).spInitiated) {
                 samlConfig.audience = `spn:${ssoConfig.issuer}`;
               }
@@ -363,7 +369,7 @@ export const registerSamlRouter = async (server: FastifyZodProvider) => {
       const { isActive, authProvider, issuer, entryPoint, cert, enableGroupSync } = req.body;
       const { permission } = req;
 
-      return server.services.saml.createSamlCfg({
+      const samlCfg = await server.services.saml.createSamlCfg({
         isActive,
         authProvider,
         issuer,
@@ -376,6 +382,20 @@ export const registerSamlRouter = async (server: FastifyZodProvider) => {
         actorOrgId: permission.orgId,
         orgId: req.body.organizationId
       });
+
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.SSOConfigured,
+          distinctId: getTelemetryDistinctId(req),
+          organizationId: req.permission.orgId,
+          properties: {
+            provider: authProvider,
+            action: "create"
+          }
+        })
+        .catch((err) => logger.error(err, "Failed to send SSOConfigured telemetry event"));
+
+      return samlCfg;
     }
   });
 
@@ -414,7 +434,7 @@ export const registerSamlRouter = async (server: FastifyZodProvider) => {
       const { isActive, authProvider, issuer, entryPoint, cert, enableGroupSync } = req.body;
       const { permission } = req;
 
-      return server.services.saml.updateSamlCfg({
+      const samlCfg = await server.services.saml.updateSamlCfg({
         isActive,
         authProvider,
         issuer,
@@ -427,6 +447,20 @@ export const registerSamlRouter = async (server: FastifyZodProvider) => {
         actorOrgId: permission.orgId,
         orgId: req.body.organizationId
       });
+
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.SSOConfigured,
+          distinctId: getTelemetryDistinctId(req),
+          organizationId: req.permission.orgId,
+          properties: {
+            provider: authProvider ?? "saml",
+            action: "update"
+          }
+        })
+        .catch((err) => logger.error(err, "Failed to send SSOConfigured telemetry event"));
+
+      return samlCfg;
     }
   });
 };

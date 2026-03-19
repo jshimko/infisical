@@ -11,11 +11,19 @@ export const SecretEventPermissionConditions = ({ position = 0, isDisabled }: Pr
   return (
     <ConditionsFields
       isDisabled={isDisabled}
-      subject={ProjectPermissionSub.SecretEvents}
+      subject={ProjectPermissionSub.SecretEventSubscriptions}
       position={position}
       selectOptions={[
-        { value: "environment", label: "Environment Slug" },
-        { value: "secretPath", label: "Secret Path" }
+        {
+          value: "environment",
+          label: "Environment Slug",
+          description: "The environment slug (e.g., dev, staging, prod)"
+        },
+        {
+          value: "secretPath",
+          label: "Secret Path",
+          description: "The path within an environment (e.g., /app/config)"
+        }
       ]}
     />
   );

@@ -47,8 +47,11 @@ export const useUpdatePamResource = () => {
 
       return data.resource;
     },
-    onSuccess: ({ projectId }) => {
+    onSuccess: ({ projectId }, { resourceId, resourceType }) => {
       queryClient.invalidateQueries({ queryKey: pamKeys.listResources({ projectId }) });
+      queryClient.invalidateQueries({
+        queryKey: pamKeys.getResource(resourceType, resourceId)
+      });
     }
   });
 };
@@ -64,6 +67,57 @@ export const useDeletePamResource = () => {
       return data.resource;
     },
     onSuccess: ({ projectId }) => {
+      queryClient.invalidateQueries({ queryKey: pamKeys.listResources({ projectId }) });
+    }
+  });
+};
+
+// Favorites
+export type TSetPamResourceFavoriteDTO = {
+  projectId: string;
+  resourceId: string;
+  isFavorite: boolean;
+};
+
+export const useSetPamResourceFavorite = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ projectId, resourceId, isFavorite }: TSetPamResourceFavoriteDTO) => {
+      await apiRequest.put("/api/v1/pam/resources/favorites", {
+        projectId,
+        resourceId,
+        isFavorite
+      });
+    },
+    onMutate: async ({ projectId, resourceId, isFavorite }) => {
+      await queryClient.cancelQueries({ queryKey: pamKeys.listResources({ projectId }) });
+
+      const previousQueries = queryClient.getQueriesData<{
+        resources: TPamResource[];
+        totalCount: number;
+      }>({
+        queryKey: pamKeys.listResources({ projectId })
+      });
+
+      queryClient.setQueriesData<{ resources: TPamResource[]; totalCount: number }>(
+        { queryKey: pamKeys.listResources({ projectId }) },
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            resources: old.resources.map((r) => (r.id === resourceId ? { ...r, isFavorite } : r))
+          };
+        }
+      );
+
+      return { previousQueries };
+    },
+    onError: (_err, _vars, context) => {
+      context?.previousQueries.forEach(([queryKey, data]) => {
+        queryClient.setQueryData(queryKey, data);
+      });
+    },
+    onSettled: (_data, _err, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: pamKeys.listResources({ projectId }) });
     }
   });
@@ -98,8 +152,9 @@ export const useUpdatePamAccount = () => {
 
       return data.account;
     },
-    onSuccess: ({ projectId }) => {
+    onSuccess: ({ projectId }, { accountId }) => {
       queryClient.invalidateQueries({ queryKey: pamKeys.listAccounts({ projectId }) });
+      queryClient.invalidateQueries({ queryKey: pamKeys.getAccount(accountId) });
     }
   });
 };
@@ -122,7 +177,8 @@ export const useDeletePamAccount = () => {
 
 export type TAccessPamAccountDTO = {
   accountId: string;
-  accountPath: string;
+  resourceName: string;
+  accountName: string;
   projectId: string;
   duration: string;
 };
@@ -143,18 +199,75 @@ export type TAccessPamAccountResponse = {
 
 export const useAccessPamAccount = () => {
   return useMutation({
-    mutationFn: async ({ accountId, accountPath, projectId, duration }: TAccessPamAccountDTO) => {
+    mutationFn: async ({
+      accountId,
+      resourceName,
+      accountName,
+      projectId,
+      duration
+    }: TAccessPamAccountDTO) => {
       const { data } = await apiRequest.post<TAccessPamAccountResponse>(
         "/api/v1/pam/accounts/access",
         {
           accountId,
-          accountPath,
+          resourceName,
+          accountName,
           projectId,
           duration
         }
       );
 
       return data;
+    }
+  });
+};
+
+// Account Dependencies
+export const useTogglePamAccountDependency = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      accountId,
+      dependencyId,
+      isRotationSyncEnabled
+    }: {
+      accountId: string;
+      dependencyId: string;
+      isRotationSyncEnabled: boolean;
+    }) => {
+      const { data } = await apiRequest.patch(
+        `/api/v1/pam/accounts/${accountId}/dependencies/${dependencyId}`,
+        { isRotationSyncEnabled }
+      );
+
+      return data.dependency;
+    },
+    onSuccess: (_, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: pamKeys.accountDependencies(accountId) });
+      queryClient.invalidateQueries({ queryKey: pamKeys.allResourceDependencies() });
+    }
+  });
+};
+
+export const useDeletePamAccountDependency = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      accountId,
+      dependencyId
+    }: {
+      accountId: string;
+      dependencyId: string;
+    }) => {
+      const { data } = await apiRequest.delete(
+        `/api/v1/pam/accounts/${accountId}/dependencies/${dependencyId}`
+      );
+
+      return data.dependency;
+    },
+    onSuccess: (_, { accountId }) => {
+      queryClient.invalidateQueries({ queryKey: pamKeys.accountDependencies(accountId) });
+      queryClient.invalidateQueries({ queryKey: pamKeys.allResourceDependencies() });
     }
   });
 };

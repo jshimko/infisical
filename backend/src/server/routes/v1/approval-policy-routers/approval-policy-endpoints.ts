@@ -6,15 +6,35 @@ import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { ApprovalPolicyType } from "@app/services/approval-policy/approval-policy-enums";
 import {
-  TApprovalPolicy,
   TApprovalPolicyInputs,
   TCreatePolicyDTO,
   TCreateRequestDTO,
   TUpdatePolicyDTO
 } from "@app/services/approval-policy/approval-policy-types";
+import {
+  CreateCertRequestPolicySchema,
+  UpdateCertRequestPolicySchema
+} from "@app/services/approval-policy/cert-request/cert-request-policy-schemas";
+import {
+  CreateCodeSigningPolicySchema,
+  UpdateCodeSigningPolicySchema
+} from "@app/services/approval-policy/code-signing/code-signing-policy-schemas";
+import {
+  CreatePamAccessPolicySchema,
+  UpdatePamAccessPolicySchema
+} from "@app/services/approval-policy/pam-access/pam-access-policy-schemas";
 import { AuthMode } from "@app/services/auth/auth-type";
 
-export const registerApprovalPolicyEndpoints = <P extends TApprovalPolicy>({
+type TCreatePolicySchema =
+  | typeof CreatePamAccessPolicySchema
+  | typeof CreateCertRequestPolicySchema
+  | typeof CreateCodeSigningPolicySchema;
+type TUpdatePolicySchema =
+  | typeof UpdatePamAccessPolicySchema
+  | typeof UpdateCertRequestPolicySchema
+  | typeof UpdateCodeSigningPolicySchema;
+
+export const registerApprovalPolicyEndpoints = ({
   server,
   policyType,
   createPolicySchema,
@@ -27,22 +47,12 @@ export const registerApprovalPolicyEndpoints = <P extends TApprovalPolicy>({
 }: {
   server: FastifyZodProvider;
   policyType: ApprovalPolicyType;
-  createPolicySchema: z.ZodType<
-    TCreatePolicyDTO & {
-      conditions: P["conditions"]["conditions"];
-      constraints: P["constraints"]["constraints"];
-    }
-  >;
-  updatePolicySchema: z.ZodType<
-    TUpdatePolicyDTO & {
-      conditions?: P["conditions"]["conditions"];
-      constraints?: P["constraints"]["constraints"];
-    }
-  >;
-  policyResponseSchema: z.ZodTypeAny;
+  createPolicySchema: TCreatePolicySchema;
+  updatePolicySchema: TUpdatePolicySchema;
+  policyResponseSchema: z.ZodObject<z.ZodRawShape>;
   createRequestSchema: z.ZodType<TCreateRequestDTO>;
-  requestResponseSchema: z.ZodTypeAny;
-  grantResponseSchema: z.ZodTypeAny;
+  requestResponseSchema: z.ZodObject<z.ZodRawShape>;
+  grantResponseSchema: z.ZodObject<z.ZodRawShape>;
   inputsSchema: z.ZodType<TApprovalPolicyInputs>;
 }) => {
   // Policies
@@ -64,17 +74,21 @@ export const registerApprovalPolicyEndpoints = <P extends TApprovalPolicy>({
     },
     onRequest: verifyAuth([AuthMode.JWT]),
     handler: async (req) => {
-      const { policy } = await server.services.approvalPolicy.create(policyType, req.body, req.permission);
+      const { policy } = await server.services.approvalPolicy.create(
+        policyType,
+        req.body as TCreatePolicyDTO,
+        req.permission
+      );
 
       await server.services.auditLog.createAuditLog({
         ...req.auditLogInfo,
         orgId: req.permission.orgId,
-        projectId: req.body.projectId,
+        projectId: policy.projectId,
         event: {
           type: EventType.APPROVAL_POLICY_CREATE,
           metadata: {
             policyType,
-            name: req.body.name
+            name: policy.name
           }
         }
       });
@@ -183,7 +197,11 @@ export const registerApprovalPolicyEndpoints = <P extends TApprovalPolicy>({
     },
     onRequest: verifyAuth([AuthMode.JWT]),
     handler: async (req) => {
-      const { policy } = await server.services.approvalPolicy.updateById(req.params.policyId, req.body, req.permission);
+      const { policy } = await server.services.approvalPolicy.updateById(
+        req.params.policyId,
+        req.body as TUpdatePolicyDTO,
+        req.permission
+      );
 
       await server.services.auditLog.createAuditLog({
         ...req.auditLogInfo,
@@ -305,18 +323,29 @@ export const registerApprovalPolicyEndpoints = <P extends TApprovalPolicy>({
         })
       }
     },
-    onRequest: verifyAuth([AuthMode.JWT]),
+    onRequest: verifyAuth([AuthMode.JWT, AuthMode.IDENTITY_ACCESS_TOKEN]),
     handler: async (req) => {
-      // To prevent type errors when accessing req.auth.user
-      if (req.auth.authMode !== AuthMode.JWT) {
-        throw new BadRequestError({ message: "You can only request access using JWT auth tokens." });
+      let requesterName: string;
+      let requesterEmail: string;
+      let machineIdentityId: string | undefined;
+
+      if (req.auth.authMode === AuthMode.JWT) {
+        requesterName = `${req.auth.user.firstName ?? ""} ${req.auth.user.lastName ?? ""}`.trim();
+        requesterEmail = req.auth.user.email ?? "";
+      } else if (req.auth.authMode === AuthMode.IDENTITY_ACCESS_TOKEN) {
+        requesterName = req.auth.identityName ?? "Machine Identity";
+        requesterEmail = "";
+        machineIdentityId = req.auth.identityId;
+      } else {
+        throw new BadRequestError({ message: "Unsupported auth mode for approval requests." });
       }
 
       const { request } = await server.services.approvalPolicy.createRequest(
         policyType,
         {
-          requesterName: `${req.auth.user.firstName ?? ""} ${req.auth.user.lastName ?? ""}`.trim(),
-          requesterEmail: req.auth.user.email ?? "",
+          requesterName,
+          requesterEmail,
+          machineIdentityId,
           ...req.body
         },
         req.permission

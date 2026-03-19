@@ -1,6 +1,12 @@
+import { z } from "zod";
+
 import { TOrgPermission } from "@app/lib/types";
 
 import { ActorAuthMethod, ActorType, MfaMethod } from "../auth/auth-type";
+import { OrgWithSubOrgsSchema } from "./org-schema";
+
+/** Root org with accessible sub-orgs (basic info only) */
+export type TOrgWithSubOrgs = z.infer<typeof OrgWithSubOrgsSchema>;
 
 export type TUpdateOrgMembershipDTO = {
   userId: string;
@@ -103,6 +109,8 @@ export type TUpdateOrgDTO = {
 export type TUpgradePrivilegeSystemDTO = Omit<TOrgPermission, "actor">;
 
 export type TGetOrgGroupsDTO = TOrgPermission;
+
+export type TFindAllOrgMembersDTO = TOrgPermission;
 
 export type TListProjectMembershipsByOrgMembershipIdDTO = {
   orgMembershipId: string;

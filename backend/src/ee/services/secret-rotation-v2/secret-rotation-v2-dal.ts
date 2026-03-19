@@ -49,6 +49,7 @@ const baseSecretRotationV2Query = ({
       db.ref("app").withSchema(TableName.AppConnection).as("connectionApp"),
       db.ref("orgId").withSchema(TableName.AppConnection).as("connectionOrgId"),
       db.ref("encryptedCredentials").withSchema(TableName.AppConnection).as("connectionEncryptedCredentials"),
+      db.ref("isAutoRotationEnabled").withSchema(TableName.AppConnection).as("connectionIsAutoRotationEnabled"),
       db.ref("description").withSchema(TableName.AppConnection).as("connectionDescription"),
       db.ref("version").withSchema(TableName.AppConnection).as("connectionVersion"),
       db.ref("gatewayId").withSchema(TableName.AppConnection).as("connectionGatewayId"),
@@ -109,6 +110,7 @@ const expandSecretRotation = <T extends Awaited<ReturnType<typeof baseSecretRota
     connectionGatewayId,
     connectionProjectId,
     connectionIsPlatformManagedCredentials,
+    connectionIsAutoRotationEnabled,
     ...el
   } = secretRotation;
 
@@ -129,7 +131,8 @@ const expandSecretRotation = <T extends Awaited<ReturnType<typeof baseSecretRota
       version: connectionVersion,
       gatewayId: connectionGatewayId,
       projectId: connectionProjectId,
-      isPlatformManagedCredentials: connectionIsPlatformManagedCredentials
+      isPlatformManagedCredentials: connectionIsPlatformManagedCredentials,
+      isAutoRotationEnabled: connectionIsAutoRotationEnabled
     },
     folder: {
       id: folder!.id,
@@ -257,6 +260,7 @@ export const secretRotationV2DALFactory = (
           db.ref("id").withSchema(TableName.ResourceMetadata).as("metadataId"),
           db.ref("key").withSchema(TableName.ResourceMetadata).as("metadataKey"),
           db.ref("value").withSchema(TableName.ResourceMetadata).as("metadataValue"),
+          db.ref("encryptedValue").withSchema(TableName.ResourceMetadata).as("metadataEncryptedValue"),
           db.raw(`DENSE_RANK() OVER (ORDER BY ${TableName.SecretRotationV2}."createdAt" DESC) as rank`)
         );
 
@@ -352,10 +356,11 @@ export const secretRotationV2DALFactory = (
               {
                 key: "metadataId",
                 label: "secretMetadata" as const,
-                mapper: ({ metadataKey, metadataValue, metadataId }) => ({
+                mapper: ({ metadataKey, metadataValue, metadataEncryptedValue, metadataId }) => ({
                   id: metadataId,
                   key: metadataKey,
-                  value: metadataValue
+                  value: metadataValue,
+                  encryptedValue: metadataEncryptedValue
                 })
               }
             ]

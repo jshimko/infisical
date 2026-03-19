@@ -10,7 +10,7 @@ import {
   ProjectPermissionSub
 } from "@app/ee/services/permission/project-permission";
 import { crypto } from "@app/lib/crypto/cryptography";
-import { BadRequestError, NotFoundError } from "@app/lib/errors";
+import { BadRequestError, DatabaseError, NotFoundError } from "@app/lib/errors";
 import { TCertificateBodyDALFactory } from "@app/services/certificate/certificate-body-dal";
 import { TCertificateDALFactory } from "@app/services/certificate/certificate-dal";
 import { TCertificateAuthorityCertDALFactory } from "@app/services/certificate-authority/certificate-authority-cert-dal";
@@ -18,6 +18,7 @@ import { TCertificateAuthorityDALFactory } from "@app/services/certificate-autho
 import { CaCapability, CaType } from "@app/services/certificate-authority/certificate-authority-enums";
 import { caSupportsCapability } from "@app/services/certificate-authority/certificate-authority-maps";
 import { TCertificateAuthoritySecretDALFactory } from "@app/services/certificate-authority/certificate-authority-secret-dal";
+import { TCertificateAuthorityServiceFactory } from "@app/services/certificate-authority/certificate-authority-service";
 import { TCertificateSyncDALFactory } from "@app/services/certificate-sync/certificate-sync-dal";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { TPkiCollectionDALFactory } from "@app/services/pki-collection/pki-collection-dal";
@@ -27,11 +28,14 @@ import { TPkiSyncQueueFactory } from "@app/services/pki-sync/pki-sync-queue";
 import { triggerAutoSyncForCertificate } from "@app/services/pki-sync/pki-sync-utils";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
 import { getProjectKmsCertificateKeyId } from "@app/services/project/project-fns";
+import { TResourceMetadataDALFactory } from "@app/services/resource-metadata/resource-metadata-dal";
 
 import { expandInternalCa, getCaCertChain, rebuildCaCrl } from "../certificate-authority/certificate-authority-fns";
 import {
+  extractCertificateFields,
   generatePkcs12FromCertificate,
   getCertificateCredentials,
+  parseCertificateBody,
   revocationReasonToCrlCode,
   splitPemChain
 } from "./certificate-fns";
@@ -41,6 +45,9 @@ import {
   CertExtendedKeyUsageOIDToName,
   CertKeyUsage,
   CertStatus,
+  TCertificateBasicConstraints,
+  TCertificateFingerprints,
+  TCertificateSubject,
   TDeleteCertDTO,
   TGetCertBodyDTO,
   TGetCertBundleDTO,
@@ -54,7 +61,7 @@ import {
 type TCertificateServiceFactoryDep = {
   certificateDAL: Pick<
     TCertificateDALFactory,
-    "findOne" | "deleteById" | "update" | "find" | "transaction" | "create" | "findById"
+    "findOne" | "deleteById" | "update" | "find" | "transaction" | "create" | "findById" | "findWithFullDetails"
   >;
   certificateSecretDAL: Pick<TCertificateSecretDALFactory, "findOne" | "create">;
   certificateBodyDAL: Pick<TCertificateBodyDALFactory, "findOne" | "create">;
@@ -70,6 +77,8 @@ type TCertificateServiceFactoryDep = {
   certificateSyncDAL: Pick<TCertificateSyncDALFactory, "findPkiSyncIdsByCertificateId">;
   pkiSyncDAL: Pick<TPkiSyncDALFactory, "find">;
   pkiSyncQueue: Pick<TPkiSyncQueueFactory, "queuePkiSyncSyncCertificatesById">;
+  certificateAuthorityService: Pick<TCertificateAuthorityServiceFactory, "revokeCertificate">;
+  resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "find">;
 };
 
 export type TCertificateServiceFactory = ReturnType<typeof certificateServiceFactory>;
@@ -89,18 +98,30 @@ export const certificateServiceFactory = ({
   permissionService,
   certificateSyncDAL,
   pkiSyncDAL,
-  pkiSyncQueue
+  pkiSyncQueue,
+  certificateAuthorityService,
+  resourceMetadataDAL
 }: TCertificateServiceFactoryDep) => {
   /**
    * Return details for certificate with serial number [serialNumber]
    */
   const getCert = async ({ id, serialNumber, actorId, actorAuthMethod, actor, actorOrgId }: TGetCertDTO) => {
-    const cert = id ? await certificateDAL.findById(id) : await certificateDAL.findOne({ serialNumber });
+    // Validation: require either id or serialNumber
+    if (!id && !serialNumber) {
+      throw new BadRequestError({ message: "Either id or serialNumber must be provided" });
+    }
+
+    // Unified lookup - consistent response for both id and serialNumber
+    const certWithDetails = await certificateDAL.findWithFullDetails(id ? { id } : { serialNumber: serialNumber! });
+
+    if (!certWithDetails) {
+      throw new NotFoundError({ message: "Certificate not found" });
+    }
 
     const { permission } = await permissionService.getProjectPermission({
       actor,
       actorId,
-      projectId: cert.projectId,
+      projectId: certWithDetails.projectId,
       actorAuthMethod,
       actorOrgId,
       actionProjectType: ActionProjectType.CertificateManager
@@ -109,14 +130,90 @@ export const certificateServiceFactory = ({
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Read,
       subject(ProjectPermissionSub.Certificates, {
-        commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
-        serialNumber: cert.serialNumber
+        commonName: certWithDetails.commonName,
+        altNames: certWithDetails.altNames ?? undefined,
+        serialNumber: certWithDetails.serialNumber
       })
     );
 
+    // Extract additional details from the joined result while creating clean cert object
+    const { caName, profileName, ...cert } = certWithDetails;
+
+    // Extract subject, fingerprints, and basicConstraints
+    let certSubject: TCertificateSubject | undefined;
+    let fingerprints: TCertificateFingerprints | undefined;
+    let basicConstraints: TCertificateBasicConstraints | undefined;
+
+    // NEW: Try to read from database columns first (avoids KMS decryption)
+    // Check if any parsed field exists (indicates new certificate with stored data)
+    const hasParsedData = cert.fingerprintSha256 || cert.isCA !== null;
+
+    if (hasParsedData) {
+      // Build subject from individual columns
+      certSubject = {
+        commonName: cert.commonName,
+        organization: cert.subjectOrganization || undefined,
+        organizationalUnit: cert.subjectOrganizationalUnit || undefined,
+        country: cert.subjectCountry || undefined,
+        state: cert.subjectState || undefined,
+        locality: cert.subjectLocality || undefined
+      };
+
+      // Build fingerprints from columns
+      if (cert.fingerprintSha256) {
+        fingerprints = {
+          sha256: cert.fingerprintSha256,
+          sha1: cert.fingerprintSha1 || undefined
+        };
+      }
+
+      // Build basic constraints
+      if (cert.isCA !== null && cert.isCA !== undefined) {
+        basicConstraints = {
+          isCA: cert.isCA,
+          pathLength: cert.pathLength !== null ? cert.pathLength : undefined
+        };
+      }
+    }
+
+    // BACKWARD COMPATIBILITY: Fallback to on-demand parsing for old certificates
+    if (!hasParsedData) {
+      const certBody = await certificateBodyDAL.findOne({ certId: cert.id });
+      if (certBody?.encryptedCertificate) {
+        const certificateManagerKeyId = await getProjectKmsCertificateKeyId({
+          projectId: cert.projectId,
+          projectDAL,
+          kmsService
+        });
+
+        const kmsDecryptor = await kmsService.decryptWithKmsKey({
+          kmsId: certificateManagerKeyId
+        });
+
+        const decryptedCert = await kmsDecryptor({
+          cipherTextBlob: certBody.encryptedCertificate
+        });
+
+        const parsed = parseCertificateBody(decryptedCert);
+        certSubject = parsed.subject;
+        fingerprints = parsed.fingerprints;
+        basicConstraints = parsed.basicConstraints;
+      }
+    }
+
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     return {
-      cert
+      cert: {
+        ...cert,
+        subject: certSubject,
+        fingerprints,
+        basicConstraints,
+        caName,
+        profileName,
+        metadata: certMetadata
+      }
     };
   };
 
@@ -189,7 +286,23 @@ export const certificateServiceFactory = ({
       })
     );
 
-    const deletedCert = await certificateDAL.deleteById(cert.id);
+    let deletedCert;
+    try {
+      deletedCert = await certificateDAL.deleteById(cert.id);
+    } catch (err) {
+      const innerError = err instanceof DatabaseError ? (err.error as { code?: string; constraint?: string }) : null;
+      if (innerError?.code === "23503") {
+        if (innerError.constraint === "pki_signers_certificateid_foreign") {
+          throw new BadRequestError({
+            message: "Cannot delete certificate because it is currently in use by a code signing signer"
+          });
+        }
+        throw new BadRequestError({
+          message: "Cannot delete certificate because it is referenced by another resource"
+        });
+      }
+      throw err;
+    }
 
     // Trigger auto sync for PKI syncs connected to this certificate
     await triggerAutoSyncForCertificate(cert.id, {
@@ -277,7 +390,15 @@ export const certificateServiceFactory = ({
     });
 
     // Note: External CA revocation handling would go here for supported CA types
-    // Currently, only internal CAs and ACME CAs support revocation
+    // Currently, only internal CAs, ACME CAs and AWS PCA (external CA) support revocation
+
+    if (ca.externalCa?.type === CaType.AWS_PCA) {
+      await certificateAuthorityService.revokeCertificate({
+        caId: ca.id,
+        serialNumber: cert.serialNumber,
+        reason: revocationReason
+      });
+    }
 
     // rebuild CRL (TODO: move to interval-based cron job)
     // Only rebuild CRL for internal CAs - external CAs manage their own CRLs
@@ -544,6 +665,9 @@ export const certificateServiceFactory = ({
 
     const cert = await certificateDAL.transaction(async (tx) => {
       try {
+        // Extract certificate fields for storage
+        const parsedFields = extractCertificateFields(Buffer.from(certificatePem));
+
         const txCert = await certificateDAL.create(
           {
             status: CertStatus.ACTIVE,
@@ -555,7 +679,8 @@ export const certificateServiceFactory = ({
             notAfter,
             projectId,
             keyUsages,
-            extendedKeyUsages
+            extendedKeyUsages,
+            ...parsedFields
           },
           tx
         );

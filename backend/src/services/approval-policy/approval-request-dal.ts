@@ -1,3 +1,5 @@
+import { Knex } from "knex";
+
 import { TDbClient } from "@app/db";
 import { TableName, TApprovalRequestApprovals } from "@app/db/schemas";
 import { DatabaseError } from "@app/lib/errors";
@@ -136,15 +138,23 @@ export const approvalRequestDALFactory = (db: TDbClient) => {
     }
   };
 
-  const markExpiredRequests = async () => {
+  const markExpiredRequests = async (): Promise<string[]> => {
     try {
-      const result = await db(TableName.ApprovalRequests)
+      const expiredRequestIds = await db(TableName.ApprovalRequests)
         .where("status", ApprovalRequestStatus.Pending)
         .whereNotNull("expiresAt")
         .where("expiresAt", "<", new Date())
-        .update({ status: ApprovalRequestStatus.Expired });
+        .select("id");
 
-      return result;
+      if (expiredRequestIds.length === 0) {
+        return [];
+      }
+
+      const ids = expiredRequestIds.map((r) => r.id);
+
+      await db(TableName.ApprovalRequests).whereIn("id", ids).update({ status: ApprovalRequestStatus.Expired });
+
+      return ids;
     } catch (error) {
       throw new DatabaseError({ error, name: "Mark expired approval requests" });
     }
@@ -174,6 +184,15 @@ export type TApprovalRequestGrantsDALFactory = ReturnType<typeof approvalRequest
 export const approvalRequestGrantsDALFactory = (db: TDbClient) => {
   const orm = ormify(db, TableName.ApprovalRequestGrants);
 
+  const findByIdForUpdate = async (id: string, tx: Knex) => {
+    try {
+      const grant = await tx(TableName.ApprovalRequestGrants).forUpdate().where({ id }).first();
+      return grant || null;
+    } catch (error) {
+      throw new DatabaseError({ error, name: "FindApprovalRequestGrantByIdForUpdate" });
+    }
+  };
+
   const markExpiredGrants = async () => {
     try {
       const result = await db(TableName.ApprovalRequestGrants)
@@ -188,7 +207,7 @@ export const approvalRequestGrantsDALFactory = (db: TDbClient) => {
     }
   };
 
-  return { ...orm, markExpiredGrants };
+  return { ...orm, findByIdForUpdate, markExpiredGrants };
 };
 
 // Approval Request Approvals

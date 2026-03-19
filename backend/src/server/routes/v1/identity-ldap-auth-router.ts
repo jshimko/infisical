@@ -13,6 +13,7 @@ import { IncomingMessage } from "http";
 import LdapStrategy from "passport-ldapauth";
 import { z } from "zod";
 
+import { IdentityAuthMethod } from "@app/db/schemas";
 import { IdentityLdapAuthsSchema } from "@app/db/schemas/identity-ldap-auths";
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
 import { isValidLdapFilter } from "@app/ee/services/ldap-config/ldap-fns";
@@ -22,11 +23,13 @@ import { UnauthorizedError } from "@app/lib/errors";
 import { logger } from "@app/lib/logger";
 import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { slugSchema } from "@app/server/lib/schemas";
+import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { AuthMode } from "@app/services/auth/auth-type";
 import { TIdentityTrustedIp } from "@app/services/identity/identity-types";
 import { AllowedFieldsSchema } from "@app/services/identity-ldap-auth/identity-ldap-auth-types";
 import { isSuperAdmin } from "@app/services/super-admin/super-admin-fns";
+import { PostHogEventTypes } from "@app/services/telemetry/telemetry-types";
 
 export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider) => {
   const appCfg = getConfig();
@@ -36,26 +39,53 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
   await server.register(passport.secureSession());
 
   const getLdapPassportOpts = (req: FastifyRequest, done: any) => {
-    const { identityId } = req.body as {
-      identityId: string;
+    const { ldapConfig } = req;
+
+    if (!ldapConfig) {
+      return done(new UnauthorizedError({ message: "LDAP configuration not found" }));
+    }
+
+    const opts = {
+      server: {
+        url: ldapConfig.url,
+        bindDN: ldapConfig.bindDN,
+        bindCredentials: ldapConfig.bindPass,
+        searchBase: ldapConfig.searchBase,
+        searchFilter: ldapConfig.searchFilter,
+        ...(ldapConfig.caCert
+          ? {
+              tlsOptions: {
+                ca: [ldapConfig.caCert]
+              }
+            }
+          : {})
+      },
+      passReqToCallback: true
     };
 
-    process.nextTick(async () => {
-      try {
-        const { ldapConfig, opts } = await server.services.identityLdapAuth.getLdapConfig(identityId);
-        req.ldapConfig = {
-          ...ldapConfig,
-          isActive: true,
-          groupSearchBase: "",
-          uniqueUserAttribute: "",
-          groupSearchFilter: ""
-        };
+    return done(null, opts);
+  };
 
-        done(null, opts);
-      } catch (err) {
-        logger.error(err, "Error in LDAP verification callback");
-        done(err);
-      }
+  // Promise-based wrapper for passport authentication
+  type TPassportUser = { identityId: string; user: { uid: string; mail?: string } };
+  const authenticateWithPassport = (req: FastifyRequest, res: FastifyReply): Promise<TPassportUser> => {
+    return new Promise((resolve, reject) => {
+      const authMiddleware = passport.authenticate(
+        "ldapauth",
+        { session: false },
+        // @fastify/passport callback signature: (req, res, err, user)
+        ((_req: FastifyRequest, _res: FastifyReply, err: Error | null, user: TPassportUser | false) => {
+          if (err) {
+            return reject(err);
+          }
+          if (!user) {
+            return reject(new UnauthorizedError({ message: "LDAP authentication failed" }));
+          }
+          return resolve(user);
+        }) as any
+      );
+
+      (authMiddleware as any)(req, res);
     });
   };
 
@@ -124,10 +154,10 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
       tags: [ApiDocsTags.LdapAuth],
       description: "Login with LDAP Auth for machine identity",
       body: z.object({
-        identityId: z.string().trim().describe(LDAP_AUTH.LOGIN.identityId),
-        username: z.string().describe(LDAP_AUTH.LOGIN.username),
-        password: z.string().describe(LDAP_AUTH.LOGIN.password),
-        subOrganizationName: slugSchema().optional().describe(LDAP_AUTH.LOGIN.subOrganizationName)
+        identityId: z.string().trim().uuid("Identity ID must be a valid UUID").describe(LDAP_AUTH.LOGIN.identityId),
+        username: z.string().trim().nonempty("Username is required").describe(LDAP_AUTH.LOGIN.username),
+        password: z.string().trim().nonempty("Password is required").describe(LDAP_AUTH.LOGIN.password),
+        organizationSlug: slugSchema().optional().describe(LDAP_AUTH.LOGIN.organizationSlug)
       }),
       response: {
         200: z.object({
@@ -138,36 +168,28 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
         })
       }
     },
-    preValidation: [
-      (req, res) => {
-        const passportAuth = (request: FastifyRequest, reply: FastifyReply) =>
-          (
-            passport.authenticate("ldapauth", {
-              failWithError: true,
-              session: false
-            }) as any
-          )(request, reply);
+    handler: async (req, res) => {
+      const { identityId, username } = req.body;
 
-        const { identityId, username } = req.body;
-        return server.services.identityLdapAuth.withLdapLockout(
-          {
-            identityId,
-            username
-          },
-          () => passportAuth(req, res)
-        );
-      }
-    ],
-    handler: async (req) => {
-      if (!req.passportMachineIdentity?.identityId) {
-        throw new UnauthorizedError({ message: "Invalid request. Missing identity ID or LDAP entry details." });
-      }
+      // Load LDAP config and attach to request for passport strategy
+      const { ldapConfig } = await server.services.identityLdapAuth.getLdapConfig(identityId);
+      req.ldapConfig = {
+        ...ldapConfig,
+        isActive: true,
+        groupSearchBase: "",
+        uniqueUserAttribute: "",
+        groupSearchFilter: ""
+      };
 
-      const { identityId, user } = req.passportMachineIdentity;
+      // Authenticate with passport, wrapped in lockout protection
+      const { identityId: authIdentityId, user } = await server.services.identityLdapAuth.withLdapLockout(
+        { identityId, username },
+        () => authenticateWithPassport(req, res)
+      );
 
       const { accessToken, identityLdapAuth, identity } = await server.services.identityLdapAuth.login({
-        identityId,
-        subOrganizationName: req.body.subOrganizationName
+        identityId: authIdentityId,
+        organizationSlug: req.body.organizationSlug
       });
 
       await server.services.auditLog.createAuditLog({
@@ -176,12 +198,27 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
         event: {
           type: EventType.LOGIN_IDENTITY_LDAP_AUTH,
           metadata: {
-            identityId,
+            identityId: authIdentityId,
             ldapEmail: user.mail,
             ldapUsername: user.uid
           }
         }
       });
+
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.MachineIdentityLogin,
+          distinctId: `identity-${authIdentityId}`,
+          organizationId: identity.orgId,
+          properties: {
+            identityId: authIdentityId,
+            orgId: identity.orgId,
+            authMethod: IdentityAuthMethod.LDAP_AUTH
+          }
+        })
+        .catch((error) => {
+          logger.error(error, `Failed to send telemetry event [identityId=${authIdentityId}]`);
+        });
 
       return {
         accessToken,
@@ -380,6 +417,21 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
         }
       });
 
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.MachineIdentityAuthMethodAttached,
+          distinctId: getTelemetryDistinctId(req),
+          organizationId: req.permission.orgId,
+          properties: {
+            identityId: identityLdapAuth.identityId,
+            orgId: req.permission.orgId,
+            authMethod: IdentityAuthMethod.LDAP_AUTH
+          }
+        })
+        .catch((error) => {
+          logger.error(error, `Failed to send telemetry event [identityId=${identityLdapAuth.identityId}]`);
+        });
+
       return { identityLdapAuth };
     }
   });
@@ -502,6 +554,21 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
         }
       });
 
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.MachineIdentityAuthMethodUpdated,
+          distinctId: getTelemetryDistinctId(req),
+          organizationId: req.permission.orgId,
+          properties: {
+            identityId: identityLdapAuth.identityId,
+            orgId: req.permission.orgId,
+            authMethod: IdentityAuthMethod.LDAP_AUTH
+          }
+        })
+        .catch((error) => {
+          logger.error(error, `Failed to send telemetry event [identityId=${identityLdapAuth.identityId}]`);
+        });
+
       return { identityLdapAuth };
     }
   });
@@ -614,6 +681,21 @@ export const registerIdentityLdapAuthRouter = async (server: FastifyZodProvider)
           }
         }
       });
+
+      void server.services.telemetry
+        .sendPostHogEvents({
+          event: PostHogEventTypes.MachineIdentityAuthMethodRevoked,
+          distinctId: getTelemetryDistinctId(req),
+          organizationId: req.permission.orgId,
+          properties: {
+            identityId: identityLdapAuth.identityId,
+            orgId: req.permission.orgId,
+            authMethod: IdentityAuthMethod.LDAP_AUTH
+          }
+        })
+        .catch((error) => {
+          logger.error(error, `Failed to send telemetry event [identityId=${identityLdapAuth.identityId}]`);
+        });
 
       return { identityLdapAuth };
     }

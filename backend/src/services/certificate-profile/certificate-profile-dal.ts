@@ -14,6 +14,7 @@ import {
   IssuerType,
   TCertificateProfile,
   TCertificateProfileCertificate,
+  TCertificateProfileDefaults,
   TCertificateProfileInsert,
   TCertificateProfileUpdate,
   TCertificateProfileWithConfigs
@@ -28,7 +29,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
     try {
       const dataToInsert = {
         ...data,
-        externalConfigs: data.externalConfigs ? JSON.stringify(data.externalConfigs) : null
+        externalConfigs: data.externalConfigs ? JSON.stringify(data.externalConfigs) : null,
+        defaults: data.defaults ? JSON.stringify(data.defaults) : null
       };
 
       const [insertedProfile] = await (tx || db)(TableName.PkiCertificateProfile).insert(dataToInsert).returning("*");
@@ -37,7 +39,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
         ...insertedProfile,
         externalConfigs: insertedProfile.externalConfigs
           ? (JSON.parse(insertedProfile.externalConfigs) as Record<string, unknown>)
-          : null
+          : null,
+        defaults: (insertedProfile.defaults as TCertificateProfileDefaults) ?? null
       } as TCertificateProfile;
     } catch (error) {
       throw new DatabaseError({ error, name: "Create certificate profile" });
@@ -54,6 +57,10 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
         dataToUpdate.externalConfigs = data.externalConfigs ? JSON.stringify(data.externalConfigs) : null;
       }
 
+      if (data.defaults !== undefined) {
+        dataToUpdate.defaults = data.defaults ? JSON.stringify(data.defaults) : null;
+      }
+
       const [updatedProfile] = await (tx || db)(TableName.PkiCertificateProfile)
         .where({ id })
         .update(dataToUpdate)
@@ -63,7 +70,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
         ...updatedProfile,
         externalConfigs: updatedProfile.externalConfigs
           ? (JSON.parse(updatedProfile.externalConfigs) as Record<string, unknown>)
-          : null
+          : null,
+        defaults: (updatedProfile.defaults as TCertificateProfileDefaults) ?? null
       } as TCertificateProfile;
     } catch (error) {
       throw new DatabaseError({ error, name: "Update certificate profile" });
@@ -92,7 +100,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
         ...certificateProfile,
         externalConfigs: certificateProfile.externalConfigs
           ? (JSON.parse(certificateProfile.externalConfigs) as Record<string, unknown>)
-          : null
+          : null,
+        defaults: (certificateProfile.defaults as TCertificateProfileDefaults) ?? null
       } as TCertificateProfile;
     } catch (error) {
       throw new DatabaseError({ error, name: "Find certificate profile by id" });
@@ -126,6 +135,11 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
           `${TableName.CertificateAuthority}.id`
         )
         .leftJoin(
+          TableName.ExternalCertificateAuthority,
+          `${TableName.CertificateAuthority}.id`,
+          `${TableName.ExternalCertificateAuthority}.caId`
+        )
+        .leftJoin(
           TableName.PkiCertificatePolicy,
           `${TableName.PkiCertificateProfile}.certificatePolicyId`,
           `${TableName.PkiCertificatePolicy}.id`
@@ -153,6 +167,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
           db.ref("projectId").withSchema(TableName.CertificateAuthority).as("caProjectId"),
           db.ref("status").withSchema(TableName.CertificateAuthority).as("caStatus"),
           db.ref("name").withSchema(TableName.CertificateAuthority).as("caName"),
+          db.ref("id").withSchema(TableName.ExternalCertificateAuthority).as("externalCaId"),
+          db.ref("type").withSchema(TableName.ExternalCertificateAuthority).as("externalCaType"),
           db.ref("id").withSchema(TableName.PkiCertificatePolicy).as("policyId"),
           db.ref("projectId").withSchema(TableName.PkiCertificatePolicy).as("policyProjectId"),
           db.ref("name").withSchema(TableName.PkiCertificatePolicy).as("policyName"),
@@ -172,7 +188,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
           db
             .ref("skipDnsOwnershipVerification")
             .withSchema(TableName.PkiAcmeEnrollmentConfig)
-            .as("acmeConfigSkipDnsOwnershipVerification")
+            .as("acmeConfigSkipDnsOwnershipVerification"),
+          db.ref("skipEabBinding").withSchema(TableName.PkiAcmeEnrollmentConfig).as("acmeConfigSkipEabBinding")
         )
         .where(`${TableName.PkiCertificateProfile}.id`, id)
         .first();
@@ -203,7 +220,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
         ? ({
             id: result.acmeConfigId,
             encryptedEabSecret: result.acmeConfigEncryptedEabSecret,
-            skipDnsOwnershipVerification: result.acmeConfigSkipDnsOwnershipVerification ?? false
+            skipDnsOwnershipVerification: result.acmeConfigSkipDnsOwnershipVerification ?? false,
+            skipEabBinding: result.acmeConfigSkipEabBinding ?? false
           } as TCertificateProfileWithConfigs["acmeConfig"])
         : undefined;
 
@@ -212,7 +230,9 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
             id: result.caId,
             projectId: result.caProjectId,
             status: result.caStatus,
-            name: result.caName
+            name: result.caName,
+            isExternal: !!result.externalCaId,
+            externalType: result.externalCaType as string | undefined
           } as TCertificateProfileWithConfigs["certificateAuthority"])
         : undefined;
 
@@ -246,6 +266,7 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
         externalConfigs: result.externalConfigs
           ? (JSON.parse(result.externalConfigs) as Record<string, unknown>)
           : null,
+        defaults: (result.defaults as TCertificateProfileDefaults) ?? null,
         createdAt: result.createdAt,
         updatedAt: result.updatedAt,
         estConfig,
@@ -367,7 +388,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
           db
             .ref("skipDnsOwnershipVerification")
             .withSchema(TableName.PkiAcmeEnrollmentConfig)
-            .as("acmeSkipDnsOwnershipVerification")
+            .as("acmeSkipDnsOwnershipVerification"),
+          db.ref("skipEabBinding").withSchema(TableName.PkiAcmeEnrollmentConfig).as("acmeSkipEabBinding")
         );
 
       if (processedRules) {
@@ -405,7 +427,8 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
         const acmeConfig = result.acmeId
           ? {
               id: result.acmeId as string,
-              skipDnsOwnershipVerification: !!result.acmeSkipDnsOwnershipVerification
+              skipDnsOwnershipVerification: !!result.acmeSkipDnsOwnershipVerification,
+              skipEabBinding: !!result.acmeSkipEabBinding
             }
           : undefined;
 
@@ -434,6 +457,7 @@ export const certificateProfileDALFactory = (db: TDbClient) => {
           externalConfigs: result.externalConfigs
             ? (JSON.parse(result.externalConfigs as string) as Record<string, unknown>)
             : null,
+          defaults: (result.defaults as TCertificateProfileDefaults) ?? null,
           createdAt: result.createdAt,
           updatedAt: result.updatedAt,
           estConfig,

@@ -1,3 +1,5 @@
+import { Knex } from "knex";
+
 import { TDbClient } from "@app/db";
 import { TableName, TCertificates } from "@app/db/schemas";
 import { DatabaseError } from "@app/lib/errors";
@@ -8,6 +10,7 @@ import {
   type ProcessedPermissionRules
 } from "@app/lib/knex/permission-filter-utils";
 import { isUuidV4 } from "@app/lib/validator";
+import { applyMetadataFilter } from "@app/services/resource-metadata/resource-metadata-fns";
 
 import { CertStatus } from "./certificate-types";
 
@@ -53,7 +56,9 @@ export const certificateDALFactory = (db: TDbClient) => {
     status,
     profileIds,
     fromDate,
-    toDate
+    toDate,
+    metadataFilter,
+    extendedKeyUsage
   }: {
     projectId: string;
     friendlyName?: string;
@@ -63,6 +68,8 @@ export const certificateDALFactory = (db: TDbClient) => {
     profileIds?: string[];
     fromDate?: Date;
     toDate?: Date;
+    metadataFilter?: Array<{ key: string; value?: string }>;
+    extendedKeyUsage?: string;
   }) => {
     try {
       interface CountResult {
@@ -137,6 +144,17 @@ export const certificateDALFactory = (db: TDbClient) => {
 
       if (profileIds) {
         query = query.whereIn(`${TableName.Certificate}.profileId`, profileIds);
+      }
+
+      if (metadataFilter && metadataFilter.length > 0) {
+        query = applyMetadataFilter(query, metadataFilter, "certificateId", TableName.Certificate);
+      }
+
+      if (extendedKeyUsage) {
+        // PostgreSQL array containment: extendedKeyUsages @> ARRAY['codeSigning']::text[]
+        query = query.whereRaw(`"${TableName.Certificate}"."extendedKeyUsages" @> ARRAY[?]::text[]`, [
+          extendedKeyUsage
+        ]);
       }
 
       const count = await query.count("*").first();
@@ -348,6 +366,8 @@ export const certificateDALFactory = (db: TDbClient) => {
         profileIds?: string[];
         fromDate?: Date;
         toDate?: Date;
+        metadataFilter?: Array<{ key: string; value?: string }>;
+        extendedKeyUsage?: string;
       }
     >,
     options?: { offset?: number; limit?: number; sort?: [string, "asc" | "desc"][] },
@@ -360,7 +380,18 @@ export const certificateDALFactory = (db: TDbClient) => {
         .select(selectAllTableCols(TableName.Certificate))
         .select(db.ref(`${TableName.CertificateSecret}.certId`).as("privateKeyRef"));
 
-      const { friendlyName, commonName, search, status, profileIds, fromDate, toDate, ...regularFilters } = filter;
+      const {
+        friendlyName,
+        commonName,
+        search,
+        status,
+        profileIds,
+        fromDate,
+        toDate,
+        metadataFilter,
+        extendedKeyUsage,
+        ...regularFilters
+      } = filter;
 
       Object.entries(regularFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -432,6 +463,17 @@ export const certificateDALFactory = (db: TDbClient) => {
         query = query.whereIn(`${TableName.Certificate}.profileId`, profileIds);
       }
 
+      if (metadataFilter && metadataFilter.length > 0) {
+        query = applyMetadataFilter(query, metadataFilter, "certificateId", TableName.Certificate);
+      }
+
+      if (extendedKeyUsage) {
+        // PostgreSQL array containment: extendedKeyUsages @> ARRAY['codeSigning']::text[]
+        query = query.whereRaw(`"${TableName.Certificate}"."extendedKeyUsages" @> ARRAY[?]::text[]`, [
+          extendedKeyUsage
+        ]);
+      }
+
       if (permissionFilters) {
         query = applyProcessedPermissionRulesToQuery(query, TableName.Certificate, permissionFilters) as typeof query;
       }
@@ -460,6 +502,70 @@ export const certificateDALFactory = (db: TDbClient) => {
     }
   };
 
+  type TCertificateWithRequestDetails = TCertificates & {
+    caName?: string | null;
+    profileName?: string | null;
+    caType?: "internal" | "external" | null;
+  };
+
+  // Flexible lookup filter for certificate queries - either id or serialNumber, not both
+  type TCertificateLookupFilter = { id: string; serialNumber?: never } | { id?: never; serialNumber: string };
+
+  const findWithFullDetails = async (
+    filter: TCertificateLookupFilter,
+    tx?: Knex
+  ): Promise<TCertificateWithRequestDetails | undefined> => {
+    try {
+      let query = (tx || db)
+        .replicaNode()(TableName.Certificate)
+        .leftJoin(
+          TableName.CertificateAuthority,
+          `${TableName.Certificate}.caId`,
+          `${TableName.CertificateAuthority}.id`
+        )
+        .leftJoin(
+          TableName.PkiCertificateProfile,
+          `${TableName.Certificate}.profileId`,
+          `${TableName.PkiCertificateProfile}.id`
+        )
+        .leftJoin(
+          TableName.InternalCertificateAuthority,
+          `${TableName.CertificateAuthority}.id`,
+          `${TableName.InternalCertificateAuthority}.caId`
+        )
+        .select(selectAllTableCols(TableName.Certificate))
+        .select(db.ref("name").withSchema(TableName.CertificateAuthority).as("caName"))
+        .select(db.ref("slug").withSchema(TableName.PkiCertificateProfile).as("profileName"))
+        .select(db.ref("id").withSchema(TableName.InternalCertificateAuthority).as("internalCaId"));
+
+      // Dynamic where clause based on filter
+      if (filter.id) {
+        query = query.where(`${TableName.Certificate}.id`, filter.id);
+      } else {
+        query = query.where(`${TableName.Certificate}.serialNumber`, filter.serialNumber);
+      }
+
+      const result = (await query.first()) as
+        | (TCertificateWithRequestDetails & { internalCaId?: string | null })
+        | undefined;
+
+      if (!result) {
+        return undefined;
+      }
+
+      const { internalCaId, ...rest } = result;
+
+      let caType: "internal" | "external" | null = null;
+      if (result.caId) {
+        caType = internalCaId ? "internal" : "external";
+      }
+
+      return { ...rest, caType } as TCertificateWithRequestDetails;
+    } catch (error) {
+      throw new DatabaseError({ error, name: "Find certificate with full details" });
+    }
+  };
+
   return {
     ...certificateOrm,
     countCertificatesInProject,
@@ -471,6 +577,7 @@ export const certificateDALFactory = (db: TDbClient) => {
     findActiveCertificatesByIds,
     findActiveCertificatesForSync,
     findCertificatesEligibleForRenewal,
-    findWithPrivateKeyInfo
+    findWithPrivateKeyInfo,
+    findWithFullDetails
   };
 };

@@ -1,5 +1,4 @@
 import { ReactNode } from "react";
-import { subject } from "@casl/ability";
 import { faEdit } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 
@@ -7,13 +6,14 @@ import { ProjectPermissionCan } from "@app/components/permissions";
 import { GenericFieldLabel } from "@app/components/secret-syncs";
 import { IconButton } from "@app/components/v2";
 import { Badge } from "@app/components/v3";
-import { ProjectPermissionSub } from "@app/context";
 import { ProjectPermissionSecretSyncActions } from "@app/context/ProjectPermissionContext/types";
 import { SECRET_SYNC_INITIAL_SYNC_BEHAVIOR_MAP } from "@app/helpers/secretSyncs";
 import { SecretSync, TSecretSync } from "@app/hooks/api/secretSyncs";
+import { getSecretSyncPermissionSubject } from "@app/lib/fn/permission";
 
 import { AwsParameterStoreSyncOptionsSection } from "./AwsParameterStoreSyncOptionsSection";
 import { AwsSecretsManagerSyncOptionsSection } from "./AwsSecretsManagerSyncOptionsSection";
+import { FlyioSyncOptionsSection } from "./FlyioSyncOptionsSection";
 import { RenderSyncOptionsSection } from "./RenderSyncOptionsSection";
 
 type Props = {
@@ -24,12 +24,11 @@ type Props = {
 export const SecretSyncOptionsSection = ({ secretSync, onEditOptions }: Props) => {
   const {
     destination,
-    syncOptions: { initialSyncBehavior, disableSecretDeletion, keySchema },
-    environment,
-    folder
+    syncOptions: { initialSyncBehavior, disableSecretDeletion, keySchema }
   } = secretSync;
 
   let AdditionalSyncOptionsComponent: ReactNode;
+  let allowEdits: boolean;
 
   switch (destination) {
     case SecretSync.AWSParameterStore:
@@ -44,6 +43,9 @@ export const SecretSyncOptionsSection = ({ secretSync, onEditOptions }: Props) =
       break;
     case SecretSync.Render:
       AdditionalSyncOptionsComponent = <RenderSyncOptionsSection secretSync={secretSync} />;
+      break;
+    case SecretSync.Flyio:
+      AdditionalSyncOptionsComponent = <FlyioSyncOptionsSection secretSync={secretSync} />;
       break;
     case SecretSync.GitHub:
     case SecretSync.GCPSecretManager:
@@ -61,7 +63,6 @@ export const SecretSyncOptionsSection = ({ secretSync, onEditOptions }: Props) =
     case SecretSync.OCIVault:
     case SecretSync.OnePass:
     case SecretSync.Heroku:
-    case SecretSync.Flyio:
     case SecretSync.GitLab:
     case SecretSync.CloudflarePages:
     case SecretSync.CloudflareWorkers:
@@ -76,38 +77,44 @@ export const SecretSyncOptionsSection = ({ secretSync, onEditOptions }: Props) =
     case SecretSync.LaravelForge:
     case SecretSync.Chef:
     case SecretSync.OctopusDeploy:
+    case SecretSync.CircleCI:
+    case SecretSync.AzureEntraIdScim:
       AdditionalSyncOptionsComponent = null;
       break;
     default:
       throw new Error(`Unhandled Destination Review Fields: ${destination}`);
   }
 
-  const permissionSubject =
-    environment && folder
-      ? subject(ProjectPermissionSub.SecretSyncs, {
-          environment: environment.slug,
-          secretPath: folder.path
-        })
-      : ProjectPermissionSub.SecretSyncs;
+  switch (destination) {
+    case SecretSync.AzureEntraIdScim:
+      allowEdits = false;
+      break;
+    default:
+      allowEdits = true;
+  }
+
+  const permissionSubject = getSecretSyncPermissionSubject(secretSync);
 
   return (
     <div>
       <div className="flex w-full flex-col gap-3 rounded-lg border border-mineshaft-600 bg-mineshaft-900 px-4 py-3">
         <div className="flex items-center justify-between border-b border-mineshaft-400 pb-2">
           <h3 className="font-medium text-mineshaft-100">Sync Options</h3>
-          <ProjectPermissionCan I={ProjectPermissionSecretSyncActions.Edit} a={permissionSubject}>
-            {(isAllowed) => (
-              <IconButton
-                variant="plain"
-                colorSchema="secondary"
-                isDisabled={!isAllowed}
-                ariaLabel="Edit sync options"
-                onClick={onEditOptions}
-              >
-                <FontAwesomeIcon icon={faEdit} />
-              </IconButton>
-            )}
-          </ProjectPermissionCan>
+          {allowEdits && (
+            <ProjectPermissionCan I={ProjectPermissionSecretSyncActions.Edit} a={permissionSubject}>
+              {(isAllowed) => (
+                <IconButton
+                  variant="plain"
+                  colorSchema="secondary"
+                  isDisabled={!isAllowed}
+                  ariaLabel="Edit sync options"
+                  onClick={onEditOptions}
+                >
+                  <FontAwesomeIcon icon={faEdit} />
+                </IconButton>
+              )}
+            </ProjectPermissionCan>
+          )}
         </div>
         <div>
           <div className="space-y-3">

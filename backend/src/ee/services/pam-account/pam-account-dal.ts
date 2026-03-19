@@ -1,10 +1,12 @@
 import { Knex } from "knex";
+import RE2 from "re2";
 
 import { TDbClient } from "@app/db";
 import { TableName } from "@app/db/schemas";
 import { DatabaseError } from "@app/lib/errors";
 import { ormify, selectAllTableCols } from "@app/lib/knex";
 import { OrderByDirection } from "@app/lib/types";
+import { applyMetadataFilter } from "@app/services/resource-metadata/resource-metadata-fns";
 
 import { PamAccountOrderBy, PamAccountView } from "./pam-account-enums";
 
@@ -23,7 +25,8 @@ export const pamAccountDALFactory = (db: TDbClient) => {
       offset = 0,
       orderBy = PamAccountOrderBy.Name,
       orderDirection = OrderByDirection.ASC,
-      filterResourceIds
+      filterResourceIds,
+      metadataFilter
     }: {
       projectId: string;
       folderId?: string | null;
@@ -34,6 +37,7 @@ export const pamAccountDALFactory = (db: TDbClient) => {
       orderBy?: PamAccountOrderBy;
       orderDirection?: OrderByDirection;
       filterResourceIds?: string[];
+      metadataFilter?: Array<{ key: string; value?: string }>;
     },
     tx?: Knex
   ) => {
@@ -53,7 +57,10 @@ export const pamAccountDALFactory = (db: TDbClient) => {
 
       if (search) {
         // escape special characters (`%`, `_`) and the escape character itself (`\`)
-        const escapedSearch = search.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+        const escapedSearch = search
+          .replace(new RE2(/\\/g), "\\\\")
+          .replace(new RE2(/%/g), "\\%")
+          .replace(new RE2(/_/g), "\\_");
         const pattern = `%${escapedSearch}%`;
         void query.where((q) => {
           void q
@@ -65,6 +72,10 @@ export const pamAccountDALFactory = (db: TDbClient) => {
 
       if (filterResourceIds && filterResourceIds.length) {
         void query.whereIn(`${TableName.PamAccount}.resourceId`, filterResourceIds);
+      }
+
+      if (metadataFilter && metadataFilter.length > 0) {
+        void applyMetadataFilter(query, metadataFilter, "pamAccountId", TableName.PamAccount);
       }
 
       const countQuery = query.clone().count("*", { as: "count" }).first();
@@ -106,6 +117,44 @@ export const pamAccountDALFactory = (db: TDbClient) => {
     }
   };
 
+  const findByIdWithResourceDetails = async (accountId: string, tx?: Knex) => {
+    try {
+      const dbInstance = tx || db.replicaNode();
+      const result = await dbInstance(TableName.PamAccount)
+        .leftJoin(TableName.PamResource, `${TableName.PamAccount}.resourceId`, `${TableName.PamResource}.id`)
+        .where(`${TableName.PamAccount}.id`, accountId)
+        .select(selectAllTableCols(TableName.PamAccount))
+        .select(
+          db.ref("name").withSchema(TableName.PamResource).as("resourceName"),
+          db.ref("resourceType").withSchema(TableName.PamResource),
+          db.ref("encryptedRotationAccountCredentials").withSchema(TableName.PamResource)
+        )
+        .first();
+
+      if (!result) return null;
+
+      const { resourceId, resourceName, resourceType, encryptedRotationAccountCredentials, ...account } = result as {
+        resourceId: string;
+        resourceName: string;
+        resourceType: string;
+        encryptedRotationAccountCredentials: Buffer | null;
+      } & typeof result;
+
+      return {
+        ...account,
+        resourceId,
+        resource: {
+          id: resourceId,
+          name: resourceName,
+          resourceType,
+          encryptedRotationAccountCredentials
+        }
+      };
+    } catch (error) {
+      throw new DatabaseError({ error, name: "Find PAM account by ID with resource details" });
+    }
+  };
+
   const findAccountsDueForRotation = async (tx?: Knex) => {
     const dbClient = tx || db.replicaNode();
 
@@ -122,9 +171,26 @@ export const pamAccountDALFactory = (db: TDbClient) => {
     return accounts;
   };
 
+  const findMetadataByAccountIds = async (accountIds: string[], tx?: Knex) => {
+    if (!accountIds.length) return {};
+    const rows = await (tx || db.replicaNode())(TableName.ResourceMetadata)
+      .select("id", "key", "value", "pamAccountId")
+      .whereIn("pamAccountId", accountIds);
+    const byAccountId: Record<string, Array<{ id: string; key: string; value: string }>> = {};
+    for (const row of rows) {
+      if (row.pamAccountId) {
+        if (!byAccountId[row.pamAccountId]) byAccountId[row.pamAccountId] = [];
+        byAccountId[row.pamAccountId].push({ id: row.id, key: row.key, value: row.value || "" });
+      }
+    }
+    return byAccountId;
+  };
+
   return {
     ...orm,
     findByProjectIdWithResourceDetails,
-    findAccountsDueForRotation
+    findByIdWithResourceDetails,
+    findAccountsDueForRotation,
+    findMetadataByAccountIds
   };
 };

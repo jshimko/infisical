@@ -1,4 +1,20 @@
-import { CertExtendedKeyUsage, CertKeyUsage, CertStatus } from "./enums";
+import { CertExtendedKeyUsage, CertKeyUsage, CertSource, CertStatus } from "./enums";
+
+export type TCertificateSubject = {
+  commonName?: string;
+  organization?: string;
+  organizationalUnit?: string;
+  country?: string;
+  state?: string;
+  locality?: string;
+};
+
+export type TCertificateFingerprints = {
+  sha256: string;
+  sha1?: string;
+};
+
+export type TCertificateSource = CertSource | null;
 
 export type TCertificate = {
   id: string;
@@ -21,6 +37,28 @@ export type TCertificate = {
   renewedByCertificateId?: string;
   renewalError?: string;
   hasPrivateKey?: boolean;
+  keyAlgorithm?: string | null;
+  signatureAlgorithm?: string | null;
+  subject?: TCertificateSubject;
+  fingerprints?: TCertificateFingerprints;
+  basicConstraints?: {
+    isCA: boolean;
+    pathLength?: number;
+  };
+  caName?: string | null;
+  profileName?: string | null;
+  caType?: "internal" | "external" | null;
+  source?: TCertificateSource;
+  discoveryMetadata?: {
+    issuerCommonName?: string;
+    issuerOrganization?: string;
+    [key: string]: unknown;
+  } | null;
+  metadata?: Array<{ key: string; value: string }>;
+};
+
+export type TCertificateByIdResponse = {
+  certificate: TCertificate;
 };
 
 export type TDeleteCertDTO = {
@@ -87,15 +125,20 @@ export type TUnifiedCertificateIssuanceDTO = {
   projectId: string;
   csr?: string;
   attributes?: {
-    commonName?: string;
+    commonName?: string | null;
+    organization?: string | null;
+    organizationUnit?: string | null;
+    country?: string | null;
+    state?: string | null;
+    locality?: string | null;
     keyUsages?: string[];
     extendedKeyUsages?: string[];
     altNames?: Array<{
       type: string;
       value: string;
     }>;
-    signatureAlgorithm: string;
-    keyAlgorithm: string;
+    signatureAlgorithm?: string;
+    keyAlgorithm?: string;
     subjectAlternativeNames?: Array<{
       type: string;
       value: string;
@@ -105,6 +148,7 @@ export type TUnifiedCertificateIssuanceDTO = {
     notAfter?: string;
   };
   removeRootsFromChain?: boolean;
+  metadata?: Array<{ key: string; value: string }>;
 };
 
 export type TUnifiedCertificateResponse = {
@@ -121,7 +165,7 @@ export type TUnifiedCertificateResponse = {
 
 export type TCertificateRequestResponse = {
   certificateRequestId: string;
-  status: "pending" | "issued" | "failed";
+  status: "pending_approval" | "pending" | "issued" | "failed" | "rejected";
   projectId: string;
 };
 
@@ -130,22 +174,43 @@ export type TUnifiedCertificateIssuanceResponse =
   | TCertificateRequestResponse;
 
 export type TCertificateRequestDetails = {
-  status: "pending" | "issued" | "failed";
-  certificate: TCertificate | null;
+  status: "pending" | "issued" | "failed" | "pending_approval" | "rejected";
+  certificate: string | null;
+  certificateId: string | null;
+  privateKey: string | null;
+  serialNumber: string | null;
   errorMessage: string | null;
+  commonName: string | null;
+  organization: string | null;
+  organizationalUnit: string | null;
+  country: string | null;
+  state: string | null;
+  locality: string | null;
+  basicConstraints: {
+    isCA: boolean;
+    pathLength?: number;
+  } | null;
   createdAt: string;
   updatedAt: string;
+  metadata?: Array<{ key: string; value: string }>;
+};
+
+export type TUpdateCertificateDTO = {
+  certificateId: string;
+  projectId: string;
+  metadata: Array<{ key: string; value: string }>;
 };
 
 export type TCertificateRequestListItem = {
   id: string;
-  status: "pending" | "issued" | "failed";
+  status: "pending_approval" | "pending" | "issued" | "failed" | "rejected";
   commonName: string | null;
   altNames: string | null;
   profileId: string | null;
   profileName: string | null;
   caId: string | null;
   certificateId: string | null;
+  approvalRequestId: string | null;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
@@ -172,4 +237,5 @@ export type TListCertificateRequestsParams = {
   profileIds?: string[];
   sortBy?: string;
   sortOrder?: "asc" | "desc";
+  metadataFilter?: Array<{ key: string; value?: string }>;
 };

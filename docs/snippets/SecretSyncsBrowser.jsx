@@ -4,7 +4,7 @@ export const SecretSyncsBrowser = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
 
-  const categories = ['All', 'Cloud Providers', 'Databases', 'CI/CD', 'Monitoring', 'Data Analytics', 'Hosting', 'DevOps Tools', 'Security'];
+  const categories = ['All', 'Cloud Providers', 'Databases', 'CI/CD', 'Monitoring', 'Identity & Auth', 'Data Analytics', 'Hosting', 'DevOps Tools', 'Security'];
 
   const syncs = [
     {"name": "AWS Parameter Store", "slug": "aws-parameter-store", "path": "/integrations/secret-syncs/aws-parameter-store", "description": "Learn how to sync secrets from Infisical to AWS Parameter Store.", "category": "Cloud Providers"},
@@ -24,6 +24,7 @@ export const SecretSyncsBrowser = () => {
     {"name": "DigitalOcean App Platform", "slug": "digital-ocean-app-platform", "path": "/integrations/secret-syncs/digital-ocean-app-platform", "description": "Learn how to sync secrets from Infisical to DigitalOcean App Platform.", "category": "Hosting"},
     {"name": "Supabase", "slug": "supabase", "path": "/integrations/secret-syncs/supabase", "description": "Learn how to sync secrets from Infisical to Supabase.", "category": "Databases"},
     {"name": "Checkly", "slug": "checkly", "path": "/integrations/secret-syncs/checkly", "description": "Learn how to sync secrets from Infisical to Checkly.", "category": "Monitoring"},
+    {"name": "CircleCI", "slug": "circleci", "path": "/integrations/secret-syncs/circleci", "description": "Learn how to sync secrets from Infisical to CircleCI.", "category": "CI/CD"},
     {"name": "GitHub", "slug": "github", "path": "/integrations/secret-syncs/github", "description": "Learn how to sync secrets from Infisical to GitHub.", "category": "CI/CD"},
     {"name": "GitLab", "slug": "gitlab", "path": "/integrations/secret-syncs/gitlab", "description": "Learn how to sync secrets from Infisical to GitLab.", "category": "CI/CD"},
     {"name": "TeamCity", "slug": "teamcity", "path": "/integrations/secret-syncs/teamcity", "description": "Learn how to sync secrets from Infisical to TeamCity.", "category": "CI/CD"},
@@ -40,7 +41,8 @@ export const SecretSyncsBrowser = () => {
     {"name": "Laravel Forge", "slug": "laravel-forge", "path": "/integrations/secret-syncs/laravel-forge", "description": "Learn how to sync secrets from Infisical to Laravel Forge.", "category": "Hosting"},
     {"name": "Chef", "slug": "chef", "path": "/integrations/secret-syncs/chef", "description": "Learn how to sync secrets from Infisical to Chef.", "category": "DevOps Tools"},
     {"name": "Northflank", "slug": "northflank", "path": "/integrations/secret-syncs/northflank", "description": "Learn how to sync secrets from Infisical to Northflank projects.", "category": "Hosting"},
-    {"name": "Octopus Deploy", "slug": "octopus-deploy", "path": "/integrations/secret-syncs/octopus-deploy", "description": "Learn how to sync secrets from Infisical to Octopus Deploy.", "category": "DevOps Tools"}
+    {"name": "Octopus Deploy", "slug": "octopus-deploy", "path": "/integrations/secret-syncs/octopus-deploy", "description": "Learn how to sync secrets from Infisical to Octopus Deploy.", "category": "DevOps Tools"},
+    {"name": "Azure Entra ID SCIM", "slug": "azure-entra-id-scim", "path": "/integrations/secret-syncs/azure-entra-id-scim", "description": "Learn how to sync SCIM provisioning tokens from Infisical to Azure Entra ID.", "category": "Identity & Auth"}
   ].sort(function(a, b) {
       return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
   });

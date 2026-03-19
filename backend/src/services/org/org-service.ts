@@ -20,6 +20,7 @@ import {
   OrgPermissionActions,
   OrgPermissionGroupActions,
   OrgPermissionSecretShareAction,
+  OrgPermissionSsoActions,
   OrgPermissionSubjects
 } from "@app/ee/services/permission/org-permission";
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
@@ -63,11 +64,13 @@ import { deleteOrgMembershipsFn } from "./org-fns";
 import {
   TDeleteOrgMembershipDTO,
   TDeleteOrgMembershipsDTO,
+  TFindAllOrgMembersDTO,
   TFindAllWorkspacesDTO,
   TFindOrgMembersByEmailDTO,
   TGetOrgGroupsDTO,
   TGetOrgMembershipDTO,
   TListProjectMembershipsByOrgMembershipIdDTO,
+  TOrgWithSubOrgs,
   TResendOrgMemberInvitationDTO,
   TUpdateOrgDTO,
   TUpdateOrgMembershipDTO,
@@ -201,6 +204,10 @@ export const orgServiceFactory = ({
     return orgs.filter((org) => org.userStatus !== "invited");
   };
 
+  const findAllAccessibleOrganizationsWithSubOrgs = async (userId: string): Promise<TOrgWithSubOrgs[]> => {
+    return orgDAL.listOrganizationsWithSubOrgs({ actorId: userId });
+  };
+
   /*
    * Get all organization an identity is part of
    * */
@@ -210,22 +217,18 @@ export const orgServiceFactory = ({
     return org;
   };
   /*
-   * Get all workspace members
+   * Get all organization members
    * */
-  const findAllOrgMembers = async (
-    userId: string,
-    orgId: string,
-    actorAuthMethod: ActorAuthMethod,
-    actorOrgId: string
-  ) => {
+  const findAllOrgMembers = async ({ actor, actorId, orgId, actorAuthMethod, actorOrgId }: TFindAllOrgMembersDTO) => {
     const { permission } = await permissionService.getOrgPermission({
-      actor: ActorType.USER,
-      actorId: userId,
+      actor,
+      actorId,
       orgId,
       actorAuthMethod,
       actorOrgId,
       scope: OrganizationActionScope.Any
     });
+
     ForbiddenError.from(permission).throwUnlessCan(OrgPermissionActions.Read, OrgPermissionSubjects.Member);
 
     const members = await orgDAL.findAllOrgMembers(orgId);
@@ -477,7 +480,7 @@ export const orgServiceFactory = ({
         throw new BadRequestError({
           message: "Failed to enforce/un-enforce SSO due to plan restriction. Upgrade plan to enforce/un-enforce SSO."
         });
-      ForbiddenError.from(permission).throwUnlessCan(OrgPermissionActions.Edit, OrgPermissionSubjects.Sso);
+      ForbiddenError.from(permission).throwUnlessCan(OrgPermissionSsoActions.Edit, OrgPermissionSubjects.Sso);
     }
 
     if (scimEnabled !== undefined) {
@@ -500,7 +503,7 @@ export const orgServiceFactory = ({
           message: "Failed to enforce Google SSO due to plan restriction. Upgrade plan to enforce Google SSO."
         });
       }
-      ForbiddenError.from(permission).throwUnlessCan(OrgPermissionActions.Edit, OrgPermissionSubjects.Sso);
+      ForbiddenError.from(permission).throwUnlessCan(OrgPermissionSsoActions.Edit, OrgPermissionSubjects.Sso);
     }
 
     if (authEnforced && googleSsoAuthEnforced) {
@@ -1296,6 +1299,7 @@ export const orgServiceFactory = ({
     findAllWorkspaces,
     addGhostUser,
     updateOrgMembership,
+    findAllAccessibleOrganizationsWithSubOrgs,
     // incident contacts
     findIncidentContacts,
     createIncidentContact,

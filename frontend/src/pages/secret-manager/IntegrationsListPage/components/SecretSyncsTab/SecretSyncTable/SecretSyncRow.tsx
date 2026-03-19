@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from "react";
-import { subject } from "@casl/ability";
 import {
   faBan,
   faCalendarCheck,
@@ -40,11 +39,12 @@ import {
 } from "@app/components/v2";
 import { Badge } from "@app/components/v3";
 import { ROUTE_PATHS } from "@app/const/routes";
-import { ProjectPermissionSub, useOrganization } from "@app/context";
+import { useOrganization } from "@app/context";
 import { ProjectPermissionSecretSyncActions } from "@app/context/ProjectPermissionContext/types";
 import { SECRET_SYNC_MAP } from "@app/helpers/secretSyncs";
 import { useToggle } from "@app/hooks";
 import { SecretSyncStatus, TSecretSync, useSecretSyncOption } from "@app/hooks/api/secretSyncs";
+import { getSecretSyncPermissionSubject } from "@app/lib/fn/permission";
 
 import { SecretSyncDestinationCol } from "./SecretSyncDestinationCol";
 import { SecretSyncTableCell } from "./SecretSyncTableCell";
@@ -119,13 +119,7 @@ export const SecretSyncRow = ({
 
   const destinationDetails = SECRET_SYNC_MAP[destination];
 
-  const permissionSubject =
-    environment && folder
-      ? subject(ProjectPermissionSub.SecretSyncs, {
-          environment: environment.slug,
-          secretPath: folder.path
-        })
-      : ProjectPermissionSub.SecretSyncs;
+  const permissionSubject = getSecretSyncPermissionSubject(secretSync);
 
   return (
     <Tr
@@ -330,36 +324,38 @@ export const SecretSyncRow = ({
                   )}
                 </ProjectPermissionCan>
               )}
-              <ProjectPermissionCan
-                I={ProjectPermissionSecretSyncActions.RemoveSecrets}
-                a={permissionSubject}
-              >
-                {(isAllowed: boolean) => (
-                  <DropdownMenuItem
-                    icon={<FontAwesomeIcon icon={faEraser} />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTriggerRemoveSecrets(secretSync);
-                    }}
-                    isDisabled={!isAllowed}
-                  >
-                    <Tooltip
-                      position="left"
-                      sideOffset={42}
-                      content={`Remove secrets synced by Infisical from this ${destinationName} destination.`}
+              {syncOption?.canRemoveSecretsOnDeletion && (
+                <ProjectPermissionCan
+                  I={ProjectPermissionSecretSyncActions.RemoveSecrets}
+                  a={permissionSubject}
+                >
+                  {(isAllowed: boolean) => (
+                    <DropdownMenuItem
+                      icon={<FontAwesomeIcon icon={faEraser} />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onTriggerRemoveSecrets(secretSync);
+                      }}
+                      isDisabled={!isAllowed}
                     >
-                      <div className="flex h-full w-full items-center justify-between gap-1">
-                        <span>Remove Secrets</span>
-                        <FontAwesomeIcon
-                          className="text-bunker-300"
-                          size="sm"
-                          icon={faInfoCircle}
-                        />
-                      </div>
-                    </Tooltip>
-                  </DropdownMenuItem>
-                )}
-              </ProjectPermissionCan>
+                      <Tooltip
+                        position="left"
+                        sideOffset={42}
+                        content={`Remove secrets synced by Infisical from this ${destinationName} destination.`}
+                      >
+                        <div className="flex h-full w-full items-center justify-between gap-1">
+                          <span>Remove Secrets</span>
+                          <FontAwesomeIcon
+                            className="text-bunker-300"
+                            size="sm"
+                            icon={faInfoCircle}
+                          />
+                        </div>
+                      </Tooltip>
+                    </DropdownMenuItem>
+                  )}
+                </ProjectPermissionCan>
+              )}
               <ProjectPermissionCan
                 I={ProjectPermissionSecretSyncActions.Edit}
                 a={permissionSubject}

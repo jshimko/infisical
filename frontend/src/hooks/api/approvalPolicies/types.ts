@@ -1,5 +1,7 @@
 export enum ApprovalPolicyType {
-  PamAccess = "pam-access"
+  PamAccess = "pam-access",
+  CertRequest = "cert-request",
+  CertCodeSigning = "cert-code-signing"
 }
 
 export enum ApproverType {
@@ -18,7 +20,8 @@ export type ApprovalPolicyStep = {
 };
 
 export type PamAccessPolicyConditions = {
-  accountPaths: string[];
+  resourceNames?: string[];
+  accountNames?: string[];
 }[];
 
 export type PamAccessPolicyConstraints = {
@@ -26,6 +29,19 @@ export type PamAccessPolicyConstraints = {
     min: string;
     max: string;
   };
+};
+
+export type CertRequestPolicyConditions = {
+  profileNames: string[];
+}[];
+
+export type CertRequestPolicyConstraints = Record<string, never>;
+
+export type CodeSigningPolicyConditions = Record<string, never>[];
+
+export type CodeSigningPolicyConstraints = {
+  maxWindowDuration?: string;
+  maxSignings?: number;
 };
 
 export type TApprovalPolicy = {
@@ -36,13 +52,20 @@ export type TApprovalPolicy = {
   type: ApprovalPolicyType;
   conditions: {
     version: number;
-    conditions: PamAccessPolicyConditions;
+    conditions:
+      | PamAccessPolicyConditions
+      | CertRequestPolicyConditions
+      | CodeSigningPolicyConditions;
   };
   constraints: {
     version: number;
-    constraints: PamAccessPolicyConstraints;
+    constraints:
+      | PamAccessPolicyConstraints
+      | CertRequestPolicyConstraints
+      | CodeSigningPolicyConstraints;
   };
   steps: ApprovalPolicyStep[];
+  bypassForMachineIdentities?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -52,9 +75,13 @@ export type TCreateApprovalPolicyDTO = {
   projectId: string;
   name: string;
   maxRequestTtl?: string | null;
-  conditions: PamAccessPolicyConditions;
-  constraints: PamAccessPolicyConstraints;
+  conditions: PamAccessPolicyConditions | CertRequestPolicyConditions | CodeSigningPolicyConditions;
+  constraints:
+    | PamAccessPolicyConstraints
+    | CertRequestPolicyConstraints
+    | CodeSigningPolicyConstraints;
   steps: ApprovalPolicyStep[];
+  bypassForMachineIdentities?: boolean;
 };
 
 export type TUpdateApprovalPolicyDTO = {
@@ -62,9 +89,16 @@ export type TUpdateApprovalPolicyDTO = {
   policyId: string;
   name?: string;
   maxRequestTtl?: string | null;
-  conditions?: PamAccessPolicyConditions;
-  constraints?: PamAccessPolicyConstraints;
+  conditions?:
+    | PamAccessPolicyConditions
+    | CertRequestPolicyConditions
+    | CodeSigningPolicyConditions;
+  constraints?:
+    | PamAccessPolicyConstraints
+    | CertRequestPolicyConstraints
+    | CodeSigningPolicyConstraints;
   steps?: ApprovalPolicyStep[];
+  bypassForMachineIdentities?: boolean;
 };
 
 export type TGetApprovalPolicyByIdDTO = {
@@ -85,7 +119,7 @@ export type TDeleteApprovalPolicyDTO = {
 export type TCheckPolicyMatchDTO = {
   policyType: ApprovalPolicyType;
   projectId: string;
-  inputs: { accountPath: string };
+  inputs: { resourceName: string; accountName: string } | { profileName: string };
 };
 
 export type TCheckPolicyMatchResult = {

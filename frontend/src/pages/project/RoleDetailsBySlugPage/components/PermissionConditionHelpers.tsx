@@ -1,5 +1,5 @@
 import { GlobPermissionInfo } from "@app/components/permissions";
-import { SelectItem } from "@app/components/v2";
+import { SelectItem } from "@app/components/v3";
 import { PermissionConditionOperators } from "@app/context/ProjectPermissionContext/types";
 
 export const getConditionOperatorHelperInfo = (type: PermissionConditionOperators) => {
@@ -10,6 +10,8 @@ export const getConditionOperatorHelperInfo = (type: PermissionConditionOperator
       return "Value should not equal specified value.";
     case PermissionConditionOperators.$IN:
       return "List of comma-separated values that match a given value.";
+    case PermissionConditionOperators.$ALL:
+      return "List of comma-separated values that must all be present.";
     case PermissionConditionOperators.$GLOB:
       return <GlobPermissionInfo />;
     default:
@@ -21,9 +23,17 @@ export const getConditionOperatorHelperInfo = (type: PermissionConditionOperator
 export const renderOperatorSelectItems = (type: string) => {
   switch (type) {
     case "secretTags":
-      return <SelectItem value={PermissionConditionOperators.$IN}>Contains</SelectItem>;
+      return (
+        <>
+          <SelectItem value={PermissionConditionOperators.$IN}>Contains</SelectItem>
+          <SelectItem value={PermissionConditionOperators.$ALL}>Contains All</SelectItem>
+        </>
+      );
     case "identityId":
     case "connectionId":
+    case "metadataKey":
+    case "metadataValue":
+    case "role":
       return (
         <>
           <SelectItem value={PermissionConditionOperators.$EQ}>Equal</SelectItem>

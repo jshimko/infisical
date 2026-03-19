@@ -8,9 +8,20 @@ export enum ApprovalGrantStatus {
 
 // PAM Access Grant Attributes
 export type PamAccessGrantAttributes = {
-  accountPath: string;
   accessDuration: string;
+  resourceName?: string;
+  accountName?: string;
 };
+
+// Code Signing Grant Attributes
+export type CodeSigningGrantAttributes = {
+  signerId: string;
+  signerName: string;
+  maxSignings?: number;
+  windowStart?: string;
+};
+
+export type TApprovalGrantAttributes = PamAccessGrantAttributes | CodeSigningGrantAttributes;
 
 // Base Grant Type
 export type TApprovalGrant = {
@@ -18,11 +29,12 @@ export type TApprovalGrant = {
   projectId: string;
   requestId: string | null;
   granteeUserId: string | null;
+  granteeMachineIdentityId: string | null;
   revokedByUserId: string | null;
   revocationReason: string | null;
   status: ApprovalGrantStatus;
   type: ApprovalPolicyType;
-  attributes: PamAccessGrantAttributes;
+  attributes: TApprovalGrantAttributes;
   createdAt: string;
   expiresAt: string | null;
   revokedAt: string | null;

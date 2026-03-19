@@ -9,6 +9,9 @@ import {
   applyProcessedPermissionRulesToQuery,
   type ProcessedPermissionRules
 } from "@app/lib/knex/permission-filter-utils";
+import { applyMetadataFilter } from "@app/services/resource-metadata/resource-metadata-fns";
+
+import { CertificateRequestStatus } from "./certificate-request-types";
 
 type TCertificateRequestWithCertificate = TCertificateRequests & {
   certificate: TCertificates | null;
@@ -122,12 +125,13 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
       fromDate?: Date;
       toDate?: Date;
       profileIds?: string[];
+      metadataFilter?: Array<{ key: string; value?: string }>;
     } = {},
     processedRules?: ProcessedPermissionRules,
     tx?: Knex
   ): Promise<TCertificateRequests[]> => {
     try {
-      const { offset = 0, limit = 20, search, status, fromDate, toDate, profileIds } = options;
+      const { offset = 0, limit = 20, search, status, fromDate, toDate, profileIds, metadataFilter } = options;
 
       let query = (tx || db)(TableName.CertificateRequests)
         .leftJoin(
@@ -147,7 +151,7 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
         query = query.where((builder) => {
           void builder
             .whereILike(`${TableName.CertificateRequests}.commonName`, `%${sanitizedSearch}%`)
-            .orWhereILike(`${TableName.CertificateRequests}.altNames`, `%${sanitizedSearch}%`);
+            .orWhereRaw(`"${TableName.CertificateRequests}"."altNames"::text ILIKE ?`, [`%${sanitizedSearch}%`]);
         });
       }
 
@@ -166,6 +170,10 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
       query = query
         .select(selectAllTableCols(TableName.CertificateRequests))
         .select(db.ref("slug").withSchema(TableName.PkiCertificateProfile).as("profileName"));
+
+      if (metadataFilter && metadataFilter.length > 0) {
+        query = applyMetadataFilter(query, metadataFilter, "certificateRequestId", TableName.CertificateRequests);
+      }
 
       if (processedRules) {
         query = applyProcessedPermissionRulesToQuery(
@@ -191,12 +199,13 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
       fromDate?: Date;
       toDate?: Date;
       profileIds?: string[];
+      metadataFilter?: Array<{ key: string; value?: string }>;
     } = {},
     processedRules?: ProcessedPermissionRules,
     tx?: Knex
   ): Promise<number> => {
     try {
-      const { search, status, fromDate, toDate, profileIds } = options;
+      const { search, status, fromDate, toDate, profileIds, metadataFilter } = options;
 
       let query = (tx || db)(TableName.CertificateRequests)
         .leftJoin(
@@ -215,7 +224,7 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
         query = query.where((builder) => {
           void builder
             .whereILike(`${TableName.CertificateRequests}.commonName`, `%${sanitizedSearch}%`)
-            .orWhereILike(`${TableName.CertificateRequests}.altNames`, `%${sanitizedSearch}%`);
+            .orWhereRaw(`"${TableName.CertificateRequests}"."altNames"::text ILIKE ?`, [`%${sanitizedSearch}%`]);
         });
       }
 
@@ -229,6 +238,10 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
 
       if (toDate) {
         query = query.where(`${TableName.CertificateRequests}.createdAt`, "<=", toDate);
+      }
+
+      if (metadataFilter && metadataFilter.length > 0) {
+        query = applyMetadataFilter(query, metadataFilter, "certificateRequestId", TableName.CertificateRequests);
       }
 
       if (processedRules) {
@@ -259,6 +272,7 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
       profileIds?: string[];
       sortBy?: string;
       sortOrder?: "asc" | "desc";
+      metadataFilter?: Array<{ key: string; value?: string }>;
     } = {},
     processedRules?: ProcessedPermissionRules,
     tx?: Knex
@@ -273,7 +287,8 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
         toDate,
         profileIds,
         sortBy = "createdAt",
-        sortOrder = "desc"
+        sortOrder = "desc",
+        metadataFilter
       } = options;
 
       let query: Knex.QueryBuilder = (tx || db)(TableName.CertificateRequests)
@@ -306,7 +321,7 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
         query = query.where((builder) => {
           void builder
             .whereILike(`${TableName.CertificateRequests}.commonName`, `%${sanitizedSearch}%`)
-            .orWhereILike(`${TableName.CertificateRequests}.altNames`, `%${sanitizedSearch}%`);
+            .orWhereRaw(`"${TableName.CertificateRequests}"."altNames"::text ILIKE ?`, [`%${sanitizedSearch}%`]);
         });
       }
 
@@ -320,6 +335,10 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
 
       if (toDate) {
         query = query.where(`${TableName.CertificateRequests}.createdAt`, "<=", toDate);
+      }
+
+      if (metadataFilter && metadataFilter.length > 0) {
+        query = applyMetadataFilter(query, metadataFilter, "certificateRequestId", TableName.CertificateRequests);
       }
 
       if (processedRules) {
@@ -357,6 +376,23 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
     }
   };
 
+  const markExpiredApprovalRequests = async (expiredApprovalRequestIds: string[]): Promise<number> => {
+    try {
+      if (expiredApprovalRequestIds.length === 0) {
+        return 0;
+      }
+
+      const result = await db(TableName.CertificateRequests)
+        .whereIn("approvalRequestId", expiredApprovalRequestIds)
+        .where("status", CertificateRequestStatus.PENDING_APPROVAL)
+        .update({ status: CertificateRequestStatus.REJECTED, errorMessage: "Approval request expired" });
+
+      return result;
+    } catch (error) {
+      throw new DatabaseError({ error, name: "Mark certificate requests with expired approval" });
+    }
+  };
+
   return {
     ...certificateRequestOrm,
     findByIdWithCertificate,
@@ -365,6 +401,7 @@ export const certificateRequestDALFactory = (db: TDbClient) => {
     attachCertificate,
     findByProjectId,
     countByProjectId,
-    findByProjectIdWithCertificate
+    findByProjectIdWithCertificate,
+    markExpiredApprovalRequests
   };
 };

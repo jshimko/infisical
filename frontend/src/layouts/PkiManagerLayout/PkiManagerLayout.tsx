@@ -52,6 +52,21 @@ export const PkiManagerLayout = () => {
                   {({ isActive }) => <Tab value={isActive ? "selected" : ""}>Certificates</Tab>}
                 </Link>
                 <Link
+                  to="/organizations/$orgId/projects/cert-manager/$projectId/discovery"
+                  params={{
+                    orgId: currentOrg.id,
+                    projectId: currentProject.id
+                  }}
+                >
+                  {({ isActive }) => (
+                    <Tab
+                      value={isActive || location.pathname.match(/\/discovery/) ? "selected" : ""}
+                    >
+                      Discovery
+                    </Tab>
+                  )}
+                </Link>
+                <Link
                   to="/organizations/$orgId/projects/cert-manager/$projectId/certificate-authorities"
                   params={{
                     orgId: currentOrg.id,
@@ -65,6 +80,23 @@ export const PkiManagerLayout = () => {
                   )}
                 </Link>
                 <Link
+                  to="/organizations/$orgId/projects/cert-manager/$projectId/code-signing"
+                  params={{
+                    orgId: currentOrg.id,
+                    projectId: currentProject.id
+                  }}
+                >
+                  {({ isActive }) => (
+                    <Tab
+                      value={
+                        isActive || location.pathname.match(/\/code-signing/) ? "selected" : ""
+                      }
+                    >
+                      Code Signing
+                    </Tab>
+                  )}
+                </Link>
+                <Link
                   to="/organizations/$orgId/projects/cert-manager/$projectId/alerting"
                   params={{
                     orgId: currentOrg.id,
@@ -72,6 +104,15 @@ export const PkiManagerLayout = () => {
                   }}
                 >
                   {({ isActive }) => <Tab value={isActive ? "selected" : ""}>Alerting</Tab>}
+                </Link>
+                <Link
+                  to="/organizations/$orgId/projects/cert-manager/$projectId/approvals"
+                  params={{
+                    orgId: currentOrg.id,
+                    projectId: currentProject.id
+                  }}
+                >
+                  {({ isActive }) => <Tab value={isActive ? "selected" : ""}>Approvals</Tab>}
                 </Link>
                 <Link
                   to="/organizations/$orgId/projects/cert-manager/$projectId/integrations"

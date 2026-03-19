@@ -6,14 +6,16 @@ import {
   IdentityProjectAdditionalPrivilegeSchema,
   IntegrationAuthsSchema,
   InternalCertificateAuthoritiesSchema,
+  OrgRolesSchema,
   ProjectRolesSchema,
   ProjectsSchema,
   SecretApprovalPoliciesSchema,
+  SecretSharingSchema,
   SecretTagsSchema,
   UsersSchema
 } from "@app/db/schemas";
 import { ProjectPermissionActions, ProjectPermissionSub } from "@app/ee/services/permission/project-permission";
-import { ResourceMetadataSchema } from "@app/services/resource-metadata/resource-metadata-schema";
+import { ResourceMetadataNonEncryptionSchema } from "@app/services/resource-metadata/resource-metadata-schema";
 
 import { UnpackedPermissionSchema } from "./sanitizedSchema/permission";
 
@@ -211,6 +213,10 @@ export const SanitizedIdentityPrivilegeSchema = IdentityProjectAdditionalPrivile
   )
 });
 
+export const SanitizedOrgRoleSchema = OrgRolesSchema.extend({
+  permissions: UnpackedPermissionSchema.array()
+});
+
 export const SanitizedRoleSchema = ProjectRolesSchema.omit({ version: true }).extend({
   permissions: UnpackedPermissionSchema.array()
 });
@@ -245,7 +251,7 @@ export const SanitizedDynamicSecretSchema = DynamicSecretsSchema.omit({
   inputTag: true,
   algorithm: true
 }).extend({
-  metadata: ResourceMetadataSchema.optional()
+  metadata: ResourceMetadataNonEncryptionSchema.optional()
 });
 
 export const SanitizedProjectSchema = ProjectsSchema.pick({
@@ -267,7 +273,8 @@ export const SanitizedProjectSchema = ProjectsSchema.pick({
   hasDeleteProtection: true,
   secretSharing: true,
   showSnapshotsLegacy: true,
-  secretDetectionIgnoreValues: true
+  secretDetectionIgnoreValues: true,
+  enforceEncryptedSecretManagerSecretMetadata: true
 });
 
 export const SanitizedTagSchema = SecretTagsSchema.pick({
@@ -282,10 +289,27 @@ export const InternalCertificateAuthorityResponseSchema = CertificateAuthorities
   InternalCertificateAuthoritiesSchema.omit({
     caId: true,
     notAfter: true,
-    notBefore: true
+    notBefore: true,
+    autoRenewalEnabled: true,
+    autoRenewalDaysBeforeExpiry: true,
+    lastRenewalStatus: true,
+    lastRenewalMessage: true,
+    lastRenewalAt: true
   })
 ).extend({
   requireTemplateForIssuance: z.boolean().optional(),
   notAfter: z.string().optional(),
   notBefore: z.string().optional()
+});
+
+export const SanitizedSecretSharingSchema = SecretSharingSchema.omit({
+  encryptedSecret: true,
+  hashedHex: true,
+  iv: true,
+  tag: true,
+  encryptedValue: true,
+  password: true,
+  identifier: true // we map identifier -> id
+}).extend({
+  id: z.string() // override from uuid -> string
 });

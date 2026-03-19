@@ -10,6 +10,7 @@ import {
   AccessApprovalRequestTemplate,
   AccessApprovalRequestUpdatedTemplate,
   AccountDeletionConfirmationTemplate,
+  CredentialRotationFailedTemplate,
   EmailMfaTemplate,
   EmailVerificationTemplate,
   ExternalImportFailedTemplate,
@@ -41,6 +42,7 @@ import {
   SecretSyncFailedTemplate,
   ServiceTokenExpiryNoticeTemplate,
   SignupEmailVerificationTemplate,
+  SignupExistingAccountTemplate,
   SubOrganizationInvitationTemplate,
   UnlockAccountTemplate
 } from "./emails";
@@ -57,6 +59,7 @@ export type TSmtpService = ReturnType<typeof smtpServiceFactory>;
 
 export enum SmtpTemplates {
   SignupEmailVerification = "signupEmailVerification",
+  SignupExistingAccount = "signupExistingAccount",
   EmailVerification = "emailVerification",
   SecretReminder = "secretReminder",
   EmailMfa = "emailMfa",
@@ -93,7 +96,8 @@ export enum SmtpTemplates {
   SecretScanningV2SecretsDetected = "secretScanningV2SecretsDetected",
   AccountDeletionConfirmation = "accountDeletionConfirmation",
   HealthAlert = "healthAlert",
-  DynamicSecretLeaseRevocationFailed = "dynamicSecretLeaseRevocationFailed"
+  DynamicSecretLeaseRevocationFailed = "dynamicSecretLeaseRevocationFailed",
+  CredentialRotationFailed = "credentialRotationFailed"
 }
 
 export enum SmtpHost {
@@ -112,6 +116,7 @@ const EmailTemplateMap: Record<SmtpTemplates, React.FC<any>> = {
   [SmtpTemplates.OrgAssignment]: OrganizationAssignmentTemplate,
   [SmtpTemplates.NewDeviceJoin]: NewDeviceLoginTemplate,
   [SmtpTemplates.SignupEmailVerification]: SignupEmailVerificationTemplate,
+  [SmtpTemplates.SignupExistingAccount]: SignupExistingAccountTemplate,
   [SmtpTemplates.EmailMfa]: EmailMfaTemplate,
   [SmtpTemplates.AccessApprovalRequest]: AccessApprovalRequestTemplate,
   [SmtpTemplates.AccessApprovalRequestUpdated]: AccessApprovalRequestUpdatedTemplate,
@@ -143,7 +148,8 @@ const EmailTemplateMap: Record<SmtpTemplates, React.FC<any>> = {
   [SmtpTemplates.SecretScanningV2SecretsDetected]: SecretScanningSecretsDetectedTemplate,
   [SmtpTemplates.AccountDeletionConfirmation]: AccountDeletionConfirmationTemplate,
   [SmtpTemplates.HealthAlert]: HealthAlertTemplate,
-  [SmtpTemplates.DynamicSecretLeaseRevocationFailed]: DynamicSecretLeaseRevocationFailedTemplate
+  [SmtpTemplates.DynamicSecretLeaseRevocationFailed]: DynamicSecretLeaseRevocationFailedTemplate,
+  [SmtpTemplates.CredentialRotationFailed]: CredentialRotationFailedTemplate
 };
 
 export const smtpServiceFactory = (cfg: TSmtpConfig) => {
