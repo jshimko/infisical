@@ -32,7 +32,7 @@ export async function up(knex: Knex): Promise<void> {
     SELECT schemaname, tablename
     FROM pg_tables
     WHERE tablename LIKE '${TableName.CertificateRequests}_%'
-    AND schemaname = 'public'
+    AND schemaname = current_schema()
   `
   );
 
