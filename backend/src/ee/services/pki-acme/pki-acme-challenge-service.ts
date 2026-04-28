@@ -1,14 +1,16 @@
 import { resolve4, Resolver } from "node:dns/promises";
 
-import axios, { AxiosError } from "axios";
+import { AxiosError, isAxiosError } from "axios";
 
 import { TPkiAcmeChallenges } from "@app/db/schemas/pki-acme-challenges";
 import { getConfig } from "@app/lib/config/env";
+import { request } from "@app/lib/config/request";
 import { crypto } from "@app/lib/crypto/cryptography";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { isValidIp } from "@app/lib/ip";
 import { isPrivateIp } from "@app/lib/ip/ipRange";
 import { logger } from "@app/lib/logger";
+import { blockLocalAndPrivateIpAddresses } from "@app/lib/validator";
 import { ActorType } from "@app/services/auth/auth-type";
 
 import { EventType, TAuditLogServiceFactory } from "../audit-log/audit-log-types";
@@ -19,7 +21,7 @@ import {
   AcmeIncorrectResponseError,
   AcmeServerInternalError
 } from "./pki-acme-errors";
-import { AcmeAuthStatus, AcmeChallengeStatus, AcmeChallengeType } from "./pki-acme-schemas";
+import { AcmeAuthStatus, AcmeChallengeStatus, AcmeChallengeType, AcmeIdentifierType } from "./pki-acme-schemas";
 import { TPkiAcmeChallengeServiceFactory } from "./pki-acme-types";
 
 type TPkiAcmeChallengeServiceFactoryDep = {
@@ -64,7 +66,7 @@ export const pkiAcmeChallengeServiceFactory = ({
       }
       const host = challenge.auth.identifierValue;
       // check if host is a private ip address
-      if (isPrivateIp(host)) {
+      if (challenge.auth.identifierType === AcmeIdentifierType.IP && isPrivateIp(host)) {
         throw new BadRequestError({ message: "Private IP addresses are not allowed" });
       }
       if (challenge.type !== AcmeChallengeType.HTTP_01 && challenge.type !== AcmeChallengeType.DNS_01) {
@@ -83,18 +85,32 @@ export const pkiAcmeChallengeServiceFactory = ({
         "Using ACME development HTTP-01 challenge host override"
       );
     }
-    const challengeUrl = new URL(`/.well-known/acme-challenge/${challenge.auth.token}`, `http://${host}`);
+    // IPv6 addresses need brackets in URLs (e.g., http://[::1]/)
+    // Only bracket if the host is a raw IPv6 address (contains ":" but is a valid IP),
+    // not if it's a hostname:port like "host.docker.internal:8087"
+    const isIPv6 = host.includes(":") && isValidIp(host);
+    const urlHost = isIPv6 ? `[${host}]` : host;
+    const challengeUrl = new URL(`/.well-known/acme-challenge/${challenge.auth.token}`, `http://${urlHost}`);
     logger.info({ challengeUrl }, "Performing ACME HTTP-01 challenge validation");
 
     // TODO: read config from the profile to get the timeout instead
     const timeoutMs = 10 * 1000; // 10 seconds
+
+    // SSRF protection: resolve DNS and block private/local IP addresses
+    await blockLocalAndPrivateIpAddresses(challengeUrl.toString());
+
     // Notice: well, we are in a transaction, ideally we should not hold transaction and perform
     //         a long running operation for long time. But assuming we are not performing a tons of
     //         challenge validation at the same time, it should be fine.
-    const challengeResponse = await axios.get<string>(challengeUrl.toString(), {
+    const challengeResponse = await request.get<string>(challengeUrl.toString(), {
       // In case if we override the host in the development mode, still provide the original host in the header
       // to help the upstream server to validate the request
-      headers: { Host: challenge.auth.identifierValue },
+      headers: {
+        Host:
+          challenge.auth.identifierValue.includes(":") && isValidIp(challenge.auth.identifierValue)
+            ? `[${challenge.auth.identifierValue}]`
+            : challenge.auth.identifierValue
+      },
       timeout: timeoutMs,
       responseType: "text",
       validateStatus: () => true
@@ -165,7 +181,7 @@ export const pkiAcmeChallengeServiceFactory = ({
 
     try {
       // Properly type and inspect the error
-      if (axios.isAxiosError(exp)) {
+      if (isAxiosError(exp)) {
         const axiosError = exp as AxiosError;
         const errorCode = axiosError.code;
         const errorMessage = axiosError.message;

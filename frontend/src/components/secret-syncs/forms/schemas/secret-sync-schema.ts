@@ -16,6 +16,7 @@ import { CloudflarePagesSyncDestinationSchema } from "./cloudflare-pages-sync-de
 import { CloudflareWorkersSyncDestinationSchema } from "./cloudflare-workers-sync-destination-schema";
 import { DatabricksSyncDestinationSchema } from "./databricks-sync-destination-schema";
 import { DigitalOceanAppPlatformSyncDestinationSchema } from "./digital-ocean-app-platform-sync-destination-schema";
+import { ExternalInfisicalSyncDestinationSchema } from "./external-infisical-sync-destination-schema";
 import { FlyioSyncDestinationSchema } from "./flyio-sync-destination-schema";
 import { GcpSyncDestinationSchema } from "./gcp-sync-destination-schema";
 import { GitHubSyncDestinationSchema } from "./github-sync-destination-schema";
@@ -28,11 +29,13 @@ import { NetlifySyncDestinationSchema } from "./netlify-sync-destination-schema"
 import { NorthflankSyncDestinationSchema } from "./northflank-sync-destination-schema";
 import { OCIVaultSyncDestinationSchema } from "./oci-vault-sync-destination-schema";
 import { OctopusDeploySyncDestinationSchema } from "./octopus-deploy-sync-destination-schema";
+import { OnaSyncDestinationSchema } from "./ona-sync-destination-schema";
 import { RailwaySyncDestinationSchema } from "./railway-sync-destination-schema";
 import { RenderSyncDestinationSchema } from "./render-sync-destination-schema";
 import { SupabaseSyncDestinationSchema } from "./supabase-sync-destination-schema";
 import { TeamCitySyncDestinationSchema } from "./teamcity-sync-destination-schema";
 import { TerraformCloudSyncDestinationSchema } from "./terraform-cloud-destination-schema";
+import { TravisCISyncDestinationSchema } from "./travis-ci-sync-destination-schema";
 import { VercelSyncDestinationSchema } from "./vercel-sync-destination-schema";
 import { WindmillSyncDestinationSchema } from "./windmill-sync-destination-schema";
 import { ZabbixSyncDestinationSchema } from "./zabbix-sync-destination-schema";
@@ -73,7 +76,10 @@ const SecretSyncUnionSchema = z.discriminatedUnion("destination", [
   LaravelForgeSyncDestinationSchema,
   ChefSyncDestinationSchema,
   CircleCISyncDestinationSchema,
-  AzureEntraIdScimSyncDestinationSchema
+  AzureEntraIdScimSyncDestinationSchema,
+  ExternalInfisicalSyncDestinationSchema,
+  OnaSyncDestinationSchema,
+  TravisCISyncDestinationSchema
 ]);
 
 export const SecretSyncFormSchema = SecretSyncUnionSchema;

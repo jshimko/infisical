@@ -14,13 +14,13 @@ import {
 } from "@app/components/v2";
 import {
   Button,
-  DocumentationLinkBadge,
-  UnstableCard,
-  UnstableCardAction,
-  UnstableCardContent,
-  UnstableCardDescription,
-  UnstableCardHeader,
-  UnstableCardTitle
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  DocumentationLinkBadge
 } from "@app/components/v3";
 import {
   OrgPermissionIdentityActions,
@@ -32,6 +32,7 @@ import { OrgPermissionMachineIdentityAuthTemplateActions } from "@app/context/Or
 import { withPermission } from "@app/hoc";
 import { useDeleteOrgIdentity } from "@app/hooks/api";
 import { useDeleteIdentityAuthTemplate } from "@app/hooks/api/identityAuthTemplates";
+import { SubscriptionPlanTypes } from "@app/hooks/api/subscriptions/types";
 import { usePopUp } from "@app/hooks/usePopUp";
 
 import { IdentityAuthTemplateModal } from "./IdentityAuthTemplateModal";
@@ -76,7 +77,7 @@ export const IdentitySection = withPermission(
       ? subscription.identitiesUsed < subscription.identityLimit
       : true;
 
-    const isEnterprise = subscription?.slug === "enterprise";
+    const isEnterprise = subscription?.slug === SubscriptionPlanTypes.Enterprise;
 
     const onDeleteIdentitySubmit = async (identityId: string) => {
       await deleteMutateAsync({
@@ -109,16 +110,16 @@ export const IdentitySection = withPermission(
     return (
       <>
         <div className="flex flex-col gap-4">
-          <UnstableCard>
-            <UnstableCardHeader>
-              <UnstableCardTitle>
+          <Card>
+            <CardHeader>
+              <CardTitle>
                 {isSubOrganization ? "Sub-" : ""}Organization Machine Identities
                 <DocumentationLinkBadge href="https://infisical.com/docs/documentation/platform/identities/machine-identities" />
-              </UnstableCardTitle>
-              <UnstableCardDescription>
+              </CardTitle>
+              <CardDescription>
                 Create and manage {isSubOrganization ? "sub-" : ""}organization machine identities
-              </UnstableCardDescription>
-              <UnstableCardAction>
+              </CardDescription>
+              <CardAction>
                 <OrgPermissionCan
                   I={OrgPermissionIdentityActions.Create}
                   a={OrgPermissionSubjects.Identity}
@@ -150,22 +151,22 @@ export const IdentitySection = withPermission(
                     </Button>
                   )}
                 </OrgPermissionCan>
-              </UnstableCardAction>
-            </UnstableCardHeader>
-            <UnstableCardContent>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
               <IdentityTable handlePopUpOpen={handlePopUpOpen} />
-            </UnstableCardContent>
-          </UnstableCard>
-          <UnstableCard>
-            <UnstableCardHeader>
-              <UnstableCardTitle>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>
                 Machine Identity Auth Templates
                 <DocumentationLinkBadge href="https://infisical.com/docs/documentation/platform/identities/auth-templates" />
-              </UnstableCardTitle>
-              <UnstableCardDescription>
+              </CardTitle>
+              <CardDescription>
                 Create and manage machine identity authentication templates
-              </UnstableCardDescription>
-              <UnstableCardAction>
+              </CardDescription>
+              <CardAction>
                 <OrgPermissionCan
                   I={OrgPermissionMachineIdentityAuthTemplateActions.CreateTemplates}
                   a={OrgPermissionSubjects.MachineIdentityAuthTemplate}
@@ -190,12 +191,12 @@ export const IdentitySection = withPermission(
                     </Button>
                   )}
                 </OrgPermissionCan>
-              </UnstableCardAction>
-            </UnstableCardHeader>
-            <UnstableCardContent>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
               <IdentityAuthTemplatesTable handlePopUpOpen={handlePopUpOpen} />
-            </UnstableCardContent>
-          </UnstableCard>
+            </CardContent>
+          </Card>
         </div>
         <IdentityAuthTemplateModal popUp={popUp} handlePopUpToggle={handlePopUpToggle} />
         <MachineAuthTemplateUsagesModal

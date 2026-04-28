@@ -25,7 +25,22 @@ export const WindowsResourceListItemSchema = z.object({
 export const WindowsResourceConnectionDetailsSchema = z.object({
   protocol: z.literal(WindowsProtocol.RDP),
   hostname: z.string().trim().min(1).max(255),
-  port: z.coerce.number().int().min(1).max(65535)
+  port: z.coerce.number().int().min(1).max(65535),
+
+  // WinRM config — used for rotation only, configured in the rotation policy modal
+  winrmPort: z.coerce.number().int().min(1).max(65535),
+  useWinrmHttps: z.boolean(),
+  winrmRejectUnauthorized: z.boolean(),
+  winrmCaCert: z
+    .string()
+    .trim()
+    .transform((val) => val || undefined)
+    .optional(),
+  winrmTlsServerName: z
+    .string()
+    .trim()
+    .transform((val) => val || undefined)
+    .optional()
 });
 
 // Credentials (username + password for RDP)
@@ -49,6 +64,11 @@ export const WindowsResourceInternalMetadataSchema = z.object({
   osVersionDetail: z.string().optional()
 });
 
+export const SanitizedWindowsResourceInternalMetadataSchema = WindowsResourceInternalMetadataSchema.pick({
+  osVersion: true,
+  osVersionDetail: true
+});
+
 export const WindowsResourceSchema = BaseWindowsResourceSchema.extend({
   connectionDetails: WindowsResourceConnectionDetailsSchema,
   rotationAccountCredentials: WindowsAccountCredentialsSchema.nullable().optional()
@@ -67,13 +87,13 @@ export const SanitizedWindowsResourceSchema = BaseWindowsResourceSchema.extend({
 export const CreateWindowsResourceSchema = BaseCreateGatewayPamResourceSchema.extend({
   connectionDetails: WindowsResourceConnectionDetailsSchema,
   rotationAccountCredentials: WindowsAccountCredentialsSchema.nullable().optional(),
-  adServerResourceId: z.string().uuid().nullable().optional()
+  domainId: z.string().uuid().nullable().optional()
 });
 
 export const UpdateWindowsResourceSchema = BaseUpdateGatewayPamResourceSchema.extend({
   connectionDetails: WindowsResourceConnectionDetailsSchema.optional(),
   rotationAccountCredentials: WindowsAccountCredentialsSchema.nullable().optional(),
-  adServerResourceId: z.string().uuid().nullable().optional()
+  domainId: z.string().uuid().nullable().optional()
 });
 
 // Accounts
@@ -93,7 +113,7 @@ export const UpdateWindowsAccountSchema = BaseUpdatePamAccountSchema.extend({
 });
 
 export const SanitizedWindowsAccountWithResourceSchema = BasePamAccountSchemaWithResource.extend({
-  resourceType: z.literal(PamResource.Windows),
+  parentType: z.literal(PamResource.Windows),
   credentials: z.object({
     username: z.string()
   }),

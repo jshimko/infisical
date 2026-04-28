@@ -2,6 +2,7 @@ import RE2 from "re2";
 import { z } from "zod";
 
 import { TDynamicSecrets } from "@app/db/schemas";
+import { SshCertKeyAlgorithm } from "@app/ee/services/ssh-certificate/ssh-certificate-types";
 import { CharacterType, characterValidator } from "@app/lib/validator/validate-string";
 import { ResourceMetadataNonEncryptionSchema } from "@app/services/resource-metadata/resource-metadata-schema";
 
@@ -85,7 +86,8 @@ export const DynamicSecretRedisDBSchema = z.object({
   creationStatement: z.string().trim(),
   revocationStatement: z.string().trim(),
   renewStatement: z.string().trim().optional(),
-  ca: z.string().optional()
+  ca: z.string().optional(),
+  sslRejectUnauthorized: z.boolean().default(true)
 });
 
 export const DynamicSecretAwsElastiCacheSchema = z.object({
@@ -95,8 +97,7 @@ export const DynamicSecretAwsElastiCacheSchema = z.object({
 
   region: z.string().trim(),
   creationStatement: z.string().trim(),
-  revocationStatement: z.string().trim(),
-  ca: z.string().optional()
+  revocationStatement: z.string().trim()
 });
 
 export const DynamicSecretElasticSearchSchema = z.object({
@@ -118,7 +119,8 @@ export const DynamicSecretElasticSearchSchema = z.object({
     })
   ]),
 
-  ca: z.string().optional()
+  ca: z.string().optional(),
+  sslRejectUnauthorized: z.boolean().default(true)
 });
 
 export const DynamicSecretRabbitMqSchema = z.object({
@@ -130,6 +132,7 @@ export const DynamicSecretRabbitMqSchema = z.object({
   password: z.string().trim().min(1),
 
   ca: z.string().optional(),
+  sslRejectUnauthorized: z.boolean().default(true),
 
   virtualHost: z.object({
     name: z.string().trim().min(1),
@@ -175,6 +178,7 @@ export const DynamicSecretSqlDBSchema = z.object({
   renewStatement: z.string().trim().optional(),
   ca: z.string().optional(),
   sslEnabled: z.boolean().optional(),
+  sslRejectUnauthorized: z.boolean().default(true),
   gatewayId: z.string().nullable().optional()
 });
 
@@ -223,7 +227,8 @@ export const DynamicSecretCassandraSchema = z.object({
   creationStatement: z.string().trim(),
   revocationStatement: z.string().trim(),
   renewStatement: z.string().trim().optional(),
-  ca: z.string().optional()
+  ca: z.string().optional(),
+  sslRejectUnauthorized: z.boolean().default(true)
 });
 
 export const DynamicSecretSapAseSchema = z.object({
@@ -328,6 +333,7 @@ export const DynamicSecretMongoDBSchema = z.object({
   password: z.string().min(1).trim(),
   database: z.string().min(1).trim(),
   ca: z.string().trim().optional().nullable(),
+  sslRejectUnauthorized: z.boolean().default(true),
   roles: z
     .string()
     .array()
@@ -345,7 +351,8 @@ export const DynamicSecretSapHanaSchema = z.object({
   creationStatement: z.string().trim(),
   revocationStatement: z.string().trim(),
   renewStatement: z.string().trim().optional(),
-  ca: z.string().optional()
+  ca: z.string().optional(),
+  sslRejectUnauthorized: z.boolean().default(true)
 });
 
 export const DynamicSecretSnowflakeSchema = z.object({
@@ -401,6 +408,7 @@ export const DynamicSecretAzureSqlDBSchema = z.object({
   renewStatement: z.string().trim().optional(),
   ca: z.string().optional(),
   sslEnabled: z.boolean().optional(),
+  sslRejectUnauthorized: z.boolean().default(true),
   gatewayId: z.string().nullable().optional()
 });
 
@@ -410,6 +418,7 @@ export const LdapSchema = z.union([
     binddn: z.string().trim().min(1),
     bindpass: z.string().trim().min(1),
     ca: z.string().optional(),
+    sslRejectUnauthorized: z.boolean().default(true),
     credentialType: z.literal(LdapCredentialType.Dynamic).optional().default(LdapCredentialType.Dynamic),
     creationLdif: z.string().min(1),
     revocationLdif: z.string().min(1),
@@ -420,6 +429,7 @@ export const LdapSchema = z.union([
     binddn: z.string().trim().min(1),
     bindpass: z.string().trim().min(1),
     ca: z.string().optional(),
+    sslRejectUnauthorized: z.boolean().default(true),
     credentialType: z.literal(LdapCredentialType.Static),
     rotationLdif: z.string().min(1)
   })
@@ -437,6 +447,7 @@ export const DynamicSecretKubernetesSchema = z
       clusterToken: z.string().trim().optional(),
       ca: z.string().optional(),
       sslEnabled: z.boolean().default(false),
+      sslRejectUnauthorized: z.boolean().default(true),
       credentialType: z.literal(KubernetesCredentialType.Static),
       serviceAccountName: z.string().trim().min(1),
       namespace: z
@@ -463,6 +474,7 @@ export const DynamicSecretKubernetesSchema = z
       clusterToken: z.string().trim().optional(),
       ca: z.string().optional(),
       sslEnabled: z.boolean().default(false),
+      sslRejectUnauthorized: z.boolean().default(true),
       credentialType: z.literal(KubernetesCredentialType.Dynamic),
       namespace: z
         .string()
@@ -698,8 +710,21 @@ export enum DynamicSecretProviders {
   Vertica = "vertica",
   GcpIam = "gcp-iam",
   Github = "github",
-  Couchbase = "couchbase"
+  Couchbase = "couchbase",
+  Ssh = "ssh"
 }
+
+export const DynamicSecretSshSchema = z.object({
+  principals: z.array(z.string().trim().min(1)).min(1),
+  keyAlgorithm: z.nativeEnum(SshCertKeyAlgorithm).default(SshCertKeyAlgorithm.ED25519)
+});
+
+export const SshStoredSchema = z.object({
+  caPrivateKey: z.string(),
+  caPublicKey: z.string(),
+  principals: z.array(z.string().trim().min(1)).min(1),
+  keyAlgorithm: z.nativeEnum(SshCertKeyAlgorithm)
+});
 
 export const DynamicSecretProviderSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal(DynamicSecretProviders.SqlDatabase), inputs: DynamicSecretSqlDBSchema }),
@@ -723,7 +748,8 @@ export const DynamicSecretProviderSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal(DynamicSecretProviders.Vertica), inputs: DynamicSecretVerticaSchema }),
   z.object({ type: z.literal(DynamicSecretProviders.GcpIam), inputs: DynamicSecretGcpIamSchema }),
   z.object({ type: z.literal(DynamicSecretProviders.Github), inputs: DynamicSecretGithubSchema }),
-  z.object({ type: z.literal(DynamicSecretProviders.Couchbase), inputs: DynamicSecretCouchbaseSchema })
+  z.object({ type: z.literal(DynamicSecretProviders.Couchbase), inputs: DynamicSecretCouchbaseSchema }),
+  z.object({ type: z.literal(DynamicSecretProviders.Ssh), inputs: DynamicSecretSshSchema })
 ]);
 
 export type TDynamicProviderFns = {

@@ -29,7 +29,8 @@ export const useCreateAccessApprovalPolicy = () => {
       enforcementLevel,
       allowedSelfApprovals,
       approvalsRequired,
-      maxTimePeriod
+      maxTimePeriod,
+      requestExpirationTime
     }) => {
       const { data } = await apiRequest.post("/api/v1/access-approvals/policies", {
         environments,
@@ -42,7 +43,8 @@ export const useCreateAccessApprovalPolicy = () => {
         enforcementLevel,
         allowedSelfApprovals,
         approvalsRequired,
-        maxTimePeriod
+        maxTimePeriod,
+        requestExpirationTime
       });
       return data;
     },
@@ -69,7 +71,8 @@ export const useUpdateAccessApprovalPolicy = () => {
       allowedSelfApprovals,
       approvalsRequired,
       environments,
-      maxTimePeriod
+      maxTimePeriod,
+      requestExpirationTime
     }) => {
       const { data } = await apiRequest.patch(`/api/v1/access-approvals/policies/${id}`, {
         approvals,
@@ -81,7 +84,8 @@ export const useUpdateAccessApprovalPolicy = () => {
         allowedSelfApprovals,
         approvalsRequired,
         environments,
-        maxTimePeriod
+        maxTimePeriod,
+        requestExpirationTime
       });
       return data;
     },
@@ -132,6 +136,9 @@ export const useCreateAccessRequest = () => {
       queryClient.invalidateQueries({
         queryKey: accessApprovalKeys.getAccessApprovalRequestCount(projectSlug)
       });
+      queryClient.invalidateQueries({
+        queryKey: accessApprovalKeys.getAccessApprovalRequestsAllForProject(projectSlug)
+      });
     }
   });
 };
@@ -149,7 +156,34 @@ export const useUpdateAccessRequest = () => {
     },
     onSuccess: (_, { projectSlug }) => {
       queryClient.invalidateQueries({
-        queryKey: accessApprovalKeys.getAccessApprovalRequests(projectSlug)
+        queryKey: accessApprovalKeys.getAccessApprovalRequestsAllForProject(projectSlug)
+      });
+    }
+  });
+};
+
+export const useRevokeAccessRequest = () => {
+  const queryClient = useQueryClient();
+  return useMutation<
+    object,
+    object,
+    {
+      requestId: string;
+      projectSlug: string;
+    }
+  >({
+    mutationFn: async ({ requestId }) => {
+      const { data } = await apiRequest.post(
+        `/api/v1/access-approvals/requests/${requestId}/revoke`
+      );
+      return data;
+    },
+    onSuccess: (_, { projectSlug }) => {
+      queryClient.invalidateQueries({
+        queryKey: accessApprovalKeys.getAccessApprovalRequestsAllForProject(projectSlug)
+      });
+      queryClient.invalidateQueries({
+        queryKey: accessApprovalKeys.getAccessApprovalRequestCount(projectSlug)
       });
     }
   });
@@ -164,8 +198,6 @@ export const useReviewAccessRequest = () => {
       requestId: string;
       status: "approved" | "rejected";
       projectSlug: string;
-      envSlug?: string;
-      requestedBy?: string;
       bypassReason?: string;
     }
   >({
@@ -179,14 +211,9 @@ export const useReviewAccessRequest = () => {
       );
       return data;
     },
-    onSuccess: (_, { projectSlug, envSlug, requestedBy, bypassReason }) => {
+    onSuccess: (_, { projectSlug }) => {
       queryClient.invalidateQueries({
-        queryKey: accessApprovalKeys.getAccessApprovalRequests(
-          projectSlug,
-          envSlug,
-          requestedBy,
-          bypassReason
-        )
+        queryKey: accessApprovalKeys.getAccessApprovalRequestsAllForProject(projectSlug)
       });
       queryClient.invalidateQueries({
         queryKey: accessApprovalKeys.getAccessApprovalRequestCount(projectSlug)

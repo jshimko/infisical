@@ -9,16 +9,16 @@ import { z } from "zod";
 import { createNotification } from "@app/components/notifications";
 import {
   Button,
+  IconButton,
   InfisicalSecretInput,
+  Input,
   PasswordGenerator,
   SheetFooter,
   Switch,
   TextArea,
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
-  UnstableIconButton,
-  UnstableInput
+  TooltipTrigger
 } from "@app/components/v3";
 import {
   Field,
@@ -95,6 +95,27 @@ export const CreateSecretForm = ({
   isBatchMode,
   onBatchSecretCreate
 }: Props) => {
+  const { currentProject, projectId } = useProject();
+  const { permission } = useProjectPermission();
+  const canReadTags = permission.can(ProjectPermissionActions.Read, ProjectPermissionSub.Tags);
+  const environments = currentProject?.environments || [];
+
+  const defaultEnvs = useMemo(() => {
+    if (defaultSelectedEnvs && defaultSelectedEnvs.length > 0) return defaultSelectedEnvs;
+    // if all envs are selected on the dashboard the array is empty so we need to resolve here
+    return environments.filter((env) =>
+      permission.can(
+        ProjectPermissionSecretActions.Create,
+        subject(ProjectPermissionSub.Secrets, {
+          environment: env.slug,
+          secretPath,
+          secretName: "*",
+          secretTags: ["*"]
+        })
+      )
+    );
+  }, [defaultSelectedEnvs, environments, permission, secretPath]);
+
   const {
     handleSubmit,
     control,
@@ -106,7 +127,7 @@ export const CreateSecretForm = ({
   } = useForm<TFormSchema>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      environments: defaultSelectedEnvs ?? [],
+      environments: defaultEnvs,
       skipMultilineEncoding: false,
       metadata: []
     }
@@ -117,11 +138,6 @@ export const CreateSecretForm = ({
     append: appendMetadata,
     remove: removeMetadata
   } = useFieldArray({ control, name: "metadata" });
-
-  const { currentProject, projectId } = useProject();
-  const { permission } = useProjectPermission();
-  const canReadTags = permission.can(ProjectPermissionActions.Read, ProjectPermissionSub.Tags);
-  const environments = currentProject?.environments || [];
 
   const { mutateAsync: createSecretV3 } = useCreateSecretV3();
   const { mutateAsync: getOrCreateFolder } = useGetOrCreateFolder();
@@ -137,6 +153,9 @@ export const CreateSecretForm = ({
   const [createMore, setCreateMore] = useState(false);
   const secretKeyInputRef = useRef<HTMLInputElement>(null);
   const secretKey = watch("key");
+  const selectedEnvironments = defaultSelectedEnvs?.length
+    ? defaultSelectedEnvs
+    : watch("environments");
 
   const handleFormSubmit = async ({
     key,
@@ -355,7 +374,7 @@ export const CreateSecretForm = ({
               <FieldLabel>Key</FieldLabel>
               <FieldContent>
                 <div className="relative">
-                  <UnstableInput
+                  <Input
                     ref={secretKeyInputRef}
                     value={field.value ?? ""}
                     onChange={(e) => {
@@ -367,6 +386,7 @@ export const CreateSecretForm = ({
                     onBlur={field.onBlur}
                     placeholder="Type your secret name"
                     onPaste={handlePaste}
+                    autoFocus
                     autoComplete="off"
                     isError={Boolean(error)}
                     className={currentProject?.autoCapitalization ? "uppercase" : undefined}
@@ -419,7 +439,13 @@ export const CreateSecretForm = ({
                     onChange={field.onChange}
                     placeholder="Enter secret value..."
                   />
-                  <PasswordGenerator onUsePassword={field.onChange} />
+                  <PasswordGenerator
+                    selectedEnvironments={selectedEnvironments}
+                    onUsePassword={field.onChange}
+                    projectId={projectId}
+                    secretPath={secretPath}
+                    environments={environments}
+                  />
                 </div>
                 <FieldError errors={[errors.value]} />
               </FieldContent>
@@ -512,7 +538,7 @@ export const CreateSecretForm = ({
                       name={`metadata.${index}.key`}
                       render={({ field: inputField, fieldState: { error } }) => (
                         <>
-                          <UnstableInput {...inputField} placeholder="Enter key" className="h-8" />
+                          <Input {...inputField} placeholder="Enter key" className="h-8" />
                           <FieldError errors={[error]} />
                         </>
                       )}
@@ -528,11 +554,7 @@ export const CreateSecretForm = ({
                       name={`metadata.${index}.value`}
                       render={({ field: inputField, fieldState: { error } }) => (
                         <>
-                          <UnstableInput
-                            {...inputField}
-                            placeholder="Enter value"
-                            className="h-8"
-                          />
+                          <Input {...inputField} placeholder="Enter value" className="h-8" />
                           <FieldError errors={[error]} />
                         </>
                       )}
@@ -557,7 +579,7 @@ export const CreateSecretForm = ({
                   />
                 </Field>
 
-                <UnstableIconButton
+                <IconButton
                   variant="ghost"
                   size="xs"
                   type="button"
@@ -568,7 +590,7 @@ export const CreateSecretForm = ({
                   onClick={() => removeMetadata(index)}
                 >
                   <TrashIcon className="size-4" />
-                </UnstableIconButton>
+                </IconButton>
               </div>
             ))}
           </div>

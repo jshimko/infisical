@@ -1,4 +1,4 @@
-import { ProjectPermissionActions } from "@app/context";
+import { ProjectPermissionSecretActions } from "@app/context/ProjectPermissionContext/types";
 import { Reminder } from "@app/hooks/api/reminders/types";
 
 import { PendingAction } from "../secretFolders/types";
@@ -164,6 +164,7 @@ export type TGetSecretAccessListDTO = {
   environment: string;
   secretPath: string;
   secretKey: string;
+  includeAllEntities?: boolean;
 };
 
 export type TCreateSecretsV3DTO = {
@@ -216,6 +217,7 @@ export type TCreateSecretBatchDTO = {
     skipMultilineEncoding?: boolean | null;
     type: SecretType;
     tagIds?: string[];
+    secretMetadata?: { key: string; value: string; isEncrypted?: boolean }[];
     metadata?: {
       source?: string;
     };
@@ -229,10 +231,11 @@ export type TUpdateSecretBatchDTO = {
   secrets: Array<{
     type: SecretType;
     secretKey: string;
-    secretValue: string;
+    secretValue?: string;
     secretComment?: string;
     skipMultilineEncoding?: boolean | null;
     tagIds?: string[];
+    secretMetadata?: { key: string; value: string; isEncrypted?: boolean }[];
     metadata?: {
       source?: string;
     };
@@ -290,8 +293,13 @@ export type TSecretDependencyTreeNode = {
 };
 
 export type SecretAccessListEntry = {
-  allowedActions: ProjectPermissionActions[];
+  allowedActions: ProjectPermissionSecretActions[];
   id: string;
   membershipId: string;
   name: string;
+};
+
+export type SecretAccessListGroupEntry = SecretAccessListEntry & {
+  userIds: string[];
+  identityIds: string[];
 };

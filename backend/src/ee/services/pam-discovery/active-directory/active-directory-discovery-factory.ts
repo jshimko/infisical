@@ -1,8 +1,7 @@
 import net from "node:net";
 
-import * as dnsPacket from "dns-packet";
+import ldapjs from "@infisical/ldapjs";
 import { Knex } from "knex";
-import ldapjs from "ldapjs";
 import RE2 from "re2";
 import { runPowershell } from "winrm-client";
 
@@ -21,12 +20,15 @@ import { TPamAccountDALFactory } from "../../pam-account/pam-account-dal";
 import { encryptAccountCredentials } from "../../pam-account/pam-account-fns";
 import {
   TActiveDirectoryAccountCredentials,
-  TActiveDirectoryAccountInternalMetadata,
-  TActiveDirectoryResourceConnectionDetails
-} from "../../pam-resource/active-directory/active-directory-resource-types";
+  TActiveDirectoryAccountInternalMetadata
+} from "../../pam-domain/active-directory/active-directory-domain-types";
+import { TPamDomainDALFactory } from "../../pam-domain/pam-domain-dal";
+import { PamDomainType } from "../../pam-domain/pam-domain-enums";
+import { encryptDomainConnectionDetails } from "../../pam-domain/pam-domain-fns";
 import { TPamResourceDALFactory } from "../../pam-resource/pam-resource-dal";
 import { PamResource } from "../../pam-resource/pam-resource-enums";
 import { encryptResourceConnectionDetails, encryptResourceInternalMetadata } from "../../pam-resource/pam-resource-fns";
+import { resolveDnsTcp } from "../../pam-resource/shared/dns-over-dc";
 import { WindowsAccountType, WindowsProtocol } from "../../pam-resource/windows-server/windows-server-resource-enums";
 import {
   TWindowsAccountCredentials,
@@ -289,56 +291,6 @@ const executeWithGateway = async <T>(
   );
 };
 
-// Resolve a single hostname to an IP via DNS-over-TCP through the gateway proxy
-const resolveDnsTcp = (hostname: string, port: number): Promise<string | null> => {
-  return new Promise((resolve) => {
-    const query = dnsPacket.streamEncode({
-      type: "query",
-      flags: dnsPacket.RECURSION_DESIRED,
-      questions: [{ type: "A", name: hostname }]
-    });
-
-    const socket = net.connect({ host: "127.0.0.1", port }, () => {
-      socket.write(query);
-    });
-
-    // Max legitimate DNS-over-TCP response: 2-byte length prefix + 65535 bytes payload
-    const MAX_DNS_TCP_SIZE = 2 + 65535;
-    let responseData = Buffer.alloc(0);
-
-    socket.on("data", (chunk: Buffer) => {
-      responseData = Buffer.concat([responseData, chunk]);
-
-      if (responseData.length > MAX_DNS_TCP_SIZE) {
-        socket.destroy();
-        resolve(null);
-        return;
-      }
-
-      // DNS-over-TCP frames each message with a 2-byte big-endian length prefix
-      // wait until we have the full frame before decoding
-      if (responseData.length >= 2) {
-        const msgLen = responseData.readUInt16BE(0);
-        if (responseData.length >= 2 + msgLen) {
-          const response = dnsPacket.streamDecode(responseData);
-          const aRecord = response.answers?.find((a) => a.type === "A");
-          socket.destroy();
-          resolve(aRecord && "data" in aRecord ? (aRecord.data as string) : null);
-        }
-      }
-    });
-
-    socket.on("error", () => {
-      resolve(null);
-    });
-
-    socket.setTimeout(5000, () => {
-      socket.destroy();
-      resolve(null);
-    });
-  });
-};
-
 // Resolve AD hostnames to IP addresses by querying DNS over TCP through the DC
 const resolveHostnamesViaDc = async (
   computers: TLdapComputer[],
@@ -417,17 +369,28 @@ const executeLdapEnumeration = async (
         timeout: LDAP_TIMEOUT,
         ...(configuration.useLdaps && {
           tlsOptions: {
-            rejectUnauthorized: !!configuration.caCert,
-            ...(configuration.caCert && { ca: [configuration.caCert] })
+            rejectUnauthorized: configuration.ldapRejectUnauthorized,
+            ...(configuration.ldapCaCert && {
+              ca: [configuration.ldapCaCert],
+              servername: configuration.ldapTlsServerName || configuration.dcAddress
+            })
           }
         })
+      });
+
+      // Capture TLS/connection errors that fire before or during bind
+      // Without this handler, unhandled 'error' events (e.g. TLS cert mismatch) crash the Node.js process
+      let clientError: Error | null = null;
+      client.on("error", (err: Error) => {
+        clientError = err;
       });
 
       try {
         const bindDn = `${credentials.username}@${configuration.domainFQDN}`;
         await new Promise<void>((resolve, reject) => {
           client.bind(bindDn, credentials.password, (err) => {
-            if (err) reject(new Error(`LDAP bind failed: ${err.message}`));
+            if (clientError) reject(clientError);
+            else if (err) reject(new Error(`LDAP bind failed: ${err.message}`));
             else resolve();
           });
         });
@@ -482,52 +445,60 @@ const executeLdapEnumeration = async (
 
         return { computers, users };
       } finally {
-        client.unbind();
+        try {
+          client.unbind();
+        } catch {
+          // client may already be destroyed from a TLS/connection error
+        }
       }
     }
   );
 };
 
-const upsertAdServerResource = async (
+const upsertDomain = async (
   projectId: string,
   configuration: TAdDiscoveryConfiguration,
   gatewayId: string,
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">,
-  pamResourceDAL: Pick<TPamResourceDALFactory, "create" | "find">,
+  pamDomainDAL: Pick<TPamDomainDALFactory, "create" | "find">,
   tx: Knex
 ) => {
   const fingerprint = configuration.domainFQDN.toLowerCase();
 
-  const existing = await pamResourceDAL.find(
+  const existing = await pamDomainDAL.find(
     {
       projectId,
-      resourceType: PamResource.ActiveDirectory,
+      domainType: PamDomainType.ActiveDirectory,
       discoveryFingerprint: fingerprint
     },
     { tx }
   );
 
   if (existing.length > 0) {
-    return { resource: existing[0], isNew: false };
+    return { domain: existing[0], isNew: false };
   }
 
   const domainResourceName = toSlugName(configuration.domainFQDN);
 
-  const encryptedConnectionDetails = await encryptResourceConnectionDetails({
+  const encryptedConnectionDetails = await encryptDomainConnectionDetails({
     projectId,
     connectionDetails: {
       domain: configuration.domainFQDN,
       dcAddress: configuration.dcAddress,
-      port: configuration.ldapPort
-    } as TActiveDirectoryResourceConnectionDetails,
+      port: configuration.ldapPort,
+      useLdaps: configuration.useLdaps,
+      ldapRejectUnauthorized: configuration.ldapRejectUnauthorized,
+      ldapCaCert: configuration.ldapCaCert,
+      ldapTlsServerName: configuration.ldapTlsServerName
+    },
     kmsService
   });
 
-  const resource = await pamResourceDAL.create(
+  const domain = await pamDomainDAL.create(
     {
       projectId,
       name: domainResourceName,
-      resourceType: PamResource.ActiveDirectory,
+      domainType: PamDomainType.ActiveDirectory,
       gatewayId,
       encryptedConnectionDetails,
       discoveryFingerprint: fingerprint
@@ -535,32 +506,45 @@ const upsertAdServerResource = async (
     tx
   );
 
-  return { resource, isNew: true };
+  return { domain, isNew: true };
 };
 
 const upsertWindowsServerResource = async (
   projectId: string,
   computer: TLdapComputer,
-  adServerResourceId: string,
+  domainId: string,
+  domainFQDN: string,
   gatewayId: string,
+  winrmConfig: {
+    winrmPort: number;
+    useWinrmHttps: boolean;
+    winrmRejectUnauthorized: boolean;
+    winrmCaCert?: string;
+  },
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">,
-  pamResourceDAL: Pick<TPamResourceDALFactory, "create" | "find">,
+  pamResourceDAL: Pick<TPamResourceDALFactory, "create" | "find" | "updateById">,
   tx: Knex
 ) => {
-  const fingerprint = computer.objectGUID;
+  const fingerprint = `${domainFQDN.toLowerCase()}:${computer.objectGUID}`;
 
   const existing = await pamResourceDAL.find(
     {
       projectId,
       resourceType: PamResource.Windows,
-      discoveryFingerprint: fingerprint,
-      adServerResourceId
+      discoveryFingerprint: fingerprint
     },
     { tx }
   );
 
   if (existing.length > 0) {
-    return { resource: existing[0], isNew: false };
+    const found = existing[0];
+
+    // Reconnect if the resource was orphaned (e.g. the domain was previously deleted)
+    if (!found.domainId) {
+      const reconnected = await pamResourceDAL.updateById(found.id, { domainId }, tx);
+      return { resource: reconnected, isNew: false };
+    }
+    return { resource: found, isNew: false };
   }
 
   const hostname = computer.dNSHostName || computer.cn;
@@ -571,8 +555,9 @@ const upsertWindowsServerResource = async (
       projectId,
       connectionDetails: {
         protocol: WindowsProtocol.RDP,
-        hostname,
-        port: 3389
+        hostname: computer.resolvedIp || hostname,
+        port: 3389,
+        ...winrmConfig
       } as TWindowsResourceConnectionDetails,
       kmsService
     }),
@@ -594,7 +579,7 @@ const upsertWindowsServerResource = async (
       gatewayId,
       encryptedConnectionDetails,
       encryptedResourceMetadata,
-      adServerResourceId,
+      domainId,
       discoveryFingerprint: fingerprint
     },
     tx
@@ -606,16 +591,18 @@ const upsertWindowsServerResource = async (
 const upsertDomainAccount = async (
   projectId: string,
   user: TLdapUser,
-  adServerResourceId: string,
+  domainId: string,
+  domainFQDN: string,
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">,
   pamAccountDAL: Pick<TPamAccountDALFactory, "create" | "find">,
   tx: Knex
 ) => {
-  const fingerprint = user.objectGUID;
+  const fingerprint = `${domainFQDN.toLowerCase()}:${user.objectGUID}`;
 
   const existing = await pamAccountDAL.find(
     {
-      resourceId: adServerResourceId,
+      projectId,
+      domainId,
       discoveryFingerprint: fingerprint
     },
     { tx }
@@ -658,7 +645,7 @@ const upsertDomainAccount = async (
   const account = await pamAccountDAL.create(
     {
       projectId,
-      resourceId: adServerResourceId,
+      domainId,
       name: accountName,
       encryptedCredentials,
       internalMetadata,
@@ -676,6 +663,8 @@ const executeWinRmLocalAccountEnumeration = async (
   credentials: TAdDiscoveryCredentials,
   winrmPort: number,
   useWinrmHttps: boolean,
+  winrmRejectUnauthorized: boolean,
+  winrmCaCert: string | undefined,
   gatewayId: string,
   gatewayV2Service: Pick<TGatewayV2ServiceFactory, "getPlatformConnectionDetailsByGatewayId">
 ): Promise<TWinRmLocalUser[]> => {
@@ -689,6 +678,7 @@ const executeWinRmLocalAccountEnumeration = async (
       const netbiosDomain = domainFQDN.split(".")[0].toUpperCase();
       const winrmUsername = `${netbiosDomain}\\${credentials.username}`;
       const script = `Get-LocalUser | Select-Object Name, Enabled, LastLogon, PasswordLastSet, Description, SID | ConvertTo-Json`;
+      // Use machine's DNS hostname as TLS servername for cert verification
       const stdout = await runPowershell(
         script,
         "localhost",
@@ -696,7 +686,9 @@ const executeWinRmLocalAccountEnumeration = async (
         credentials.password,
         proxyPort,
         useWinrmHttps,
-        false
+        winrmRejectUnauthorized,
+        winrmCaCert,
+        hostname
       );
 
       if (!stdout.trim()) {
@@ -715,6 +707,8 @@ const executeWinRmDependencyEnumeration = async (
   credentials: TAdDiscoveryCredentials,
   winrmPort: number,
   useWinrmHttps: boolean,
+  winrmRejectUnauthorized: boolean,
+  winrmCaCert: string | undefined,
   gatewayId: string,
   gatewayV2Service: Pick<TGatewayV2ServiceFactory, "getPlatformConnectionDetailsByGatewayId">
 ): Promise<TWinRmDependencies> => {
@@ -727,6 +721,7 @@ const executeWinRmDependencyEnumeration = async (
     async (proxyPort) => {
       const netbiosDomain = domainFQDN.split(".")[0].toUpperCase();
       const winrmUsername = `${netbiosDomain}\\${credentials.username}`;
+      // Use machine's DNS hostname as TLS servername for cert verification
       const stdout = await runPowershell(
         DEPENDENCY_ENUMERATION_SCRIPT,
         "localhost",
@@ -734,7 +729,9 @@ const executeWinRmDependencyEnumeration = async (
         credentials.password,
         proxyPort,
         useWinrmHttps,
-        false
+        winrmRejectUnauthorized,
+        winrmCaCert,
+        hostname
       );
 
       if (!stdout.trim()) {
@@ -795,12 +792,13 @@ const upsertLocalAccount = async (
   projectId: string,
   localUser: TWinRmLocalUser,
   computerObjectGUID: string,
+  domainFQDN: string,
   windowsServerResourceId: string,
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">,
   pamAccountDAL: Pick<TPamAccountDALFactory, "create" | "find">,
   tx: Knex
 ) => {
-  const fingerprint = `${computerObjectGUID}:${localUser.Name.toLowerCase()}`;
+  const fingerprint = `${domainFQDN.toLowerCase()}:${computerObjectGUID}:${localUser.Name.toLowerCase()}`;
 
   const existing = await pamAccountDAL.find(
     {
@@ -899,8 +897,11 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
               timeout: LDAP_TIMEOUT,
               ...(configuration.useLdaps && {
                 tlsOptions: {
-                  rejectUnauthorized: !!configuration.caCert,
-                  ...(configuration.caCert && { ca: [configuration.caCert] })
+                  rejectUnauthorized: configuration.ldapRejectUnauthorized,
+                  ...(configuration.ldapCaCert && {
+                    ca: [configuration.ldapCaCert],
+                    servername: configuration.ldapTlsServerName || configuration.dcAddress
+                  })
                 }
               })
             });
@@ -914,7 +915,8 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
             client.bind(bindDn, credentials.password, (err) => {
               if (err) {
                 client.unbind();
-                reject(new Error("LDAP bind failed: invalid credentials"));
+                logger.warn(err, "PAM AD discovery LDAP bind failed during connection validation");
+                reject(new Error(`LDAP bind failed: ${err.message}`));
               } else {
                 client.unbind();
                 resolve();
@@ -942,6 +944,7 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
       pamDiscoverySourceAccountsDAL,
       pamDiscoverySourceDependenciesDAL,
       pamAccountDependenciesDAL,
+      pamDomainDAL,
       pamResourceDAL,
       pamAccountDAL,
       kmsService
@@ -986,7 +989,7 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
       await pamDiscoveryRunDAL.updateById(run.id, {
         progress: {
           adEnumeration: { status: PamDiscoveryStepStatus.Completed, completedAt: new Date().toISOString() },
-          dependencyScan: {
+          machineEnumeration: {
             status: PamDiscoveryStepStatus.Running,
             totalMachines: computers.length,
             scannedMachines: 0,
@@ -995,30 +998,11 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
         } as TActiveDirectoryDiscoverySourceRunProgress
       });
 
-      // Auto-import AD Server resource
-      const { resource: adServerResource, isNew: isAdServerNew } = await pamResourceDAL.transaction(async (tx) => {
-        const result = await upsertAdServerResource(
-          projectId,
-          configuration,
-          gatewayId,
-          kmsService,
-          pamResourceDAL,
-          tx
-        );
-
-        await pamDiscoverySourceResourcesDAL.upsertJunction(
-          {
-            discoverySourceId,
-            resourceId: result.resource.id,
-            lastDiscoveredRunId: run.id
-          },
-          tx
-        );
-
+      // Auto-import AD domain
+      const { domain } = await pamDomainDAL.transaction(async (tx) => {
+        const result = await upsertDomain(projectId, configuration, gatewayId, kmsService, pamDomainDAL, tx);
         return result;
       });
-      resourcesDiscoveredCount += 1;
-      if (isAdServerNew) newResourcesCount += 1;
 
       // Auto-import Windows Server resources and build mapping for local account discovery
       const computerResourceMap = new Map<string, string>(); // objectGUID -> resourceId
@@ -1029,8 +1013,15 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
             const result = await upsertWindowsServerResource(
               projectId,
               computer,
-              adServerResource.id,
+              domain.id,
+              configuration.domainFQDN,
               gatewayId,
+              {
+                winrmPort: configuration.winrmPort,
+                useWinrmHttps: configuration.useWinrmHttps,
+                winrmRejectUnauthorized: configuration.winrmRejectUnauthorized,
+                winrmCaCert: configuration.winrmCaCert
+              },
               kmsService,
               pamResourceDAL,
               tx
@@ -1070,7 +1061,8 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
             const result = await upsertDomainAccount(
               projectId,
               user,
-              adServerResource.id,
+              domain.id,
+              configuration.domainFQDN,
               kmsService,
               pamAccountDAL,
               tx
@@ -1117,6 +1109,8 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
               credentials,
               configuration.winrmPort,
               configuration.useWinrmHttps,
+              configuration.winrmRejectUnauthorized,
+              configuration.winrmCaCert,
               gatewayId,
               gatewayV2Service
             );
@@ -1131,6 +1125,7 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
                     projectId,
                     localUser,
                     computer.objectGUID,
+                    configuration.domainFQDN,
                     windowsResourceId,
                     kmsService,
                     pamAccountDAL,
@@ -1167,6 +1162,8 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
                   credentials,
                   configuration.winrmPort,
                   configuration.useWinrmHttps,
+                  configuration.winrmRejectUnauthorized,
+                  configuration.winrmCaCert,
                   gatewayId,
                   gatewayV2Service
                 );
@@ -1294,7 +1291,7 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
           dependenciesDiscoveredCount,
           progress: {
             adEnumeration: { status: PamDiscoveryStepStatus.Completed, completedAt: new Date().toISOString() },
-            dependencyScan: {
+            machineEnumeration: {
               status: PamDiscoveryStepStatus.Running,
               totalMachines: computers.length,
               scannedMachines,
@@ -1313,7 +1310,7 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
         const staleDependenciesCount =
           (await pamDiscoverySourceDependenciesDAL.markStaleForRun(discoverySourceId, run.id)) || 0;
 
-        const dependencyScanStatus =
+        const machineEnumerationStatus =
           failedMachines === computers.length && computers.length > 0
             ? PamDiscoveryStepStatus.Failed
             : PamDiscoveryStepStatus.Completed;
@@ -1332,8 +1329,8 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
           completedAt: new Date(),
           progress: {
             adEnumeration: { status: PamDiscoveryStepStatus.Completed, completedAt: new Date().toISOString() },
-            dependencyScan: {
-              status: dependencyScanStatus,
+            machineEnumeration: {
+              status: machineEnumerationStatus,
               totalMachines: computers.length,
               scannedMachines,
               failedMachines,
@@ -1352,7 +1349,7 @@ export const activeDirectoryDiscoveryFactory: TPamDiscoveryFactory<
       const progress: TActiveDirectoryDiscoverySourceRunProgress = adEnumerationSucceeded
         ? {
             adEnumeration: { status: PamDiscoveryStepStatus.Completed },
-            dependencyScan: { status: PamDiscoveryStepStatus.Failed, statusMessage: (error as Error).message }
+            machineEnumeration: { status: PamDiscoveryStepStatus.Failed, statusMessage: (error as Error).message }
           }
         : {
             adEnumeration: { status: PamDiscoveryStepStatus.Failed, error: (error as Error).message }

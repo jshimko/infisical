@@ -2,29 +2,30 @@
 
 import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { CheckIcon, ChevronRightIcon, CircleIcon } from "lucide-react";
+import { CheckIcon, ChevronRightIcon } from "lucide-react";
 
 import { cn } from "@app/components/v3/utils";
 
-function UnstableDropdownMenu({
-  ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
+function DropdownMenu({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {
   return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
 }
 
-function UnstableDropdownMenuPortal({
+function DropdownMenuPortal({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
   return <DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />;
 }
 
-function UnstableDropdownMenuTrigger({
-  ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>) {
-  return <DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />;
-}
+const DropdownMenuTrigger = React.forwardRef<
+  HTMLButtonElement,
+  React.ComponentProps<typeof DropdownMenuPrimitive.Trigger>
+>(
+  ({ ...props }, ref): JSX.Element => (
+    <DropdownMenuPrimitive.Trigger ref={ref} data-slot="dropdown-menu-trigger" {...props} />
+  )
+);
 
-function UnstableDropdownMenuContent({
+function DropdownMenuContent({
   className,
   sideOffset = 4,
   ...props
@@ -46,9 +47,7 @@ function UnstableDropdownMenuContent({
   );
 }
 
-function UnstableDropdownMenuGroup({
-  ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Group>) {
+function DropdownMenuGroup({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Group>) {
   return <DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />;
 }
 
@@ -61,7 +60,7 @@ type DropdownMenuProps = Omit<
   isDisabled?: boolean;
 };
 
-const UnstableDropdownMenuItem = React.forwardRef<HTMLDivElement, DropdownMenuProps>(
+const DropdownMenuItem = React.forwardRef<HTMLDivElement, DropdownMenuProps>(
   ({ className, inset, variant = "default", isDisabled, ...props }, ref): JSX.Element => {
     return (
       <DropdownMenuPrimitive.Item
@@ -84,7 +83,7 @@ const UnstableDropdownMenuItem = React.forwardRef<HTMLDivElement, DropdownMenuPr
   }
 );
 
-function UnstableDropdownMenuCheckboxItem({
+function DropdownMenuCheckboxItem({
   className,
   children,
   checked,
@@ -113,13 +112,13 @@ function UnstableDropdownMenuCheckboxItem({
   );
 }
 
-function UnstableDropdownMenuRadioGroup({
+function DropdownMenuRadioGroup({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.RadioGroup>) {
   return <DropdownMenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />;
 }
 
-function UnstableDropdownMenuRadioItem({
+function DropdownMenuRadioItem({
   className,
   children,
   ...props
@@ -128,7 +127,7 @@ function UnstableDropdownMenuRadioItem({
     <DropdownMenuPrimitive.RadioItem
       data-slot="dropdown-menu-radio-item"
       className={cn(
-        "relative flex cursor-pointer items-center gap-2 rounded-sm pt-2 pr-8 pb-1.5 pl-2 text-sm outline-0 select-none",
+        "relative flex cursor-pointer items-center gap-2 rounded-sm pt-2 pr-8 pb-1.5 pl-3 text-sm outline-0 select-none",
         "focus:bg-foreground/10",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         "[&_svg]:pointer-events-none [&_svg]:mb-0.5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
@@ -138,7 +137,7 @@ function UnstableDropdownMenuRadioItem({
     >
       <span className="pointer-events-none absolute right-2 flex size-3.5 items-center justify-center">
         <DropdownMenuPrimitive.ItemIndicator>
-          <CircleIcon className="size-2 fill-current" />
+          <CheckIcon className="size-4" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}
@@ -146,7 +145,7 @@ function UnstableDropdownMenuRadioItem({
   );
 }
 
-function UnstableDropdownMenuLabel({
+function DropdownMenuLabel({
   className,
   inset,
   ...props
@@ -163,7 +162,7 @@ function UnstableDropdownMenuLabel({
   );
 }
 
-function UnstableDropdownMenuSeparator({
+function DropdownMenuSeparator({
   className,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
@@ -176,7 +175,7 @@ function UnstableDropdownMenuSeparator({
   );
 }
 
-function UnstableDropdownMenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
+function DropdownMenuShortcut({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
       data-slot="dropdown-menu-shortcut"
@@ -186,13 +185,11 @@ function UnstableDropdownMenuShortcut({ className, ...props }: React.ComponentPr
   );
 }
 
-function UnstableDropdownMenuSub({
-  ...props
-}: React.ComponentProps<typeof DropdownMenuPrimitive.Sub>) {
+function DropdownMenuSub({ ...props }: React.ComponentProps<typeof DropdownMenuPrimitive.Sub>) {
   return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />;
 }
 
-function UnstableDropdownMenuSubTrigger({
+function DropdownMenuSubTrigger({
   className,
   inset,
   children,
@@ -205,18 +202,18 @@ function UnstableDropdownMenuSubTrigger({
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-0 select-none focus:bg-foreground/10 data-[inset]:pl-8 data-[state=open]:bg-foreground/10",
+        "flex cursor-default items-center gap-2.5 rounded-sm py-2 pr-2 pl-2 text-sm outline-0 select-none focus:bg-foreground/5 data-[inset]:pl-8 data-[state=open]:bg-foreground/5 [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto size-3.5" />
+      <ChevronRightIcon className="ml-auto size-4" />
     </DropdownMenuPrimitive.SubTrigger>
   );
 }
 
-function UnstableDropdownMenuSubContent({
+function DropdownMenuSubContent({
   className,
   sideOffset = 8,
   ...props
@@ -234,23 +231,23 @@ function UnstableDropdownMenuSubContent({
   );
 }
 
-type UnstableDropdownMenuChecked = DropdownMenuPrimitive.DropdownMenuCheckboxItemProps["checked"];
+type DropdownMenuChecked = DropdownMenuPrimitive.DropdownMenuCheckboxItemProps["checked"];
 
 export {
-  UnstableDropdownMenu,
-  UnstableDropdownMenuCheckboxItem,
-  type UnstableDropdownMenuChecked,
-  UnstableDropdownMenuContent,
-  UnstableDropdownMenuGroup,
-  UnstableDropdownMenuItem,
-  UnstableDropdownMenuLabel,
-  UnstableDropdownMenuPortal,
-  UnstableDropdownMenuRadioGroup,
-  UnstableDropdownMenuRadioItem,
-  UnstableDropdownMenuSeparator,
-  UnstableDropdownMenuShortcut,
-  UnstableDropdownMenuSub,
-  UnstableDropdownMenuSubContent,
-  UnstableDropdownMenuSubTrigger,
-  UnstableDropdownMenuTrigger
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  type DropdownMenuChecked,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger
 };

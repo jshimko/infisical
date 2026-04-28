@@ -5,12 +5,12 @@ import { z } from "zod";
 
 import {
   Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
   FieldError,
-  UnstableCard,
-  UnstableCardContent,
-  UnstableCardHeader,
-  UnstableCardTitle,
-  UnstableInput
+  Input
 } from "@app/components/v3";
 import { useSendVerificationEmail } from "@app/hooks/api";
 
@@ -61,15 +61,15 @@ export default function EnterEmailStep({
 
   return (
     <div className="mx-auto flex w-full flex-col items-center justify-center">
-      <UnstableCard className="mx-auto w-full max-w-sm items-stretch gap-0 p-6">
-        <UnstableCardHeader className="mb-4 gap-4">
-          <UnstableCardTitle className="ml-0.5 bg-linear-to-b from-white to-bunker-200 bg-clip-text text-[1.65rem] font-medium text-transparent">
+      <Card className="mx-auto w-full max-w-sm items-stretch gap-0 p-6">
+        <CardHeader className="mb-4 gap-4">
+          <CardTitle className="ml-0.5 bg-linear-to-b from-white to-bunker-200 bg-clip-text text-[1.65rem] font-medium text-transparent">
             {t("signup.step1-start")}
-          </UnstableCardTitle>
-        </UnstableCardHeader>
-        <UnstableCardContent>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="w-full">
-            <UnstableInput
+            <Input
               placeholder="Enter your email address..."
               onChange={(e) => setEmail(e.target.value)}
               value={email}
@@ -93,15 +93,15 @@ export default function EnterEmailStep({
               {String(t("signup.step1-submit"))}
             </Button>
           </div>
-          <div className="mt-6 flex w-full justify-center text-sm text-muted">
+          <div className="mt-6 flex w-full justify-center text-xs text-label">
             <Link to="/login">
-              <span className="cursor-pointer duration-200 hover:text-label hover:underline hover:decoration-project/45 hover:underline-offset-2">
+              <span className="cursor-pointer duration-200 hover:text-foreground hover:underline hover:decoration-project/45 hover:underline-offset-2">
                 {t("signup.already-have-account")}
               </span>
             </Link>
           </div>
-        </UnstableCardContent>
-      </UnstableCard>
+        </CardContent>
+      </Card>
     </div>
   );
 }

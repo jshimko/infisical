@@ -11,11 +11,13 @@ import { AwsIamUserSecretRotationReviewFields } from "./AwsIamUserSecretRotation
 import { AzureClientSecretRotationReviewFields } from "./AzureClientSecretRotationReviewFields";
 import { DatabricksServicePrincipalSecretRotationReviewFields } from "./DatabricksServicePrincipalSecretRotationReviewFields";
 import { DbtServiceTokenRotationReviewFields } from "./DbtServiceTokenRotationReviewFields";
+import { HpIloRotationReviewFields } from "./HpIloRotationReviewFields";
 import { LdapPasswordRotationReviewFields } from "./LdapPasswordRotationReviewFields";
 import { OktaClientSecretRotationReviewFields } from "./OktaClientSecretRotationReviewFields";
 import { OpenRouterApiKeyRotationReviewFields } from "./OpenRouterApiKeyRotationReviewFields";
 import { RedisCredentialsRotationReviewFields } from "./RedisCredentialsRotationReviewFields";
 import { SqlCredentialsRotationReviewFields } from "./shared";
+import { SupabaseApiKeyRotationReviewFields } from "./SupabaseApiKeyRotationReviewFields";
 import { UnixLinuxLocalAccountRotationReviewFields } from "./UnixLinuxLocalAccountRotationReviewFields";
 import { WindowsLocalAccountRotationReviewFields } from "./WindowsLocalAccountRotationReviewFields";
 
@@ -36,7 +38,9 @@ const COMPONENT_MAP: Record<SecretRotation, React.FC> = {
   [SecretRotation.UnixLinuxLocalAccount]: UnixLinuxLocalAccountRotationReviewFields,
   [SecretRotation.DbtServiceToken]: DbtServiceTokenRotationReviewFields,
   [SecretRotation.WindowsLocalAccount]: WindowsLocalAccountRotationReviewFields,
-  [SecretRotation.OpenRouterApiKey]: OpenRouterApiKeyRotationReviewFields
+  [SecretRotation.OpenRouterApiKey]: OpenRouterApiKeyRotationReviewFields,
+  [SecretRotation.HpIloLocalAccount]: HpIloRotationReviewFields,
+  [SecretRotation.SupabaseApiKey]: SupabaseApiKeyRotationReviewFields
 };
 
 export const SecretRotationV2ReviewFields = () => {

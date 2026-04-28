@@ -12,6 +12,9 @@ const alertVariants = cva(
       variant: {
         default: "bg-container text-card-foreground",
         info: "bg-info/5 text-info border-info/20",
+        warning: "bg-warning/5 text-warning border-warning/20",
+        success: "bg-success/5 text-success border-success/20",
+        danger: "bg-danger/5 text-danger border-danger/20",
         org: "bg-org/5 text-org border-org/20",
         "sub-org": "bg-sub-org/5 text-sub-org border-sub-org/20"
       }
@@ -22,7 +25,7 @@ const alertVariants = cva(
   }
 );
 
-function UnstableAlert({
+function Alert({
   className,
   variant,
   ...props
@@ -37,7 +40,7 @@ function UnstableAlert({
   );
 }
 
-function UnstableAlertTitle({ className, ...props }: React.ComponentProps<"div">) {
+function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="alert-title"
@@ -47,12 +50,12 @@ function UnstableAlertTitle({ className, ...props }: React.ComponentProps<"div">
   );
 }
 
-function UnstableAlertDescription({ className, ...props }: React.ComponentProps<"div">) {
+function AlertDescription({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="alert-description"
       className={cn(
-        "col-start-2 grid justify-items-start gap-1 text-sm text-foreground/75 [&_p]:leading-relaxed",
+        "col-start-2 grid justify-items-start gap-1 text-xs text-foreground/75 [&_p]:leading-relaxed",
         className
       )}
       {...props}
@@ -60,4 +63,4 @@ function UnstableAlertDescription({ className, ...props }: React.ComponentProps<
   );
 }
 
-export { UnstableAlert, UnstableAlertDescription, UnstableAlertTitle };
+export { Alert, AlertDescription, AlertTitle };

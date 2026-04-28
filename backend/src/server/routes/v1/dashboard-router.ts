@@ -1,7 +1,7 @@
 import { ForbiddenError } from "@casl/ability";
 import { z } from "zod";
 
-import { SecretFoldersSchema, SecretImportsSchema, SecretType, UsersSchema } from "@app/db/schemas";
+import { SecretFoldersSchema, SecretImportsSchema, SecretType } from "@app/db/schemas";
 import { RemindersSchema } from "@app/db/schemas/reminders";
 import { EventType, UserAgentType } from "@app/ee/services/audit-log/audit-log-types";
 import { ProjectPermissionSecretActions } from "@app/ee/services/permission/project-permission";
@@ -18,6 +18,7 @@ import {
   booleanSchema,
   SanitizedDynamicSecretSchema,
   SanitizedTagSchema,
+  SanitizedUserSchema,
   secretRawSchema
 } from "@app/server/routes/sanitizedSchemas";
 import { AuthMode } from "@app/services/auth/auth-type";
@@ -101,6 +102,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
           .describe(DASHBOARD.SECRET_OVERVIEW_LIST.orderDirection)
           .optional(),
         search: z.string().trim().describe(DASHBOARD.SECRET_OVERVIEW_LIST.search).optional(),
+        tags: z.string().trim().transform(decodeURIComponent).describe(DASHBOARD.SECRET_OVERVIEW_LIST.tags).optional(),
         includeSecrets: booleanSchema.describe(DASHBOARD.SECRET_OVERVIEW_LIST.includeSecrets),
         includeFolders: booleanSchema.describe(DASHBOARD.SECRET_OVERVIEW_LIST.includeFolders),
         includeImports: booleanSchema.describe(DASHBOARD.SECRET_OVERVIEW_LIST.includeImports),
@@ -217,6 +219,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
       } = req.query;
 
       const environments = req.query.environments.split(",");
+      const tagSlugs = req.query.tags?.split(",").filter(Boolean) ?? [];
 
       if (!projectId || environments.length === 0)
         throw new BadRequestError({ message: "Missing project id or environment(s)" });
@@ -466,6 +469,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
           projectId,
           path: secretPath,
           search,
+          tagSlugs,
           isInternal: true
         });
 
@@ -484,6 +488,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
             orderBy,
             orderDirection,
             search,
+            tagSlugs,
             limit: remainingLimit,
             offset: adjustedOffset,
             isInternal: true
@@ -693,7 +698,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
               isEmpty: z.boolean(),
               secretReminderRecipients: z
                 .object({
-                  user: UsersSchema.pick({ id: true, email: true, username: true }),
+                  user: SanitizedUserSchema.pick({ id: true, email: true, username: true }),
                   id: z.string()
                 })
                 .array(),
@@ -1218,8 +1223,6 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
       const tags = req.query.tags?.split(",").filter((tag) => Boolean(tag.trim())) ?? [];
       if (!search && !tags.length) throw new BadRequestError({ message: "Search or tags required" });
 
-      const searchHasTags = Boolean(tags.length);
-
       const allFolders = await server.services.folder.getFoldersDeepByEnvs(
         {
           projectId,
@@ -1258,27 +1261,23 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
         req.permission
       );
 
-      const dynamicSecrets = searchHasTags
-        ? []
-        : await server.services.dynamicSecret.listDynamicSecretsByFolderIds(
-            {
-              projectId,
-              folderMappings,
-              filters: sharedFilters
-            },
-            req.permission
-          );
+      const dynamicSecrets = await server.services.dynamicSecret.listDynamicSecretsByFolderIds(
+        {
+          projectId,
+          folderMappings,
+          filters: sharedFilters
+        },
+        req.permission
+      );
 
-      const secretRotations = searchHasTags
-        ? []
-        : await server.services.secretRotationV2.getQuickSearchSecretRotations(
-            {
-              projectId,
-              folderMappings,
-              filters: sharedFilters
-            },
-            req.permission
-          );
+      const secretRotations = await server.services.secretRotationV2.getQuickSearchSecretRotations(
+        {
+          projectId,
+          folderMappings,
+          filters: sharedFilters
+        },
+        req.permission
+      );
 
       for await (const environment of environments) {
         const envSecrets = secrets.filter((secret) => secret.environment === environment);
@@ -1370,32 +1369,28 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
         secretRotations: sliceQuickSearch(
           searchPath ? secretRotations.filter((rotation) => rotation.folder.path.endsWith(searchPath)) : secretRotations
         ),
-        folders: searchHasTags
-          ? []
-          : sliceQuickSearch(
-              allFolders.filter((folder) => {
-                const [folderName, ...folderPathSegments] = folder.path.split("/").reverse();
-                const folderPath = folderPathSegments.reverse().join("/").toLowerCase() || "/";
+        folders: sliceQuickSearch(
+          allFolders.filter((folder) => {
+            const [folderName, ...folderPathSegments] = folder.path.split("/").reverse();
+            const folderPath = folderPathSegments.reverse().join("/").toLowerCase() || "/";
 
-                if (searchPath) {
-                  if (searchPath === "/") {
-                    // only show root folders if no folder name search
-                    if (!searchName) return folderPath === searchPath;
+            if (searchPath) {
+              if (searchPath === "/") {
+                // only show root folders if no folder name search
+                if (!searchName) return folderPath === searchPath;
 
-                    // start partial match on root folders
-                    return folderName.toLowerCase().startsWith(searchName.toLowerCase());
-                  }
+                // start partial match on root folders
+                return folderName.toLowerCase().startsWith(searchName.toLowerCase());
+              }
 
-                  // support ending partial path match
-                  return (
-                    folderPath.endsWith(searchPath) && folderName.toLowerCase().startsWith(searchName.toLowerCase())
-                  );
-                }
+              // support ending partial path match
+              return folderPath.endsWith(searchPath) && folderName.toLowerCase().startsWith(searchName.toLowerCase());
+            }
 
-                // no search path, "fuzzy" match all folders
-                return folderName.toLowerCase().includes(searchName.toLowerCase());
-              })
-            )
+            // no search path, "fuzzy" match all folders
+            return folderName.toLowerCase().includes(searchName.toLowerCase());
+          })
+        )
       };
     }
   });
@@ -1691,7 +1686,7 @@ export const registerDashboardRouter = async (server: FastifyZodProvider) => {
       }),
       querystring: z.object({
         offset: z.coerce.number(),
-        limit: z.coerce.number()
+        limit: z.coerce.number().max(1000)
       }),
       response: {
         200: z.object({

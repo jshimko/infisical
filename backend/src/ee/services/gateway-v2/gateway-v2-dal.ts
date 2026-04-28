@@ -5,6 +5,8 @@ import { GatewaysV2Schema, TableName, TGatewaysV2 } from "@app/db/schemas";
 import { DatabaseError } from "@app/lib/errors";
 import { buildFindFilter, ormify, selectAllTableCols, TFindFilter, TFindOpt } from "@app/lib/knex";
 
+import { GatewayHealthCheckStatus } from "./gateway-v2-types";
+
 export type TGatewayV2DALFactory = ReturnType<typeof gatewayV2DalFactory>;
 
 export const gatewayV2DalFactory = (db: TDbClient) => {
@@ -20,13 +22,17 @@ export const gatewayV2DalFactory = (db: TDbClient) => {
       const query = (tx || db.replicaNode())(TableName.GatewayV2)
         // eslint-disable-next-line @typescript-eslint/no-misused-promises
         .where(buildFindFilter(regularFilter, TableName.GatewayV2))
-        .join(TableName.Identity, `${TableName.Identity}.id`, `${TableName.GatewayV2}.identityId`)
+        .leftJoin(TableName.Identity, `${TableName.Identity}.id`, `${TableName.GatewayV2}.identityId`)
         .select(selectAllTableCols(TableName.GatewayV2))
         .select(db.ref("name").withSchema(TableName.Identity).as("identityName"));
 
       if (isHeartbeatStale) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-        void query.where(`${TableName.GatewayV2}.heartbeat`, "<", oneHourAgo);
+        void query.where((builder) => {
+          void builder
+            .where(`${TableName.GatewayV2}.heartbeat`, "<", oneHourAgo)
+            .orWhere(`${TableName.GatewayV2}.lastHealthCheckStatus`, GatewayHealthCheckStatus.Failed);
+        });
         void query.where((v) => {
           void v
             .whereNull(`${TableName.GatewayV2}.healthAlertedAt`)
@@ -48,7 +54,7 @@ export const gatewayV2DalFactory = (db: TDbClient) => {
 
       return docs.map((el) => ({
         ...GatewaysV2Schema.parse(el),
-        identity: { id: el.identityId, name: el.identityName }
+        identity: el.identityId ? { id: el.identityId, name: el.identityName } : null
       }));
     } catch (error) {
       throw new DatabaseError({ error, name: `${TableName.GatewayV2}: Find` });
@@ -70,5 +76,14 @@ export const gatewayV2DalFactory = (db: TDbClient) => {
     }
   };
 
-  return { ...orm, find, findById };
+  const countByOrgId = async (orgId: string, tx?: Knex) => {
+    try {
+      const result = await (tx || db.replicaNode())(TableName.GatewayV2).where({ orgId }).count("id").first();
+      return parseInt(String(result?.count || "0"), 10);
+    } catch (error) {
+      throw new DatabaseError({ error, name: `${TableName.GatewayV2}: Count by org id` });
+    }
+  };
+
+  return { ...orm, find, findById, countByOrgId };
 };

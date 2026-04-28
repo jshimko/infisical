@@ -23,6 +23,9 @@ import {
 } from "@app/lib/errors";
 import { checkIPAgainstBlocklist, extractIPDetails, isValidIpOrCidr, TIp } from "@app/lib/ip";
 import { logger } from "@app/lib/logger";
+import { requestMemoKeys } from "@app/lib/request-context/memo-keys";
+import { RequestContextKey } from "@app/lib/request-context/request-context-keys";
+import { requestMemoize } from "@app/lib/request-context/request-memoizer";
 import { AuthAttemptAuthMethod, AuthAttemptAuthResult, authAttemptCounter } from "@app/lib/telemetry/metrics";
 
 import { ActorType, AuthTokenType } from "../auth/auth-type";
@@ -85,12 +88,15 @@ export const identityUaServiceFactory = ({
     const identityUa = await identityUaDAL.findOne({ clientId });
     if (!identityUa) {
       throw new UnauthorizedError({
-        message: "Invalid credentials"
+        message: "Invalid credentials",
+        detail: { reasonCode: "client_id_not_found" }
       });
     }
 
     const identity = await identityDAL.findById(identityUa.identityId);
-    const org = await orgDAL.findById(identity.orgId);
+    const org = await requestMemoize(requestMemoKeys.orgFindById(identity.orgId), () =>
+      orgDAL.findById(identity.orgId)
+    );
     const isSubOrgIdentity = Boolean(org.rootOrgId);
 
     // If the identity is a sub-org identity, then the scope is always the org.id, and if it's a root org identity, then we need to resolve the scope if a subOrganizationName is specified
@@ -102,18 +108,28 @@ export const identityUaServiceFactory = ({
         trustedIps: identityUa.clientSecretTrustedIps as TIp[]
       });
 
-      const LOCKOUT_KEY = `lockout:identity:${identityUa.identityId}:${IdentityAuthMethod.UNIVERSAL_AUTH}:${clientId}`;
+      const lockoutKey = KeyStorePrefixes.IdentityLockoutState(
+        identityUa.identityId,
+        IdentityAuthMethod.UNIVERSAL_AUTH,
+        clientId
+      );
 
-      const lockoutRaw = await keyStore.getItem(LOCKOUT_KEY);
+      const lockoutRaw = await keyStore.getItem(lockoutKey);
 
       let lockout: LockoutObject | undefined;
       if (lockoutRaw) {
         lockout = JSON.parse(lockoutRaw) as LockoutObject;
       }
 
-      if (lockout && lockout.lockedOut) {
+      if (lockout && lockout.lockedOut && identityUa.lockoutEnabled) {
         throw new UnauthorizedError({
-          message: "This identity auth method is temporarily locked, please try again later"
+          message: "This identity auth method is temporarily locked, please try again later",
+          detail: {
+            reasonCode: "temporarily_locked",
+            identityId: identityUa.identityId,
+            orgId: identity.orgId,
+            identityName: identity.name
+          }
         });
       }
 
@@ -138,14 +154,14 @@ export const identityUaServiceFactory = ({
         if (identityUa.lockoutEnabled) {
           let lock: Awaited<ReturnType<typeof keyStore.acquireLock>> | undefined;
           try {
-            lock = await keyStore.acquireLock([KeyStorePrefixes.IdentityLockoutLock(LOCKOUT_KEY)], 300, {
+            lock = await keyStore.acquireLock([KeyStorePrefixes.IdentityLockoutLock(lockoutKey)], 300, {
               retryCount: 3,
               retryDelay: 300,
               retryJitter: 100
             });
 
             // Re-fetch the latest lockout data while holding the lock
-            const lockoutRawNew = await keyStore.getItem(LOCKOUT_KEY);
+            const lockoutRawNew = await keyStore.getItem(lockoutKey);
             if (lockoutRawNew) {
               lockout = JSON.parse(lockoutRawNew) as LockoutObject;
             } else {
@@ -157,7 +173,13 @@ export const identityUaServiceFactory = ({
 
             if (lockout.lockedOut) {
               throw new UnauthorizedError({
-                message: "This identity auth method is temporarily locked, please try again later"
+                message: "This identity auth method is temporarily locked, please try again later",
+                detail: {
+                  reasonCode: "temporarily_locked",
+                  identityId: identityUa.identityId,
+                  orgId: identity.orgId,
+                  identityName: identity.name
+                }
               });
             }
 
@@ -167,7 +189,7 @@ export const identityUaServiceFactory = ({
             }
 
             await keyStore.setItemWithExpiry(
-              LOCKOUT_KEY,
+              lockoutKey,
               lockout.lockedOut ? identityUa.lockoutDurationSeconds : identityUa.lockoutCounterResetSeconds,
               JSON.stringify(lockout)
             );
@@ -186,10 +208,18 @@ export const identityUaServiceFactory = ({
           }
         }
 
-        throw new UnauthorizedError({ message: "Invalid credentials" });
+        throw new UnauthorizedError({
+          message: "Invalid credentials",
+          detail: {
+            reasonCode: "invalid_client_secret",
+            identityId: identityUa.identityId,
+            orgId: identity.orgId,
+            identityName: identity.name
+          }
+        });
       } else if (lockout) {
         // If credentials are valid, clear any existing lockout record
-        await keyStore.deleteItem(LOCKOUT_KEY);
+        await keyStore.deleteItem(lockoutKey);
       }
 
       const { clientSecretTTL, clientSecretNumUses, clientSecretNumUsesLimit } = validClientSecretInfo;
@@ -205,7 +235,13 @@ export const identityUaServiceFactory = ({
           });
 
           throw new UnauthorizedError({
-            message: "Access denied due to expired client secret"
+            message: "Access denied due to expired client secret",
+            detail: {
+              reasonCode: "client_secret_expired",
+              identityId: identityUa.identityId,
+              orgId: identity.orgId,
+              identityName: identity.name
+            }
           });
         }
       }
@@ -217,7 +253,13 @@ export const identityUaServiceFactory = ({
           isClientSecretRevoked: true
         });
         throw new UnauthorizedError({
-          message: "Access denied due to client secret usage limit reached"
+          message: "Access denied due to client secret usage limit reached",
+          detail: {
+            reasonCode: "client_secret_usage_limit_reached",
+            identityId: identityUa.identityId,
+            orgId: identity.orgId,
+            identityName: identity.name
+          }
         });
       }
 
@@ -234,7 +276,7 @@ export const identityUaServiceFactory = ({
               accessTokenMaxTTL: 1000000000
             };
 
-      if (organizationSlug) {
+      if (organizationSlug && org.slug !== organizationSlug) {
         if (!isSubOrgIdentity) {
           const subOrg = await orgDAL.findOne({ rootOrgId: org.id, slug: organizationSlug });
 
@@ -251,7 +293,13 @@ export const identityUaServiceFactory = ({
 
           if (!subOrgMembership) {
             throw new UnauthorizedError({
-              message: `Identity not authorized to access sub organization ${organizationSlug}`
+              message: `Identity not authorized to access sub organization ${organizationSlug}`,
+              detail: {
+                reasonCode: "sub_org_unauthorized",
+                identityId: identityUa.identityId,
+                orgId: identity.orgId,
+                identityName: identity.name
+              }
             });
           }
 
@@ -322,8 +370,8 @@ export const identityUaServiceFactory = ({
           "infisical.organization.name": org.name,
           "infisical.identity.auth_method": AuthAttemptAuthMethod.UNIVERSAL_AUTH,
           "infisical.identity.auth_result": AuthAttemptAuthResult.SUCCESS,
-          "client.address": requestContext.get("ip"),
-          "user_agent.original": requestContext.get("userAgent")
+          "client.address": requestContext.get(RequestContextKey.Ip),
+          "user_agent.original": requestContext.get(RequestContextKey.UserAgent)
         });
       }
 
@@ -344,8 +392,8 @@ export const identityUaServiceFactory = ({
           "infisical.organization.name": org.name,
           "infisical.identity.auth_method": AuthAttemptAuthMethod.UNIVERSAL_AUTH,
           "infisical.identity.auth_result": AuthAttemptAuthResult.FAILURE,
-          "client.address": requestContext.get("ip"),
-          "user_agent.original": requestContext.get("userAgent")
+          "client.address": requestContext.get(RequestContextKey.Ip),
+          "user_agent.original": requestContext.get(RequestContextKey.UserAgent)
         });
       }
       throw error;
@@ -718,7 +766,10 @@ export const identityUaServiceFactory = ({
         actorOrgId,
         scope: OrganizationActionScope.Any
       });
-      const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(identityMembershipOrg.scopeOrgId);
+      const { shouldUseNewPrivilegeSystem } = await requestMemoize(
+        requestMemoKeys.orgFindById(identityMembershipOrg.scopeOrgId),
+        () => orgDAL.findById(identityMembershipOrg.scopeOrgId)
+      );
       const permissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
         OrgPermissionIdentityActions.RevokeAuth,
@@ -808,7 +859,10 @@ export const identityUaServiceFactory = ({
         actorOrgId,
         scope: OrganizationActionScope.Any
       });
-      const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(identityMembershipOrg.scopeOrgId);
+      const { shouldUseNewPrivilegeSystem } = await requestMemoize(
+        requestMemoKeys.orgFindById(identityMembershipOrg.scopeOrgId),
+        () => orgDAL.findById(identityMembershipOrg.scopeOrgId)
+      );
       const permissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
         OrgPermissionIdentityActions.CreateToken,
@@ -909,7 +963,10 @@ export const identityUaServiceFactory = ({
         actorOrgId,
         scope: OrganizationActionScope.Any
       });
-      const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(identityMembershipOrg.scopeOrgId);
+      const { shouldUseNewPrivilegeSystem } = await requestMemoize(
+        requestMemoKeys.orgFindById(identityMembershipOrg.scopeOrgId),
+        () => orgDAL.findById(identityMembershipOrg.scopeOrgId)
+      );
       const permissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
         OrgPermissionIdentityActions.GetToken,
@@ -1004,7 +1061,10 @@ export const identityUaServiceFactory = ({
         actorOrgId,
         scope: OrganizationActionScope.Any
       });
-      const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(identityMembershipOrg.scopeOrgId);
+      const { shouldUseNewPrivilegeSystem } = await requestMemoize(
+        requestMemoKeys.orgFindById(identityMembershipOrg.scopeOrgId),
+        () => orgDAL.findById(identityMembershipOrg.scopeOrgId)
+      );
       const permissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
         OrgPermissionIdentityActions.GetToken,
@@ -1095,7 +1155,10 @@ export const identityUaServiceFactory = ({
         scope: OrganizationActionScope.Any
       });
 
-      const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(identityMembershipOrg.scopeOrgId);
+      const { shouldUseNewPrivilegeSystem } = await requestMemoize(
+        requestMemoKeys.orgFindById(identityMembershipOrg.scopeOrgId),
+        () => orgDAL.findById(identityMembershipOrg.scopeOrgId)
+      );
       const permissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
         OrgPermissionIdentityActions.DeleteToken,
@@ -1173,7 +1236,7 @@ export const identityUaServiceFactory = ({
       ForbiddenError.from(permission).throwUnlessCan(OrgPermissionIdentityActions.Edit, OrgPermissionSubjects.Identity);
     }
     const deleted = await keyStore.deleteItems({
-      pattern: `lockout:identity:${identityId}:${IdentityAuthMethod.UNIVERSAL_AUTH}:*`
+      pattern: KeyStorePrefixes.IdentityLockoutStateByMethodPattern(identityId, IdentityAuthMethod.UNIVERSAL_AUTH)
     });
 
     return { deleted, identityId, orgId: identityMembershipOrg.scopeOrgId };

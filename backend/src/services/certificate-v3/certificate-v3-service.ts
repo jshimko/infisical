@@ -34,6 +34,7 @@ import {
   CertSignatureAlgorithm,
   CertStatus
 } from "@app/services/certificate/certificate-types";
+import { validateAcmIssuanceInputs } from "@app/services/certificate-authority/aws-acm-public-ca/aws-acm-public-ca-certificate-authority-fns";
 import {
   TCertificateAuthorityDALFactory,
   TCertificateAuthorityWithAssociatedCa
@@ -49,6 +50,8 @@ import { TCertificateProfileDALFactory } from "@app/services/certificate-profile
 import { EnrollmentType, IssuerType } from "@app/services/certificate-profile/certificate-profile-types";
 import { TIdentityDALFactory } from "@app/services/identity/identity-dal";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
+import { TPkiAlertV2QueueServiceFactory } from "@app/services/pki-alert-v2/pki-alert-v2-queue";
+import { PkiAlertEventType } from "@app/services/pki-alert-v2/pki-alert-v2-types";
 import { TProjectDALFactory } from "@app/services/project/project-dal";
 import { getProjectKmsCertificateKeyId } from "@app/services/project/project-fns";
 import { TUserDALFactory } from "@app/services/user/user-dal";
@@ -152,6 +155,7 @@ type TCertificateV3ServiceFactoryDep = {
   identityDAL: Pick<TIdentityDALFactory, "findById">;
   approvalPolicyService: Pick<TApprovalPolicyServiceFactory, "createRequestFromPolicy">;
   resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "insertMany" | "delete" | "find">;
+  pkiAlertV2Queue?: Pick<TPkiAlertV2QueueServiceFactory, "queueCertificateEvent">;
 };
 
 export type TCertificateV3ServiceFactory = ReturnType<typeof certificateV3ServiceFactory>;
@@ -214,6 +218,15 @@ const validateProfileAndPermissions = async ({
     return profile;
   }
 
+  if (actor === ActorType.SCEP_ACCOUNT && requiredEnrollmentType === EnrollmentType.SCEP) {
+    if (actorId !== profile.id) {
+      throw new ForbiddenRequestError({
+        message: "SCEP profile mismatch"
+      });
+    }
+    return profile;
+  }
+
   const { permission } = await permissionService.getProjectPermission({
     actor,
     actorId,
@@ -264,7 +277,13 @@ const validateRenewalEligibility = (
 
   const caType = (ca.externalCa?.type as CaType) ?? CaType.INTERNAL;
   const isInternalCa = caType === CaType.INTERNAL;
-  const isConnectedExternalCa = caType === CaType.ACME || caType === CaType.AZURE_AD_CS || caType === CaType.AWS_PCA;
+  const isConnectedExternalCa =
+    caType === CaType.ACME ||
+    caType === CaType.AZURE_AD_CS ||
+    caType === CaType.AWS_PCA ||
+    caType === CaType.AWS_ACM_PUBLIC_CA ||
+    caType === CaType.DIGICERT ||
+    caType === CaType.VENAFI_TPP;
   const isImportedCertificate = certificate.pkiSubscriberId != null && !certificate.profileId;
 
   if (!isInternalCa && !isConnectedExternalCa) {
@@ -633,7 +652,8 @@ export const certificateV3ServiceFactory = ({
   userDAL,
   identityDAL,
   approvalPolicyService,
-  resourceMetadataDAL
+  resourceMetadataDAL,
+  pkiAlertV2Queue
 }: TCertificateV3ServiceFactoryDep) => {
   /**
    * Resolves requester name and email based on actor type
@@ -695,7 +715,7 @@ export const certificateV3ServiceFactory = ({
       acmeAccountDAL,
       permissionService,
       requiredEnrollmentType: EnrollmentType.API,
-      isInternal: actor === ActorType.EST_ACCOUNT
+      isInternal: actor === ActorType.EST_ACCOUNT || actor === ActorType.SCEP_ACCOUNT
     });
 
     const approvalFactory = APPROVAL_POLICY_FACTORY_MAP[ApprovalPolicyType.CertRequest](ApprovalPolicyType.CertRequest);
@@ -1212,6 +1232,16 @@ export const certificateV3ServiceFactory = ({
 
     const privateKeyForResponse = canReadPrivateKey ? bufferToString(privateKey) : undefined;
 
+    try {
+      await pkiAlertV2Queue?.queueCertificateEvent({
+        certificateId: cert.id,
+        projectId: profile.projectId,
+        eventType: PkiAlertEventType.ISSUANCE
+      });
+    } catch {
+      logger.debug("Failed to queue PKI issuance alert event");
+    }
+
     return {
       status: CertificateRequestStatus.ISSUED,
       certificate: bufferToString(certificate),
@@ -1252,7 +1282,7 @@ export const certificateV3ServiceFactory = ({
       acmeAccountDAL,
       permissionService,
       requiredEnrollmentType: enrollmentType,
-      isInternal: actor === ActorType.EST_ACCOUNT
+      isInternal: actor === ActorType.EST_ACCOUNT || actor === ActorType.SCEP_ACCOUNT
     });
 
     if (!profile.caId) {
@@ -1578,6 +1608,16 @@ export const certificateV3ServiceFactory = ({
       certificateChainString = removeRootCaFromChain(certificateChainString);
     }
 
+    try {
+      await pkiAlertV2Queue?.queueCertificateEvent({
+        certificateId: cert.id,
+        projectId: profile.projectId,
+        eventType: PkiAlertEventType.ISSUANCE
+      });
+    } catch {
+      logger.debug("Failed to queue PKI issuance alert event");
+    }
+
     return {
       status: CertificateRequestStatus.ISSUED,
       certificate: certificateString,
@@ -1611,7 +1651,7 @@ export const certificateV3ServiceFactory = ({
       acmeAccountDAL,
       permissionService,
       requiredEnrollmentType: EnrollmentType.API,
-      isInternal: actor === ActorType.EST_ACCOUNT
+      isInternal: actor === ActorType.EST_ACCOUNT || actor === ActorType.SCEP_ACCOUNT
     });
 
     let certificateRequest: TCertificateRequest;
@@ -1674,6 +1714,28 @@ export const certificateV3ServiceFactory = ({
       throw new BadRequestError({
         message: `Certificate order validation failed: ${validationResult.errors.join(", ")}`
       });
+    }
+
+    // ACM pre-flight validation runs before the approval branch so bad inputs (e.g., a TTL that
+    // isn't ACM's fixed 198 days) are rejected at submit time rather than after the approver has
+    // already approved a request that's guaranteed to fail downstream.
+    if (profile.caId) {
+      const preflightCa = await certificateAuthorityDAL.findByIdWithAssociatedCa(profile.caId);
+      if (preflightCa?.externalCa?.type === CaType.AWS_ACM_PUBLIC_CA) {
+        validateAcmIssuanceInputs({
+          csr: certificateOrder.csr,
+          keyAlgorithm: certificateOrder.keyAlgorithm,
+          altNames: certificateOrder.altNames,
+          ttl: certificateOrder.validity?.ttl,
+          notBefore: certificateOrder.notBefore,
+          notAfter: certificateOrder.notAfter,
+          organization: certificateRequest.organization,
+          organizationalUnit: certificateRequest.organizationalUnit,
+          country: certificateRequest.country,
+          state: certificateRequest.state,
+          locality: certificateRequest.locality
+        });
+      }
     }
 
     const orderApprovalFactory = APPROVAL_POLICY_FACTORY_MAP[ApprovalPolicyType.CertRequest](
@@ -1820,7 +1882,32 @@ export const certificateV3ServiceFactory = ({
       });
     }
 
-    if (caType === CaType.ACME || caType === CaType.AZURE_AD_CS || caType === CaType.AWS_PCA) {
+    if (
+      caType === CaType.ACME ||
+      caType === CaType.AZURE_AD_CS ||
+      caType === CaType.AWS_PCA ||
+      caType === CaType.DIGICERT ||
+      caType === CaType.AWS_ACM_PUBLIC_CA ||
+      caType === CaType.VENAFI_TPP
+    ) {
+      // Pre-flight validation for ACM — reject bad inputs synchronously so the user
+      // gets a 400 on submit rather than a FAILED request row after the job runs.
+      if (caType === CaType.AWS_ACM_PUBLIC_CA) {
+        validateAcmIssuanceInputs({
+          csr: certificateOrder.csr,
+          keyAlgorithm: certificateOrder.keyAlgorithm,
+          altNames: certificateOrder.altNames,
+          ttl: certificateOrder.validity?.ttl,
+          notBefore: certificateOrder.notBefore,
+          notAfter: certificateOrder.notAfter,
+          organization: certificateRequest.organization,
+          organizationalUnit: certificateRequest.organizationalUnit,
+          country: certificateRequest.country,
+          state: certificateRequest.state,
+          locality: certificateRequest.locality
+        });
+      }
+
       const orderId = randomUUID();
 
       const certRequest = await certificateRequestService.createCertificateRequest({
@@ -1862,6 +1949,7 @@ export const certificateV3ServiceFactory = ({
         certificateId: orderId,
         profileId: profile.id,
         caId: profile.caId || "",
+        caType,
         ttl: certificateOrder.validity?.ttl || "1y",
         signatureAlgorithm: certificateOrder.signatureAlgorithm || "",
         keyAlgorithm: certificateRequest.keyAlgorithm || "",
@@ -2148,7 +2236,14 @@ export const certificateV3ServiceFactory = ({
             throw new NotFoundError({ message: "Certificate was signed but could not be found in database" });
           }
           newCert = foundCert;
-        } else if (caType === CaType.ACME || caType === CaType.AZURE_AD_CS || caType === CaType.AWS_PCA) {
+        } else if (
+          caType === CaType.ACME ||
+          caType === CaType.AZURE_AD_CS ||
+          caType === CaType.AWS_PCA ||
+          caType === CaType.DIGICERT ||
+          caType === CaType.AWS_ACM_PUBLIC_CA ||
+          caType === CaType.VENAFI_TPP
+        ) {
           // External CA renewal - mark for async processing outside transaction
           return {
             isExternalCA: true,
@@ -2328,6 +2423,7 @@ export const certificateV3ServiceFactory = ({
         certificateId: renewalOrderId,
         profileId: profile?.id || "",
         caId: ca.id,
+        caType: (ca.externalCa?.type as CaType) ?? CaType.INTERNAL,
         commonName: originalCert.commonName || "",
         altNames: structuredAltNames,
         ttl,
@@ -2374,6 +2470,17 @@ export const certificateV3ServiceFactory = ({
     if (removeRootsFromChain) {
       finalCertificateChain = removeRootCaFromChain(finalCertificateChain);
     }
+
+    try {
+      await pkiAlertV2Queue?.queueCertificateEvent({
+        certificateId: renewalResult.newCert.id,
+        projectId: renewalResult.originalCert.projectId,
+        eventType: PkiAlertEventType.RENEWAL
+      });
+    } catch {
+      logger.debug("Failed to queue PKI renewal alert event");
+    }
+
     return {
       status: CertificateRequestStatus.ISSUED,
       certificate: renewalResult.certificate,
@@ -2410,12 +2517,16 @@ export const certificateV3ServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: certificate.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Edit,
       subject(ProjectPermissionSub.Certificates, {
         commonName: certificate.commonName,
-        altNames: certificate.altNames ?? undefined,
-        serialNumber: certificate.serialNumber
+        altNames: certificate.altNames?.split(",").map((s) => s.trim()),
+        serialNumber: certificate.serialNumber,
+        metadata: certMetadata
       })
     );
 
@@ -2432,7 +2543,7 @@ export const certificateV3ServiceFactory = ({
 
     if (profile.enrollmentType !== EnrollmentType.API) {
       throw new ForbiddenRequestError({
-        message: "Certificate is not eligible for auto-renewal: EST certificates cannot be auto-renewed"
+        message: `Certificate is not eligible for auto-renewal: ${profile.enrollmentType.toUpperCase()} certificates cannot be auto-renewed`
       });
     }
 
@@ -2523,12 +2634,16 @@ export const certificateV3ServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: certificate.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Edit,
       subject(ProjectPermissionSub.Certificates, {
         commonName: certificate.commonName,
-        altNames: certificate.altNames ?? undefined,
-        serialNumber: certificate.serialNumber
+        altNames: certificate.altNames?.split(",").map((s) => s.trim()),
+        serialNumber: certificate.serialNumber,
+        metadata: certMetadata
       })
     );
 
@@ -2545,7 +2660,7 @@ export const certificateV3ServiceFactory = ({
 
     if (profile.enrollmentType !== EnrollmentType.API) {
       throw new ForbiddenRequestError({
-        message: "Certificate is not eligible for auto-renewal: EST certificates cannot be auto-renewed"
+        message: `Certificate is not eligible for auto-renewal: ${profile.enrollmentType.toUpperCase()} certificates cannot be auto-renewed`
       });
     }
 
@@ -2587,14 +2702,30 @@ export const certificateV3ServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const currentMetadataRows = await resourceMetadataDAL.find({ certificateId: certificate.id });
+    const currentMetadata = currentMetadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Edit,
       subject(ProjectPermissionSub.Certificates, {
         commonName: certificate.commonName,
-        altNames: certificate.altNames ?? undefined,
-        serialNumber: certificate.serialNumber
+        altNames: certificate.altNames?.split(",").map((s) => s.trim()),
+        serialNumber: certificate.serialNumber,
+        metadata: currentMetadata
       })
     );
+
+    if (metadata) {
+      ForbiddenError.from(permission).throwUnlessCan(
+        ProjectPermissionCertificateActions.Edit,
+        subject(ProjectPermissionSub.Certificates, {
+          commonName: certificate.commonName,
+          altNames: certificate.altNames?.split(",").map((s) => s.trim()),
+          serialNumber: certificate.serialNumber,
+          metadata
+        })
+      );
+    }
 
     let updatedMetadata: Array<{ key: string; value: string }> = [];
 

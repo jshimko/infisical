@@ -117,6 +117,12 @@ import {
   TDigitalOceanAppPlatformSyncListItem,
   TDigitalOceanAppPlatformSyncWithCredentials
 } from "./digital-ocean-app-platform/digital-ocean-app-platform-sync-types";
+import {
+  TExternalInfisicalSync,
+  TExternalInfisicalSyncInput,
+  TExternalInfisicalSyncListItem,
+  TExternalInfisicalSyncWithCredentials
+} from "./external-infisical";
 import { TFlyioSync, TFlyioSyncInput, TFlyioSyncListItem, TFlyioSyncWithCredentials } from "./flyio/flyio-sync-types";
 import { TGcpSync, TGcpSyncInput, TGcpSyncListItem, TGcpSyncWithCredentials } from "./gcp";
 import { TGitLabSync, TGitLabSyncInput, TGitLabSyncListItem, TGitLabSyncWithCredentials } from "./gitlab";
@@ -152,6 +158,7 @@ import {
   TOctopusDeploySyncListItem,
   TOctopusDeploySyncWithCredentials
 } from "./octopus-deploy";
+import { TOnaSync, TOnaSyncInput, TOnaSyncListItem, TOnaSyncWithCredentials } from "./ona";
 import {
   TRailwaySync,
   TRailwaySyncInput,
@@ -182,6 +189,7 @@ import {
   TTerraformCloudSyncListItem,
   TTerraformCloudSyncWithCredentials
 } from "./terraform-cloud";
+import { TTravisCISync, TTravisCISyncInput, TTravisCISyncListItem, TTravisCISyncWithCredentials } from "./travis-ci";
 import { TVercelSync, TVercelSyncInput, TVercelSyncListItem, TVercelSyncWithCredentials } from "./vercel";
 import { TZabbixSync, TZabbixSyncInput, TZabbixSyncListItem, TZabbixSyncWithCredentials } from "./zabbix";
 
@@ -220,7 +228,10 @@ export type TSecretSync =
   | TBitbucketSync
   | TOctopusDeploySync
   | TCircleCISync
-  | TAzureEntraIdScimSync;
+  | TAzureEntraIdScimSync
+  | TExternalInfisicalSync
+  | TOnaSync
+  | TTravisCISync;
 
 export type TSecretSyncWithCredentials =
   | TAwsParameterStoreSyncWithCredentials
@@ -258,7 +269,10 @@ export type TSecretSyncWithCredentials =
   | TLaravelForgeSyncWithCredentials
   | TOctopusDeploySyncWithCredentials
   | TCircleCISyncWithCredentials
-  | TAzureEntraIdScimSyncWithCredentials;
+  | TAzureEntraIdScimSyncWithCredentials
+  | TExternalInfisicalSyncWithCredentials
+  | TOnaSyncWithCredentials
+  | TTravisCISyncWithCredentials;
 
 export type TSecretSyncInput =
   | TAwsParameterStoreSyncInput
@@ -296,7 +310,10 @@ export type TSecretSyncInput =
   | TLaravelForgeSyncInput
   | TOctopusDeploySyncInput
   | TCircleCISyncInput
-  | TAzureEntraIdScimSyncInput;
+  | TAzureEntraIdScimSyncInput
+  | TExternalInfisicalSyncInput
+  | TOnaSyncInput
+  | TTravisCISyncInput;
 
 export type TSecretSyncListItem =
   | TAwsParameterStoreSyncListItem
@@ -334,7 +351,10 @@ export type TSecretSyncListItem =
   | TBitbucketSyncListItem
   | TOctopusDeploySyncListItem
   | TCircleCISyncListItem
-  | TAzureEntraIdScimSyncListItem;
+  | TAzureEntraIdScimSyncListItem
+  | TExternalInfisicalSyncListItem
+  | TOnaSyncListItem
+  | TTravisCISyncListItem;
 
 export type TSyncOptionsConfig = {
   canImportSecrets: boolean;

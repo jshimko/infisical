@@ -31,6 +31,7 @@ import { CloudflarePagesSyncReviewFields } from "./CloudflarePagesReviewFields";
 import { CloudflareWorkersSyncReviewFields } from "./CloudflareWorkersReviewFields";
 import { DatabricksSyncReviewFields } from "./DatabricksSyncReviewFields";
 import { DigitalOceanAppPlatformSyncReviewFields } from "./DigitalOceanAppPlatformSyncReviewFields";
+import { ExternalInfisicalSyncReviewFields } from "./ExternalInfisicalSyncReviewFields";
 import { FlyioSyncOptionsReviewFields, FlyioSyncReviewFields } from "./FlyioSyncReviewFields";
 import { GcpSyncReviewFields } from "./GcpSyncReviewFields";
 import { GitHubSyncReviewFields } from "./GitHubSyncReviewFields";
@@ -43,12 +44,14 @@ import { NetlifySyncReviewFields } from "./NetlifySyncReviewFields";
 import { NorthflankSyncReviewFields } from "./NorthflankSyncReviewFields";
 import { OCIVaultSyncReviewFields } from "./OCIVaultSyncReviewFields";
 import { OctopusDeploySyncReviewFields } from "./OctopusDeploySyncReviewFields";
+import { OnaSyncReviewFields } from "./OnaSyncReviewFields";
 import { OnePassSyncReviewFields } from "./OnePassSyncReviewFields";
 import { RailwaySyncReviewFields } from "./RailwaySyncReviewFields";
 import { RenderSyncOptionsReviewFields, RenderSyncReviewFields } from "./RenderSyncReviewFields";
 import { SupabaseSyncReviewFields } from "./SupabaseSyncReviewFields";
 import { TeamCitySyncReviewFields } from "./TeamCitySyncReviewFields";
 import { TerraformCloudSyncReviewFields } from "./TerraformCloudSyncReviewFields";
+import { TravisCISyncReviewFields } from "./TravisCISyncReviewFields";
 import { VercelSyncReviewFields } from "./VercelSyncReviewFields";
 import { WindmillSyncReviewFields } from "./WindmillSyncReviewFields";
 import { ZabbixSyncReviewFields } from "./ZabbixSyncReviewFields";
@@ -193,6 +196,15 @@ export const SecretSyncReviewFields = () => {
       break;
     case SecretSync.AzureEntraIdScim:
       DestinationFieldsComponent = <AzureEntraIdScimSyncReviewFields />;
+      break;
+    case SecretSync.ExternalInfisical:
+      DestinationFieldsComponent = <ExternalInfisicalSyncReviewFields />;
+      break;
+    case SecretSync.Ona:
+      DestinationFieldsComponent = <OnaSyncReviewFields />;
+      break;
+    case SecretSync.TravisCI:
+      DestinationFieldsComponent = <TravisCISyncReviewFields />;
       break;
     default:
       throw new Error(`Unhandled Destination Review Fields: ${destination}`);

@@ -14,7 +14,8 @@ import {
 export enum EnrollmentType {
   API = "api",
   EST = "est",
-  ACME = "acme"
+  ACME = "acme",
+  SCEP = "scep"
 }
 
 export enum IssuerType {
@@ -78,6 +79,14 @@ export type TCertificateProfileUpdate = Omit<
     skipDnsOwnershipVerification?: boolean;
     skipEabBinding?: boolean;
   };
+  scepConfig?: {
+    challengeType?: string;
+    challengePassword?: string;
+    includeCaCertInResponse?: boolean;
+    allowCertBasedRenewal?: boolean;
+    dynamicChallengeExpiryMinutes?: number;
+    dynamicChallengeMaxPending?: number;
+  };
 };
 
 export type TCertificateProfileWithConfigs = TCertificateProfile & {
@@ -116,6 +125,18 @@ export type TCertificateProfileWithConfigs = TCertificateProfile & {
     encryptedEabSecret?: Buffer;
     skipDnsOwnershipVerification?: boolean;
     skipEabBinding?: boolean;
+  };
+  scepConfig?: {
+    id: string;
+    scepEndpointUrl: string;
+    raCertificatePem: string;
+    raCertExpiresAt: Date;
+    includeCaCertInResponse: boolean;
+    allowCertBasedRenewal: boolean;
+    challengeType: string;
+    challengeEndpointUrl?: string;
+    dynamicChallengeExpiryMinutes?: number;
+    dynamicChallengeMaxPending?: number;
   };
 };
 

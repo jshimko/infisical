@@ -11,6 +11,8 @@ import {
 import { TPermissionServiceFactory } from "@app/ee/services/permission/permission-service-types";
 import { PgSqlLock, TKeyStoreFactory } from "@app/keystore/keystore";
 import { BadRequestError, NotFoundError, PermissionBoundaryError } from "@app/lib/errors";
+import { requestMemoKeys } from "@app/lib/request-context/memo-keys";
+import { requestMemoize } from "@app/lib/request-context/request-memoizer";
 import { TIdentityProjectDALFactory } from "@app/services/identity-project/identity-project-dal";
 import { getIdentityActiveLockoutAuthMethods } from "@app/services/identity-v2/identity-fns";
 
@@ -87,8 +89,18 @@ export const identityServiceFactory = ({
 
     const [rolePermissionDetails] = await permissionService.getOrgPermissionByRoles([role], orgId);
 
-    const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(actorOrgId);
+    const { shouldUseNewPrivilegeSystem } = await requestMemoize(requestMemoKeys.orgFindById(actorOrgId), () =>
+      orgDAL.findById(actorOrgId)
+    );
     const isCustomRole = Boolean(rolePermissionDetails?.role);
+    if (isCustomRole) {
+      const plan = await licenseService.getPlan(orgId);
+      if (!plan?.rbac)
+        throw new BadRequestError({
+          message:
+            "Failed to assign custom role to identity due to plan RBAC restriction. Upgrade to Infisical Enterprise to assign custom roles."
+        });
+    }
     if (role !== OrgMembershipRole.NoAccess) {
       const permissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
@@ -207,9 +219,19 @@ export const identityServiceFactory = ({
     let customRole: TRoles | undefined;
     if (role) {
       const [rolePermissionDetails] = await permissionService.getOrgPermissionByRoles([role], actorOrgId);
-      const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(actorOrgId);
+      const { shouldUseNewPrivilegeSystem } = await requestMemoize(requestMemoKeys.orgFindById(actorOrgId), () =>
+        orgDAL.findById(actorOrgId)
+      );
 
       const isCustomRole = Boolean(rolePermissionDetails?.role);
+      if (isCustomRole) {
+        const plan = await licenseService.getPlan(actorOrgId);
+        if (!plan?.rbac)
+          throw new BadRequestError({
+            message:
+              "Failed to assign custom role to identity due to plan RBAC restriction. Upgrade to Infisical Enterprise to assign custom roles."
+          });
+      }
       const appliedRolePermissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
         OrgPermissionIdentityActions.GrantPrivileges,
@@ -402,7 +424,7 @@ export const identityServiceFactory = ({
       scope: OrganizationActionScope.Any,
       actor,
       actorId,
-      orgId: actorOrgId,
+      orgId,
       actorAuthMethod,
       actorOrgId
     });

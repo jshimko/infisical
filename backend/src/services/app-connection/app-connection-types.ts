@@ -27,6 +27,12 @@ import {
   TOnePassConnectionInput,
   TValidateOnePassConnectionCredentialsSchema
 } from "./1password";
+import {
+  TAnthropicConnection,
+  TAnthropicConnectionConfig,
+  TAnthropicConnectionInput,
+  TValidateAnthropicConnectionCredentialsSchema
+} from "./anthropic";
 import { AWSRegion } from "./app-connection-enums";
 import {
   TAuth0Connection,
@@ -125,6 +131,12 @@ import {
   TValidateDbtConnectionCredentialsSchema
 } from "./dbt";
 import {
+  TDigiCertConnection,
+  TDigiCertConnectionConfig,
+  TDigiCertConnectionInput,
+  TValidateDigiCertConnectionCredentialsSchema
+} from "./digicert";
+import {
   TDigitalOceanConnection,
   TDigitalOceanConnectionConfig,
   TDigitalOceanConnectionInput,
@@ -136,6 +148,18 @@ import {
   TDNSMadeEasyConnectionInput,
   TValidateDNSMadeEasyConnectionCredentialsSchema
 } from "./dns-made-easy/dns-made-easy-connection-types";
+import {
+  TDopplerConnection,
+  TDopplerConnectionConfig,
+  TDopplerConnectionInput,
+  TValidateDopplerConnectionCredentialsSchema
+} from "./doppler/doppler-connection-types";
+import {
+  TExternalInfisicalConnection,
+  TExternalInfisicalConnectionConfig,
+  TExternalInfisicalConnectionInput,
+  TValidateExternalInfisicalConnectionCredentialsSchema
+} from "./external-infisical";
 import {
   TFlyioConnection,
   TFlyioConnectionConfig,
@@ -211,6 +235,12 @@ import {
   TValidateNetlifyConnectionCredentialsSchema
 } from "./netlify";
 import {
+  TNetScalerConnection,
+  TNetScalerConnectionConfig,
+  TNetScalerConnectionInput,
+  TValidateNetScalerConnectionCredentialsSchema
+} from "./netscaler";
+import {
   TNorthflankConnection,
   TNorthflankConnectionConfig,
   TNorthflankConnectionInput,
@@ -228,6 +258,12 @@ import {
   TOktaConnectionInput,
   TValidateOktaConnectionCredentialsSchema
 } from "./okta";
+import {
+  TOnaConnection,
+  TOnaConnectionConfig,
+  TOnaConnectionInput,
+  TValidateOnaConnectionCredentialsSchema
+} from "./ona";
 import {
   TOpenRouterConnection,
   TOpenRouterConnectionConfig,
@@ -288,11 +324,23 @@ import {
   TValidateTerraformCloudConnectionCredentialsSchema
 } from "./terraform-cloud";
 import {
+  TTravisCIConnection,
+  TTravisCIConnectionConfig,
+  TTravisCIConnectionInput,
+  TValidateTravisCIConnectionCredentialsSchema
+} from "./travis-ci";
+import {
   TValidateVenafiConnectionCredentialsSchema,
   TVenafiConnection,
   TVenafiConnectionConfig,
   TVenafiConnectionInput
 } from "./venafi";
+import {
+  TValidateVenafiTppConnectionCredentialsSchema,
+  TVenafiTppConnection,
+  TVenafiTppConnectionConfig,
+  TVenafiTppConnectionInput
+} from "./venafi-tpp";
 import {
   TValidateVercelConnectionCredentialsSchema,
   TVercelConnection,
@@ -366,6 +414,14 @@ export type TAppConnection = { id: string } & (
   | TCircleCIConnection
   | TAzureEntraIdConnection
   | TVenafiConnection
+  | TVenafiTppConnection
+  | TExternalInfisicalConnection
+  | TDopplerConnection
+  | TNetScalerConnection
+  | TAnthropicConnection
+  | TOnaConnection
+  | TDigiCertConnection
+  | TTravisCIConnection
 );
 
 export type TAppConnectionRaw = NonNullable<Awaited<ReturnType<TAppConnectionDALFactory["findById"]>>>;
@@ -430,6 +486,14 @@ export type TAppConnectionInput = { id: string } & (
   | TCircleCIConnectionInput
   | TAzureEntraIdConnectionInput
   | TVenafiConnectionInput
+  | TVenafiTppConnectionInput
+  | TExternalInfisicalConnectionInput
+  | TDopplerConnectionInput
+  | TNetScalerConnectionInput
+  | TAnthropicConnectionInput
+  | TOnaConnectionInput
+  | TDigiCertConnectionInput
+  | TTravisCIConnectionInput
 );
 
 export type TSqlConnectionInput =
@@ -522,7 +586,15 @@ export type TAppConnectionConfig =
   | TOpenRouterConnectionConfig
   | TCircleCIConnectionConfig
   | TAzureEntraIdConnectionConfig
-  | TVenafiConnectionConfig;
+  | TVenafiConnectionConfig
+  | TVenafiTppConnectionConfig
+  | TExternalInfisicalConnectionConfig
+  | TDopplerConnectionConfig
+  | TNetScalerConnectionConfig
+  | TAnthropicConnectionConfig
+  | TOnaConnectionConfig
+  | TDigiCertConnectionConfig
+  | TTravisCIConnectionConfig;
 
 export type TValidateAppConnectionCredentialsSchema =
   | TValidateAwsConnectionCredentialsSchema
@@ -577,7 +649,15 @@ export type TValidateAppConnectionCredentialsSchema =
   | TValidateOpenRouterConnectionCredentialsSchema
   | TValidateCircleCIConnectionCredentialsSchema
   | TValidateAzureEntraIdConnectionCredentialsSchema
-  | TValidateVenafiConnectionCredentialsSchema;
+  | TValidateVenafiConnectionCredentialsSchema
+  | TValidateVenafiTppConnectionCredentialsSchema
+  | TValidateExternalInfisicalConnectionCredentialsSchema
+  | TValidateDopplerConnectionCredentialsSchema
+  | TValidateNetScalerConnectionCredentialsSchema
+  | TValidateAnthropicConnectionCredentialsSchema
+  | TValidateOnaConnectionCredentialsSchema
+  | TValidateDigiCertConnectionCredentialsSchema
+  | TValidateTravisCIConnectionCredentialsSchema;
 
 export type TListAwsConnectionKmsKeys = {
   connectionId: string;

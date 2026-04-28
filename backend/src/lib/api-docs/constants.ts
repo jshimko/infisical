@@ -1025,7 +1025,19 @@ export const PROJECTS = {
     metadata:
       "Filter by metadata key-value pairs. Each entry should have a key (required) and optionally a value to match against.",
     extendedKeyUsage:
-      "Filter by extended key usage. Only certificates containing this EKU will be returned (e.g. 'codeSigning', 'serverAuth')."
+      "Filter by extended key usage. Only certificates containing this EKU will be returned (e.g. 'codeSigning', 'serverAuth').",
+    keyAlgorithm: "Filter by key algorithm (e.g. 'RSA_2048', 'EC_prime256v1').",
+    signatureAlgorithm: "Filter by signature algorithm (e.g. 'RSA-SHA256', 'ECDSA-SHA256').",
+    keySizes: "Filter by key sizes in bits (e.g. [2048, 4096]).",
+    caIds: "Filter by certificate authority IDs.",
+    enrollmentTypes: "Filter by enrollment types (e.g. 'api', 'est', 'acme', 'scep').",
+    source: "Filter by certificate source ('issued', 'discovered', 'imported').",
+    notAfterFrom: "Filter certificates expiring on or after this date.",
+    notAfterTo: "Filter certificates expiring on or before this date.",
+    notBeforeFrom: "Filter certificates issued on or after this date.",
+    notBeforeTo: "Filter certificates issued on or before this date.",
+    sortBy: "Column to sort by (e.g. 'notAfter', 'notBefore', 'commonName').",
+    sortOrder: "Sort direction: 'asc' or 'desc'."
   },
   LIST_PKI_SUBSCRIBERS: {
     projectId: "The ID of the project to list PKI subscribers for."
@@ -1321,7 +1333,9 @@ export const RAW_SECRETS = {
     secretName: "The name of the secret to get the access list for.",
     projectId: "The ID of the project where the secret is located.",
     environment: "The slug of the environment where the the secret is located.",
-    secretPath: "The folder path where the secret is located."
+    secretPath: "The folder path where the secret is located.",
+    includeAllEntities:
+      "When true, includes all project users, identities, and groups in the response, even those without any access to the secret."
   }
 } as const;
 
@@ -1375,6 +1389,7 @@ export const DASHBOARD = {
     orderBy: "The column to order secrets/folders by.",
     orderDirection: "The direction to order secrets/folders in.",
     search: "The text string to filter secret keys and folder names by.",
+    tags: "The tags to filter secrets by (comma separated, ie 'tags=billing,engineering').",
     includeSecrets: "Whether to include project secrets in the response.",
     includeFolders: "Whether to include project folders in the response.",
     includeDynamicSecrets: "Whether to include dynamic project secrets in the response.",
@@ -1417,7 +1432,10 @@ export const AUDIT_LOGS = {
     endDate: "The date to end the export at.",
     offset: "The offset to start from. If you enter 10, it will start from the 10th audit log.",
     limit: "The number of audit logs to return.",
-    actor: "The actor to filter the audit logs by."
+    actor:
+      "The ID of a specific actor to filter audit logs by. For user actors this is the userId; for identity actors this is the identityId. When filtering non-user actor types, the actorType parameter must also be provided.",
+    actorType:
+      "The type of actor to filter audit logs by. Must be provided when the actor parameter targets a non-user actor type (e.g. identity, kmipClient)."
   }
 } as const;
 
@@ -2108,6 +2126,9 @@ export const CERTIFICATE_AUTHORITIES = {
   INSTALL_CERT_VENAFI: {
     caId: "The ID of the CA to install the certificate for via Venafi."
   },
+  INSTALL_CERT_ADCS: {
+    caId: "The ID of the CA to install the certificate for via Azure AD CS."
+  },
   CREATE_SIGNING_CONFIG: {
     caId: "The ID of the CA to create a signing configuration for."
   },
@@ -2450,6 +2471,10 @@ export const KMS = {
     keyId: "The ID of the key to export the private key or key material for."
   },
 
+  BULK_EXPORT_PRIVATE_KEYS: {
+    keyIds: "An array of KMS key IDs to export. Maximum 100 keys per request."
+  },
+
   SIGN: {
     keyId: "The ID of the key to sign the data with.",
     data: "The data in string format to be signed (base64 encoded).",
@@ -2533,6 +2558,12 @@ export const CertificateAuthorities = {
       appConnectionId: `The ID of the AWS App Connection to use for authenticating with AWS Private Certificate Authority (PCA). This connection must have permissions to issue, get, and revoke certificates from the specified PCA.`,
       certificateAuthorityArn: `The ARN of the AWS Private Certificate Authority to use for issuing certificates.`,
       region: `The AWS region where the Private Certificate Authority is located.`
+    },
+    AWS_ACM_PUBLIC_CA: {
+      appConnectionId: `The ID of the AWS App Connection to use for authenticating with AWS Certificate Manager (ACM). This connection must have permissions to request, describe, export, renew, and delete certificates.`,
+      dnsAppConnectionId: `The ID of the AWS App Connection to use for creating and managing Route 53 CNAME records required for ACM domain validation.`,
+      hostedZoneId: `The Route 53 hosted zone ID to use for ACM DNS validation CNAME records.`,
+      region: `The AWS region to use for the ACM API calls.`
     },
     INTERNAL: {
       type: "The type of CA to create.",
@@ -2618,6 +2649,16 @@ export const AppConnections = {
     },
     VERCEL: {
       apiToken: "The API token used to authenticate with Vercel."
+    },
+    ONA: {
+      personalAccessToken: "The Personal Access Token used to authenticate with Ona."
+    },
+    DIGICERT: {
+      apiKey: "The CertCentral API Key used to authenticate with DigiCert.",
+      region: "The CertCentral region the API key belongs to (us or eu)."
+    },
+    TRAVISCI: {
+      apiToken: "The API token used to authenticate with Travis CI."
     },
     CAMUNDA: {
       clientId: "The client ID used to authenticate with Camunda.",
@@ -2763,9 +2804,20 @@ export const AppConnections = {
     OPEN_ROUTER: {
       apiKey: "The OpenRouter Provisioning API key used to manage API keys."
     },
+    ANTHROPIC: {
+      apiKey: "The Anthropic API key used to authenticate with the Anthropic API."
+    },
     VENAFI: {
       apiKey: "The API key used to authenticate with Venafi TLS Protect Cloud.",
       region: "The region of your Venafi TLS Protect Cloud instance (e.g., 'us', 'eu')."
+    },
+    VENAFI_TPP: {
+      tppUrl: "The HTTPS URL of the Venafi TPP instance (e.g., 'https://tpp.example.com'). Must use HTTPS.",
+      clientId:
+        "The OAuth client ID registered in the Venafi TPP API Integration. Used for token-based authentication.",
+      username:
+        "The username used to authenticate with Venafi TPP. Supports formats: 'DOMAIN\\\\username', 'username@domain.com', or local usernames.",
+      password: "The password used to authenticate with Venafi TPP."
     }
   }
 };
@@ -2850,6 +2902,10 @@ export const SecretSyncs = {
     },
     FLYIO: {
       autoRedeploy: "Whether Infisical should automatically redeploy the configured Fly.io app upon secret changes."
+    },
+    AZURE_KEY_VAULT: {
+      disableCertificateImport:
+        "Whether Infisical should skip importing certificate objects from Azure Key Vault when syncing secrets."
     }
   },
   DESTINATION_CONFIG: {
@@ -2919,12 +2975,22 @@ export const SecretSyncs = {
       scope: "The Terraform Cloud scope that secrets should be synced to.",
       category: "The Terraform Cloud category that secrets should be synced to."
     },
+    ONA: {
+      projectId: "The Ona project ID to sync secrets to.",
+      projectName: "An optional display name for the Ona project."
+    },
     VERCEL: {
       app: "The ID of the Vercel app to sync secrets to.",
       appName: "The name of the Vercel app to sync secrets to.",
       env: "The ID of the Vercel environment to sync secrets to.",
       branch: "The branch to sync preview secrets to.",
-      teamId: "The ID of the Vercel team to sync secrets to."
+      teamId: "The ID of the Vercel team to sync secrets to.",
+      teamName:
+        "The name of the team to sync the secrets to. This is an optional field only intended for display purposes.",
+      targetEnvironments: "An optional array of Vercel environments to add shared environment variables to.",
+      targetProjects: "An optional array of Vercel projects to add shared environment variables to.",
+      sensitive:
+        "Whether to create Vercel environment variables as Sensitive (cannot be read back). Not allowed when targeting the Development environment."
     },
     LARAVEL_FORGE: {
       orgSlug: "The slug of the Laravel Forge org to sync secrets to.",
@@ -3041,6 +3107,17 @@ export const SecretSyncs = {
       orgName: "The CircleCI organization name to sync secrets to.",
       projectId: "The CircleCI project ID to sync secrets to.",
       projectName: "The CircleCI project name to sync secrets to."
+    },
+    EXTERNAL_INFISICAL: {
+      projectId: "The ID of the project on the external Infisical instance to sync secrets to.",
+      environment: "The environment slug on the external Infisical instance to sync secrets to.",
+      secretPath: "The secret path on the external Infisical instance to sync secrets to."
+    },
+    TRAVIS_CI: {
+      repositoryId: "The ID of the Travis CI repository to sync secrets to.",
+      repositorySlug: "The slug (owner/repo) of the Travis CI repository to sync secrets to.",
+      branch:
+        "The branch of the Travis CI repository to sync secrets to. If omitted, secrets sync to the repository-level scope."
     }
   }
 };
@@ -3136,6 +3213,13 @@ export const SecretRotations = {
       password:
         'The current password of the target user. Required if "parameters.rotationMethod" is set to "login-as-target".'
     },
+    HP_ILO: {
+      username: "The username of the HP iLO account to rotate the password for.",
+      rotationMethod:
+        'Whether the rotation should be performed using "login-as-target" (the target user\'s own credentials) or "login-as-root" (the SSH connection\'s admin credentials). Defaults to "login-as-root".',
+      password:
+        'The current password of the target user. Required if "parameters.rotationMethod" is set to "login-as-target".'
+    },
     GENERAL: {
       PASSWORD_REQUIREMENTS: {
         base: "The password requirements to use when generating the new password.",
@@ -3185,6 +3269,10 @@ export const SecretRotations = {
       limitReset: "The type of limit reset for the API key (daily, weekly, monthly, or null for no reset).",
       includeByokInLimit:
         "Whether to include BYOK (Bring Your Own Key) usage in the spending limit. When enabled, usage from your own provider keys counts toward this key's limit. See OpenRouter BYOK docs for details."
+    },
+    SUPABASE_API_KEY: {
+      projectRef: "The reference ID of the Supabase project to rotate the API key for.",
+      keyType: "The type of the API key to rotate (e.g. publishable, secret)."
     }
   },
   SECRETS_MAPPING: {
@@ -3216,6 +3304,10 @@ export const SecretRotations = {
       username: "The name of the secret that the username will be mapped to.",
       password: "The name of the secret that the rotated password will be mapped to."
     },
+    HP_ILO: {
+      username: "The name of the secret that the username will be mapped to.",
+      password: "The name of the secret that the rotated password will be mapped to."
+    },
     AWS_IAM_USER_SECRET: {
       accessKeyId: "The name of the secret that the access key ID will be mapped to.",
       secretAccessKey: "The name of the secret that the rotated secret access key will be mapped to."
@@ -3241,6 +3333,9 @@ export const SecretRotations = {
     },
     OPEN_ROUTER_API_KEY: {
       apiKey: "The name of the secret that the rotated OpenRouter API key will be mapped to."
+    },
+    SUPABASE_API_KEY: {
+      apiKey: "The name of the secret that the rotated Supabase API key will be mapped to."
     }
   }
 };
@@ -3490,7 +3585,9 @@ export const SECRET_SHARING = {
     accessType:
       "Determines who can access the shared secret. 'organization' restricts access to users within your organization. 'anyone' allows access to anyone with the link. Defaults to 'organization'.",
     authorizedEmails:
-      "An optional array of email addresses that are authorized to view this secret. Only users with these email addresses will be able to access the secret. Maximum 100 emails."
+      "An optional array of email addresses to share the secret with. Maximum 100 emails. Organization members in the list get direct access. When allowExternalEmails is enabled, non-member emails are also accepted and recipients will receive the secret link via email, but must use the password to access it.",
+    allowExternalEmails:
+      "When true, allows sharing with email addresses that do not belong to Infisical. A password is required when this option is enabled. External recipients will receive the secret link via email and must enter the password to access it."
   },
   DELETE: {
     id: "The ID of the shared secret to delete."

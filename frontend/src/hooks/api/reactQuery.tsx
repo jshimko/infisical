@@ -193,17 +193,22 @@ export const onRequestError = (error: unknown) => {
       );
       return;
     }
+    const errorMessage =
+      serverResponse?.message || "An unexpected error occurred. Please try again.";
+
     createNotification({
       title: "Bad Request",
       type: "error",
-      text: `${serverResponse.message}${serverResponse.message?.endsWith(".") ? "" : "."}`,
-      copyActions: [
-        {
-          value: serverResponse.reqId,
-          name: "Request ID",
-          label: `Request ID: ${serverResponse.reqId}`
-        }
-      ]
+      text: `${errorMessage}${errorMessage.endsWith(".") ? "" : "."}`,
+      copyActions: serverResponse?.reqId
+        ? [
+            {
+              value: serverResponse.reqId,
+              name: "Request ID",
+              label: `Request ID: ${serverResponse.reqId}`
+            }
+          ]
+        : undefined
     });
   }
 };
@@ -215,7 +220,8 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: 1
+      retry: 1,
+      staleTime: 60_000 // 60s — prevents refetch on every component mount/remount
     }
   }
 });

@@ -1,42 +1,51 @@
-import { useMemo } from "react";
-import {
-  faArrowDown,
-  faArrowUp,
-  faCopy,
-  faEdit,
-  faEllipsisV,
-  faMagnifyingGlass,
-  faSearch,
-  faTrash,
-  faUserGroup,
-  faUsers
-} from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { useCallback, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import {
+  ChevronDownIcon,
+  CopyIcon,
+  FilterIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  SearchIcon,
+  TrashIcon,
+  UsersIcon
+} from "lucide-react";
+import { twMerge } from "tailwind-merge";
 
 import { createNotification } from "@app/components/notifications";
 import { OrgPermissionCan } from "@app/components/permissions";
 import {
+  Badge,
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
-  EmptyState,
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
   IconButton,
-  Input,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  OrgIcon,
   Pagination,
   Select,
+  SelectContent,
   SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+  SubOrgIcon,
   Table,
-  TableContainer,
-  TableSkeleton,
-  TBody,
-  Td,
-  Th,
-  THead,
-  Tr
-} from "@app/components/v2";
-import { Badge, OrgIcon, SubOrgIcon } from "@app/components/v3";
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@app/components/v3";
 import { OrgPermissionGroupActions, OrgPermissionSubjects, useOrganization } from "@app/context";
 import {
   getUserTablePreference,
@@ -44,7 +53,7 @@ import {
   setUserTablePreference
 } from "@app/helpers/userTablePreferences";
 import { usePagination, useResetPageHelper } from "@app/hooks";
-import { useGetOrganizationGroups, useGetOrgRoles, useUpdateGroup } from "@app/hooks/api";
+import { useGetOrgRoles, useSearchOrganizationGroups, useUpdateGroup } from "@app/hooks/api";
 import { OrderByDirection } from "@app/hooks/api/generic/types";
 import { UsePopUpState } from "@app/hooks/usePopUp";
 
@@ -71,11 +80,14 @@ enum GroupsOrderBy {
   Role = "role"
 }
 
+type Filter = {
+  roles: string[];
+};
+
 export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
   const navigate = useNavigate();
   const { currentOrg, isSubOrganization } = useOrganization();
   const orgId = currentOrg?.id || "";
-  const { isPending, data: groups = [] } = useGetOrganizationGroups(orgId);
   const { mutateAsync: updateMutateAsync } = useUpdateGroup();
 
   const { data: roles } = useGetOrgRoles(orgId);
@@ -105,7 +117,8 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
     orderBy,
     setOrderBy,
     setOrderDirection,
-    toggleOrderDirection
+    toggleOrderDirection,
+    debouncedSearch
   } = usePagination<GroupsOrderBy>(GroupsOrderBy.Name, {
     initPerPage: getUserTablePreference("orgGroupsTable", PreferenceKey.PerPage, 20)
   });
@@ -115,30 +128,36 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
     setUserTablePreference("orgGroupsTable", PreferenceKey.PerPage, newPerPage);
   };
 
-  const filteredGroups = useMemo(() => {
-    const filtered = search
-      ? groups?.filter(
-          ({ name, slug }) =>
-            name.toLowerCase().includes(search.toLowerCase()) ||
-            slug.toLowerCase().includes(search.toLowerCase())
-        )
-      : groups;
+  const [filter, setFilter] = useState<Filter>({
+    roles: []
+  });
 
-    const ordered = filtered?.sort((a, b) => {
-      switch (orderBy) {
-        case GroupsOrderBy.Role: {
-          const aValue = a.role === "custom" ? (a.customRole?.name as string) : a.role;
-          const bValue = b.role === "custom" ? (b.customRole?.name as string) : b.role;
+  const handleRoleToggle = useCallback(
+    (roleSlug: string) =>
+      setFilter((state) => {
+        const currentRoles = state.roles || [];
 
-          return aValue.toLowerCase().localeCompare(bValue.toLowerCase());
+        if (currentRoles.includes(roleSlug)) {
+          return { ...state, roles: currentRoles.filter((role) => role !== roleSlug) };
         }
-        default:
-          return a[orderBy].toLowerCase().localeCompare(b[orderBy].toLowerCase());
-      }
-    });
+        return { ...state, roles: [...currentRoles, roleSlug] };
+      }),
+    []
+  );
 
-    return orderDirection === OrderByDirection.ASC ? ordered : ordered?.reverse();
-  }, [search, groups, orderBy, orderDirection]);
+  const isTableFiltered = Boolean(filter.roles.length);
+
+  const { isPending, data } = useSearchOrganizationGroups({
+    organizationId: orgId,
+    offset,
+    limit: perPage,
+    search: debouncedSearch,
+    roles: filter.roles.length ? filter.roles : undefined,
+    orderBy,
+    orderDirection
+  });
+
+  const { groups: sortedGroups = [], totalCount = 0 } = data ?? {};
 
   const handleSort = (column: GroupsOrderBy) => {
     if (column === orderBy) {
@@ -151,96 +170,149 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
   };
 
   useResetPageHelper({
-    totalCount: filteredGroups.length,
+    totalCount,
     offset,
     setPage
   });
 
   return (
     <div>
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        leftIcon={<FontAwesomeIcon icon={faMagnifyingGlass} />}
-        placeholder={`Search ${isSubOrganization ? "sub-" : ""}organization groups...`}
-      />
-      <TableContainer className="mt-4">
-        <Table>
-          <THead>
-            <Tr>
-              <Th>
-                <div className="flex items-center">
+      <div className="mb-4 flex gap-2">
+        <InputGroup className="flex-1">
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Search ${isSubOrganization ? "sub-" : ""}organization groups...`}
+          />
+        </InputGroup>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <IconButton
+              variant={
+                // eslint-disable-next-line no-nested-ternary
+                isTableFiltered ? (isSubOrganization ? "sub-org" : "org") : "outline"
+              }
+            >
+              <FilterIcon />
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>
+              Filter by {isSubOrganization ? "Sub-" : ""}Organization Role
+            </DropdownMenuLabel>
+            {roles?.map(({ id, slug, name }) => (
+              <DropdownMenuCheckboxItem
+                key={id}
+                checked={filter.roles.includes(slug)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleRoleToggle(slug);
+                  setPage(1);
+                }}
+              >
+                {name}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {!isPending && !sortedGroups.length ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>
+              {debouncedSearch || isTableFiltered
+                ? `No ${isSubOrganization ? "sub-" : ""}organization groups match ${debouncedSearch ? "search" : "filter criteria"}`
+                : `No ${isSubOrganization ? "sub-" : ""}organization groups found`}
+            </EmptyTitle>
+            <EmptyDescription>
+              {debouncedSearch || isTableFiltered
+                ? "Adjust your search or filter criteria."
+                : "Create a group to get started."}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-1/3" onClick={() => handleSort(GroupsOrderBy.Name)}>
                   Name
-                  <IconButton
-                    variant="plain"
-                    className={`ml-2 ${orderBy === GroupsOrderBy.Name ? "" : "opacity-30"}`}
-                    ariaLabel="sort"
-                    onClick={() => handleSort(GroupsOrderBy.Name)}
-                  >
-                    <FontAwesomeIcon
-                      icon={
-                        orderDirection === OrderByDirection.DESC && orderBy === GroupsOrderBy.Name
-                          ? faArrowUp
-                          : faArrowDown
-                      }
-                    />
-                  </IconButton>
-                </div>
-              </Th>
-              <Th>
-                <div className="flex items-center">
+                  <ChevronDownIcon
+                    className={twMerge(
+                      "transition-transform",
+                      orderDirection === OrderByDirection.DESC &&
+                        orderBy === GroupsOrderBy.Name &&
+                        "rotate-180",
+                      orderBy !== GroupsOrderBy.Name && "opacity-30"
+                    )}
+                  />
+                </TableHead>
+                <TableHead className="w-1/3" onClick={() => handleSort(GroupsOrderBy.Slug)}>
                   Slug
-                  <IconButton
-                    variant="plain"
-                    className={`ml-2 ${orderBy === GroupsOrderBy.Slug ? "" : "opacity-30"}`}
-                    ariaLabel="sort"
-                    onClick={() => handleSort(GroupsOrderBy.Slug)}
-                  >
-                    <FontAwesomeIcon
-                      icon={
-                        orderDirection === OrderByDirection.DESC && orderBy === GroupsOrderBy.Slug
-                          ? faArrowUp
-                          : faArrowDown
-                      }
-                    />
-                  </IconButton>
-                </div>
-              </Th>
-              <Th>
-                <div className="flex items-center">
+                  <ChevronDownIcon
+                    className={twMerge(
+                      "transition-transform",
+                      orderDirection === OrderByDirection.DESC &&
+                        orderBy === GroupsOrderBy.Slug &&
+                        "rotate-180",
+                      orderBy !== GroupsOrderBy.Slug && "opacity-30"
+                    )}
+                  />
+                </TableHead>
+                <TableHead
+                  className={isSubOrganization ? "w-1/3" : ""}
+                  onClick={() => handleSort(GroupsOrderBy.Role)}
+                >
                   {isSubOrganization ? "Sub-" : ""}Organization Role
-                  <IconButton
-                    variant="plain"
-                    className={`ml-2 ${orderBy === GroupsOrderBy.Role ? "" : "opacity-30"}`}
-                    ariaLabel="sort"
-                    onClick={() => handleSort(GroupsOrderBy.Role)}
-                  >
-                    <FontAwesomeIcon
-                      icon={
-                        orderDirection === OrderByDirection.DESC && orderBy === GroupsOrderBy.Role
-                          ? faArrowUp
-                          : faArrowDown
-                      }
-                    />
-                  </IconButton>
-                </div>
-              </Th>
-              {isSubOrganization && <Th>Managed By</Th>}
-              <Th className="w-5" />
-            </Tr>
-          </THead>
-          <TBody>
-            {isPending && (
-              <TableSkeleton columns={isSubOrganization ? 5 : 4} innerKey="org-groups" />
-            )}
-            {!isPending &&
-              filteredGroups
-                .slice(offset, perPage * page)
-                .map(({ id, name, slug, role, customRole, orgId: groupOrgId }) => {
+                  <ChevronDownIcon
+                    className={twMerge(
+                      "transition-transform",
+                      orderDirection === OrderByDirection.DESC &&
+                        orderBy === GroupsOrderBy.Role &&
+                        "rotate-180",
+                      orderBy !== GroupsOrderBy.Role && "opacity-30"
+                    )}
+                  />
+                </TableHead>
+                {isSubOrganization && <TableHead>Managed By</TableHead>}
+                <TableHead className="w-5" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isPending &&
+                Array.from({ length: perPage }).map((_, i) => (
+                  <TableRow key={`skeleton-${i + 1}`}>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                    {isSubOrganization && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-full" />
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <Skeleton className="h-4 w-4" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {!isPending &&
+                sortedGroups.map(({ id, name, slug, role, customRole, orgId: groupOrgId }) => {
                   const isLinkedGroup = currentOrg ? groupOrgId !== currentOrg.id : false;
                   const isManagedBySubOrg = currentOrg ? groupOrgId === currentOrg.id : false;
                   return (
-                    <Tr
+                    <TableRow
+                      key={`org-group-${id}`}
+                      className="cursor-pointer"
                       onClick={() =>
                         navigate({
                           to: "/organizations/$orgId/groups/$groupId",
@@ -250,43 +322,45 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                           }
                         })
                       }
-                      className="h-10 cursor-pointer transition-colors duration-100 hover:bg-mineshaft-700"
-                      key={`org-group-${id}`}
                     >
-                      <Td>{name}</Td>
-                      <Td>{slug}</Td>
-                      <Td>
+                      <TableCell isTruncatable>{name}</TableCell>
+                      <TableCell isTruncatable>{slug}</TableCell>
+                      <TableCell>
                         <OrgPermissionCan
                           I={OrgPermissionGroupActions.Edit}
                           a={OrgPermissionSubjects.Groups}
                         >
-                          {(isAllowed) => {
-                            return (
-                              <Select
-                                value={role === "custom" ? (customRole?.slug as string) : role}
-                                isDisabled={!isAllowed}
-                                className="h-8 w-48 bg-mineshaft-700"
-                                position="popper"
-                                dropdownContainerClassName="border border-mineshaft-600 bg-mineshaft-800"
-                                onValueChange={(selectedRole) =>
-                                  handleChangeRole({
-                                    id,
-                                    role: selectedRole
-                                  })
-                                }
+                          {(isAllowed) => (
+                            <Select
+                              value={role === "custom" ? (customRole?.slug as string) : role}
+                              disabled={!isAllowed}
+                              onValueChange={(selectedRole) =>
+                                handleChangeRole({
+                                  id,
+                                  role: selectedRole
+                                })
+                              }
+                            >
+                              <SelectTrigger
+                                size="sm"
+                                className="w-full max-w-32 lg:max-w-64"
+                                onClick={(e) => e.stopPropagation()}
                               >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="max-w-32 lg:max-w-64">
                                 {(roles || []).map(({ slug: roleSlug, name: roleName }) => (
                                   <SelectItem value={roleSlug} key={`role-option-${roleSlug}`}>
                                     {roleName}
                                   </SelectItem>
                                 ))}
-                              </Select>
-                            );
-                          }}
+                              </SelectContent>
+                            </Select>
+                          )}
                         </OrgPermissionCan>
-                      </Td>
+                      </TableCell>
                       {isSubOrganization && (
-                        <Td>
+                        <TableCell>
                           <Badge variant={isManagedBySubOrg ? "sub-org" : "org"}>
                             {isManagedBySubOrg ? (
                               <>
@@ -300,32 +374,31 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                               </>
                             )}
                           </Badge>
-                        </Td>
+                        </TableCell>
                       )}
-                      <Td>
+                      <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <IconButton
-                              ariaLabel="Options"
-                              className="w-6"
-                              colorSchema="secondary"
-                              variant="plain"
+                              variant="ghost"
+                              size="xs"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <FontAwesomeIcon icon={faEllipsisV} />
+                              <MoreHorizontalIcon />
                             </IconButton>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent sideOffset={2} align="end">
                             <DropdownMenuItem
-                              icon={<FontAwesomeIcon icon={faCopy} />}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                navigator.clipboard.writeText(id);
                                 createNotification({
                                   text: "Copied group ID to clipboard",
                                   type: "info"
                                 });
-                                navigator.clipboard.writeText(id);
                               }}
                             >
+                              <CopyIcon />
                               Copy Group ID
                             </DropdownMenuItem>
                             {!isLinkedGroup && (
@@ -335,7 +408,6 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                               >
                                 {(isAllowed) => (
                                   <DropdownMenuItem
-                                    icon={<FontAwesomeIcon icon={faEdit} />}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handlePopUpOpen("group", {
@@ -348,6 +420,7 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                                     }}
                                     isDisabled={!isAllowed}
                                   >
+                                    <PencilIcon />
                                     Edit Group
                                   </DropdownMenuItem>
                                 )}
@@ -360,7 +433,6 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                               >
                                 {(isAllowed) => (
                                   <DropdownMenuItem
-                                    icon={<FontAwesomeIcon icon={faUserGroup} />}
                                     onClick={() =>
                                       navigate({
                                         to: "/organizations/$orgId/groups/$groupId",
@@ -372,6 +444,7 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                                     }
                                     isDisabled={!isAllowed}
                                   >
+                                    <UsersIcon />
                                     Manage Members
                                   </DropdownMenuItem>
                                 )}
@@ -383,7 +456,7 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                             >
                               {(isAllowed) => (
                                 <DropdownMenuItem
-                                  icon={<FontAwesomeIcon icon={faTrash} />}
+                                  variant="danger"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handlePopUpOpen("deleteGroup", {
@@ -394,38 +467,30 @@ export const OrgGroupsTable = ({ handlePopUpOpen }: Props) => {
                                   }}
                                   isDisabled={!isAllowed}
                                 >
+                                  <TrashIcon />
                                   {isLinkedGroup ? "Unlink Group" : "Delete Group"}
                                 </DropdownMenuItem>
                               )}
                             </OrgPermissionCan>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </Td>
-                    </Tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-          </TBody>
-        </Table>
-        {Boolean(filteredGroups.length) && (
-          <Pagination
-            count={filteredGroups.length}
-            page={page}
-            perPage={perPage}
-            onChangePage={setPage}
-            onChangePerPage={handlePerPageChange}
-          />
-        )}
-        {!isPending && !filteredGroups?.length && (
-          <EmptyState
-            title={
-              groups.length
-                ? `No ${isSubOrganization ? "sub-" : ""}organization groups match search...`
-                : `No ${isSubOrganization ? "sub-" : ""}organization groups found`
-            }
-            icon={groups.length ? faSearch : faUsers}
-          />
-        )}
-      </TableContainer>
+            </TableBody>
+          </Table>
+          {Boolean(totalCount) && (
+            <Pagination
+              count={totalCount}
+              page={page}
+              perPage={perPage}
+              onChangePage={setPage}
+              onChangePerPage={handlePerPageChange}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 };

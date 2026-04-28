@@ -1,26 +1,31 @@
 import { TPamResources } from "@app/db/schemas";
+import { logger } from "@app/lib/logger";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { KmsDataKey } from "@app/services/kms/kms-types";
 
 import { decryptAccountCredentials } from "../pam-account/pam-account-fns";
-import { getActiveDirectoryResourceListItem } from "./active-directory/active-directory-resource-fns";
 import { getAwsIamResourceListItem } from "./aws-iam/aws-iam-resource-fns";
 import { getKubernetesResourceListItem } from "./kubernetes/kubernetes-resource-fns";
+import { getMongoDBResourceListItem } from "./mongodb/mongodb-resource-fns";
+import { getMsSQLResourceListItem } from "./mssql/mssql-resource-fns";
 import { getMySQLResourceListItem } from "./mysql/mysql-resource-fns";
 import { TPamResource, TPamResourceConnectionDetails, TPamResourceInternalMetadata } from "./pam-resource-types";
 import { getPostgresResourceListItem } from "./postgres/postgres-resource-fns";
 import { getRedisResourceListItem } from "./redis/redis-resource-fns";
+import { getSshResourceListItem } from "./ssh/ssh-resource-fns";
 import { getWindowsResourceListItem } from "./windows-server/windows-server-resource-fns";
 
 export const listResourceOptions = () => {
   return [
     getPostgresResourceListItem(),
     getMySQLResourceListItem(),
+    getMsSQLResourceListItem(),
     getAwsIamResourceListItem(),
     getKubernetesResourceListItem(),
     getRedisResourceListItem(),
+    getMongoDBResourceListItem(),
     getWindowsResourceListItem(),
-    getActiveDirectoryResourceListItem()
+    getSshResourceListItem()
   ].sort((a, b) => a.name.localeCompare(b.name));
 };
 
@@ -115,19 +120,49 @@ export const decryptResource = async (
   projectId: string,
   kmsService: Pick<TKmsServiceFactory, "createCipherPairWithDataKey">
 ) => {
+  const {
+    encryptedConnectionDetails,
+    encryptedRotationAccountCredentials,
+    encryptedResourceMetadata,
+    encryptedSessionSummaryConfig,
+    ...rest
+  } = resource;
+
+  let sessionSummaryConfig: { aiInsightsEnabled: boolean; connectionId: string; model: string } | null = null;
+
+  if (encryptedSessionSummaryConfig) {
+    try {
+      const { decryptor } = await kmsService.createCipherPairWithDataKey({
+        type: KmsDataKey.SecretManager,
+        projectId
+      });
+      sessionSummaryConfig = JSON.parse(decryptor({ cipherTextBlob: encryptedSessionSummaryConfig }).toString()) as {
+        aiInsightsEnabled: boolean;
+        connectionId: string;
+        model: string;
+      };
+    } catch (err) {
+      logger.warn(
+        { err, resourceId: resource.id },
+        "decryptResource: failed to decrypt sessionSummaryConfig, falling back to null"
+      );
+    }
+  }
+
   return {
-    ...resource,
+    ...rest,
     connectionDetails: await decryptResourceConnectionDetails({
-      encryptedConnectionDetails: resource.encryptedConnectionDetails,
+      encryptedConnectionDetails,
       projectId,
       kmsService
     }),
-    rotationAccountCredentials: resource.encryptedRotationAccountCredentials
+    rotationAccountCredentials: encryptedRotationAccountCredentials
       ? await decryptAccountCredentials({
-          encryptedCredentials: resource.encryptedRotationAccountCredentials,
+          encryptedCredentials: encryptedRotationAccountCredentials,
           projectId,
           kmsService
         })
-      : null
+      : null,
+    sessionSummaryConfig
   } as TPamResource;
 };

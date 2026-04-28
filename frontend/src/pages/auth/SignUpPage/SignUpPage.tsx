@@ -1,4 +1,3 @@
-/* eslint-disable no-nested-ternary */
 import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet";
 import { useTranslation } from "react-i18next";
@@ -6,128 +5,110 @@ import { Link, useNavigate } from "@tanstack/react-router";
 
 import { AuthPageBackground } from "@app/components/auth/AuthPageBackground";
 import { AuthPageFooter } from "@app/components/auth/AuthPageFooter";
+import { AuthPageHeader } from "@app/components/auth/AuthPageHeader";
 import CodeInputStep from "@app/components/auth/CodeInputStep";
-import EnterEmailStep from "@app/components/auth/EnterEmailStep";
 import InitialSignupStep from "@app/components/auth/InitialSignupStep";
 import TeamInviteStep from "@app/components/auth/TeamInviteStep";
 import UserInfoStep from "@app/components/auth/UserInfoStep";
-import SecurityClient from "@app/components/utilities/SecurityClient";
+import { createNotification } from "@app/components/notifications";
+import { Button } from "@app/components/v3";
 import { useServerConfig } from "@app/context";
-import { useVerifySignupEmailVerificationCode } from "@app/hooks/api";
+import { useSelectOrganization } from "@app/hooks/api/auth/queries";
+import { fetchOrganizations } from "@app/hooks/api/organization/queries";
 import { useFetchServerStatus } from "@app/hooks/api/serverDetails";
 
-export const SignUpPage = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [organizationName, setOrganizationName] = useState("");
-  const [attributionSource, setAttributionSource] = useState("");
-  const [code, setCode] = useState("123456");
-  const [codeError, setCodeError] = useState(false);
-  const [step, setStep] = useState(1);
+enum SignupSection {
+  Email = "email",
+  VerifyCode = "verify-code",
+  UserInfo = "user-info",
+  InviteTeam = "invite-team"
+}
+
+export interface SignUpPageProps {
+  invite?: {
+    email: string;
+  };
+}
+
+export const SignUpPage = ({ invite }: SignUpPageProps) => {
+  const isInvite = Boolean(invite);
+  const [email, setEmail] = useState(invite?.email ?? "");
+  const [section, setSection] = useState<SignupSection>(
+    isInvite ? SignupSection.UserInfo : SignupSection.Email
+  );
   const navigate = useNavigate();
   const { data: serverDetails } = useFetchServerStatus();
-  const [isSignupWithEmail, setIsSignupWithEmail] = useState(false);
-  const [isCodeInputCheckLoading, setIsCodeInputCheckLoading] = useState(false);
   const { t } = useTranslation();
-  const { mutateAsync } = useVerifySignupEmailVerificationCode();
   const { config } = useServerConfig();
+  const { mutateAsync: selectOrganization } = useSelectOrganization();
 
   useEffect(() => {
-    if (!config.allowSignUp) {
+    if (!isInvite && !config.allowSignUp) {
+      createNotification({
+        text: "Sign up is disabled"
+      });
       navigate({ to: "/login" });
     }
   }, [config.allowSignUp]);
 
-  /**
-   * Goes to the following step (out of 5) of the signup process.
-   * Step 1 is submitting your email
-   * Step 2 is Verifying your email with the code that you received
-   * Step 3 is asking the final info.
-   * Step 4 is downloading a backup pdf
-   * Step 5 is inviting users
-   */
-  const incrementStep = async () => {
-    if (step === 1 || step === 3 || step === 4) {
-      setStep(step + 1);
-    } else if (step === 2) {
-      setIsCodeInputCheckLoading(true);
-      // Checking if the code matches the email.
-      try {
-        const { token } = await mutateAsync({ email, code });
-        SecurityClient.setSignupToken(token);
-        setStep(3);
-      } catch (err) {
-        console.error(err);
-        setCodeError(true);
-      }
-      setIsCodeInputCheckLoading(false);
+  const handleEmailComplete = () => {
+    if (serverDetails?.emailConfigured) {
+      setSection(SignupSection.VerifyCode);
+    } else {
+      setSection(SignupSection.UserInfo);
     }
   };
 
-  // when email service is not configured, skip step 2 and 5
-  useEffect(() => {
-    (async () => {
-      if (!serverDetails?.emailConfigured && step === 2) {
-        incrementStep();
-      }
+  const handleCodeVerified = () => {
+    setSection(SignupSection.UserInfo);
+  };
 
-      if (!serverDetails?.emailConfigured && step === 4) {
+  const handleUserInfoComplete = async () => {
+    if (isInvite) {
+      const userOrgs = await fetchOrganizations();
+      const orgId = userOrgs[0]?.id;
+
+      if (orgId) {
+        await selectOrganization({ organizationId: orgId });
         navigate({
-          to: "/"
+          to: "/organizations/$orgId/projects",
+          params: { orgId }
         });
+      } else {
+        navigate({ to: "/login" });
       }
-    })();
-  }, [step]);
-
-  const renderView = (registerStep: number) => {
-    if (isSignupWithEmail && registerStep === 1) {
-      return <EnterEmailStep email={email} setEmail={setEmail} incrementStep={incrementStep} />;
+    } else if (serverDetails?.emailConfigured) {
+      setSection(SignupSection.InviteTeam);
+    } else {
+      navigate({ to: "/" });
     }
+  };
 
-    if (!isSignupWithEmail && registerStep === 1) {
-      return <InitialSignupStep setIsSignupWithEmail={setIsSignupWithEmail} />;
+  const renderView = () => {
+    switch (section) {
+      case SignupSection.Email:
+        return (
+          <InitialSignupStep
+            email={email}
+            setEmail={setEmail}
+            incrementStep={handleEmailComplete}
+          />
+        );
+      case SignupSection.VerifyCode:
+        return <CodeInputStep email={email} onComplete={handleCodeVerified} />;
+      case SignupSection.UserInfo:
+        return (
+          <UserInfoStep onComplete={handleUserInfoComplete} email={email} isInvite={isInvite} />
+        );
+      case SignupSection.InviteTeam:
+        return <TeamInviteStep />;
+      default:
+        return null;
     }
-
-    if (registerStep === 2) {
-      return (
-        <CodeInputStep
-          email={email}
-          incrementStep={incrementStep}
-          setCode={setCode}
-          codeError={codeError}
-          isCodeInputCheckLoading={isCodeInputCheckLoading}
-        />
-      );
-    }
-
-    if (registerStep === 3) {
-      return (
-        <UserInfoStep
-          incrementStep={incrementStep}
-          email={email}
-          password={password}
-          setPassword={setPassword}
-          name={name}
-          setName={setName}
-          organizationName={organizationName}
-          setOrganizationName={setOrganizationName}
-          attributionSource={attributionSource}
-          setAttributionSource={setAttributionSource}
-          providerAuthToken={undefined}
-        />
-      );
-    }
-
-    if (serverDetails?.emailConfigured) {
-      return <TeamInviteStep />;
-    }
-
-    return "";
   };
 
   return (
-    <div className="relative flex max-h-screen min-h-screen flex-col overflow-y-auto bg-linear-to-tr from-card via-bunker-900 to-card px-6">
+    <div className="relative flex max-h-screen min-h-screen flex-col overflow-y-auto bg-linear-to-tr from-card via-bunker-900 to-card px-4">
       <AuthPageBackground />
       <Helmet>
         <title>{t("common.head-title", { title: t("signup.title") })}</title>
@@ -136,18 +117,14 @@ export const SignUpPage = () => {
         <meta property="og:title" content={t("signup.og-title") as string} />
         <meta name="og:description" content={t("signup.og-description") as string} />
       </Helmet>
+      <AuthPageHeader>
+        <Button asChild>
+          <Link to="/login">Log In</Link>
+        </Button>
+      </AuthPageHeader>
       <div className="relative z-10 my-auto flex flex-col items-center py-10">
-        <Link to="/">
-          <div className="mb-4 flex justify-center">
-            <img
-              src="/images/gradientLogo.svg"
-              style={{ height: "90px", width: "120px" }}
-              alt="Infisical logo"
-            />
-          </div>
-        </Link>
         <form className="w-full" onSubmit={(e) => e.preventDefault()}>
-          {renderView(step)}
+          {renderView()}
         </form>
       </div>
       <AuthPageFooter />

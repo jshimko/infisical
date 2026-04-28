@@ -2,7 +2,10 @@ export enum CaType {
   INTERNAL = "internal",
   ACME = "acme",
   AZURE_AD_CS = "azure-ad-cs",
-  AWS_PCA = "aws-pca"
+  AWS_PCA = "aws-pca",
+  DIGICERT = "digicert",
+  AWS_ACM_PUBLIC_CA = "aws-acm-public-ca",
+  VENAFI_TPP = "venafi-tpp"
 }
 
 export enum InternalCaType {
@@ -42,5 +45,6 @@ export enum CaCapability {
 export enum CaSigningConfigType {
   INTERNAL = "internal",
   MANUAL = "manual",
-  VENAFI = "venafi"
+  VENAFI = "venafi",
+  AZURE_ADCS = "azure-ad-cs"
 }

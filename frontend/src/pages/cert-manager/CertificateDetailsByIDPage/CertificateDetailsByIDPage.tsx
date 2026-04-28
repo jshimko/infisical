@@ -6,14 +6,19 @@ import { ChevronLeftIcon, EllipsisIcon } from "lucide-react";
 import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
 import { getCertificateDisplayName } from "@app/components/utilities/certificateDisplayUtils";
-import { AccessRestrictedBanner, DeleteActionModal, PageHeader } from "@app/components/v2";
+import {
+  AccessRestrictedBanner,
+  DeleteActionModal,
+  EmptyState,
+  PageHeader
+} from "@app/components/v2";
 import {
   Button,
-  UnstableDropdownMenu,
-  UnstableDropdownMenuContent,
-  UnstableDropdownMenuItem,
-  UnstableDropdownMenuTrigger,
-  UnstablePageLoader
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  PageLoader
 } from "@app/components/v3";
 import { ROUTE_PATHS } from "@app/const/routes";
 import {
@@ -81,7 +86,7 @@ const Page = () => {
   ] as const);
 
   if (isLoading) {
-    return <UnstablePageLoader />;
+    return <PageLoader />;
   }
 
   const onDeleteCertificateSubmit = async () => {
@@ -186,14 +191,15 @@ const Page = () => {
 
   return (
     <div className="mx-auto flex flex-col justify-between bg-bunker-800 text-white">
-      {certificate && (
+      {certificate ? (
         <ProjectPermissionCan
           I={ProjectPermissionCertificateActions.Read}
           a={subject(ProjectPermissionSub.Certificates, {
             commonName: certificate.commonName,
-            altNames: certificate.altNames,
+            altNames: certificate.altNames?.split(",").map((s) => s.trim()),
             serialNumber: certificate.serialNumber,
-            friendlyName: certificate.friendlyName
+            friendlyName: certificate.friendlyName,
+            metadata: certificate.metadata
           })}
         >
           {(isAllowed) =>
@@ -215,26 +221,27 @@ const Page = () => {
                   description="View certificate details"
                   title={displayName}
                 >
-                  <UnstableDropdownMenu>
-                    <UnstableDropdownMenuTrigger asChild>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <Button variant="outline">
                         Options
                         <EllipsisIcon />
                       </Button>
-                    </UnstableDropdownMenuTrigger>
-                    <UnstableDropdownMenuContent align="end">
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
                       {/* Export Certificate - always available */}
                       <ProjectPermissionCan
                         I={ProjectPermissionCertificateActions.Read}
                         a={subject(ProjectPermissionSub.Certificates, {
                           commonName: certificate.commonName,
-                          altNames: certificate.altNames,
+                          altNames: certificate.altNames?.split(",").map((s) => s.trim()),
                           serialNumber: certificate.serialNumber,
-                          friendlyName: certificate.friendlyName
+                          friendlyName: certificate.friendlyName,
+                          metadata: certificate.metadata
                         })}
                       >
                         {(canRead) => (
-                          <UnstableDropdownMenuItem
+                          <DropdownMenuItem
                             isDisabled={!canRead}
                             onClick={() =>
                               handlePopUpOpen("certificateExport", {
@@ -244,7 +251,7 @@ const Page = () => {
                             }
                           >
                             Export Certificate
-                          </UnstableDropdownMenuItem>
+                          </DropdownMenuItem>
                         )}
                       </ProjectPermissionCan>
                       {/* Enable/Manage auto renewal - conditional */}
@@ -259,13 +266,14 @@ const Page = () => {
                             I={ProjectPermissionCertificateActions.Edit}
                             a={subject(ProjectPermissionSub.Certificates, {
                               commonName: certificate.commonName,
-                              altNames: certificate.altNames,
+                              altNames: certificate.altNames?.split(",").map((s) => s.trim()),
                               serialNumber: certificate.serialNumber,
-                              friendlyName: certificate.friendlyName
+                              friendlyName: certificate.friendlyName,
+                              metadata: certificate.metadata
                             })}
                           >
                             {(canEdit) => (
-                              <UnstableDropdownMenuItem
+                              <DropdownMenuItem
                                 isDisabled={!canEdit}
                                 onClick={() => {
                                   const notAfterDate = new Date(certificate.notAfter);
@@ -295,7 +303,7 @@ const Page = () => {
                                 {isAutoRenewalEnabled
                                   ? "Manage Auto-Renewal"
                                   : "Enable Auto-Renewal"}
-                              </UnstableDropdownMenuItem>
+                              </DropdownMenuItem>
                             )}
                           </ProjectPermissionCan>
                         )}
@@ -311,18 +319,19 @@ const Page = () => {
                             I={ProjectPermissionCertificateActions.Edit}
                             a={subject(ProjectPermissionSub.Certificates, {
                               commonName: certificate.commonName,
-                              altNames: certificate.altNames,
+                              altNames: certificate.altNames?.split(",").map((s) => s.trim()),
                               serialNumber: certificate.serialNumber,
-                              friendlyName: certificate.friendlyName
+                              friendlyName: certificate.friendlyName,
+                              metadata: certificate.metadata
                             })}
                           >
                             {(canEdit) => (
-                              <UnstableDropdownMenuItem
+                              <DropdownMenuItem
                                 isDisabled={!canEdit}
                                 onClick={handleDisableAutoRenewal}
                               >
                                 Disable Auto-Renewal
-                              </UnstableDropdownMenuItem>
+                              </DropdownMenuItem>
                             )}
                           </ProjectPermissionCan>
                         )}
@@ -336,13 +345,14 @@ const Page = () => {
                             I={ProjectPermissionCertificateActions.Edit}
                             a={subject(ProjectPermissionSub.Certificates, {
                               commonName: certificate.commonName,
-                              altNames: certificate.altNames,
+                              altNames: certificate.altNames?.split(",").map((s) => s.trim()),
                               serialNumber: certificate.serialNumber,
-                              friendlyName: certificate.friendlyName
+                              friendlyName: certificate.friendlyName,
+                              metadata: certificate.metadata
                             })}
                           >
                             {(canEdit) => (
-                              <UnstableDropdownMenuItem
+                              <DropdownMenuItem
                                 isDisabled={!canEdit}
                                 onClick={() =>
                                   handlePopUpOpen("renewCertificate", {
@@ -352,7 +362,7 @@ const Page = () => {
                                 }
                               >
                                 Renew Now
-                              </UnstableDropdownMenuItem>
+                              </DropdownMenuItem>
                             )}
                           </ProjectPermissionCan>
                         )}
@@ -365,7 +375,7 @@ const Page = () => {
                             a={ProjectPermissionSub.PkiSyncs}
                           >
                             {(canEditPkiSync) => (
-                              <UnstableDropdownMenuItem
+                              <DropdownMenuItem
                                 isDisabled={!canEditPkiSync}
                                 onClick={() =>
                                   handlePopUpOpen("managePkiSyncs", {
@@ -375,7 +385,7 @@ const Page = () => {
                                 }
                               >
                                 Manage PKI Syncs
-                              </UnstableDropdownMenuItem>
+                              </DropdownMenuItem>
                             )}
                           </ProjectPermissionCan>
                         )}
@@ -387,13 +397,14 @@ const Page = () => {
                             I={ProjectPermissionCertificateActions.Delete}
                             a={subject(ProjectPermissionSub.Certificates, {
                               commonName: certificate.commonName,
-                              altNames: certificate.altNames,
+                              altNames: certificate.altNames?.split(",").map((s) => s.trim()),
                               serialNumber: certificate.serialNumber,
-                              friendlyName: certificate.friendlyName
+                              friendlyName: certificate.friendlyName,
+                              metadata: certificate.metadata
                             })}
                           >
                             {(canRevoke) => (
-                              <UnstableDropdownMenuItem
+                              <DropdownMenuItem
                                 isDisabled={!canRevoke}
                                 onClick={() =>
                                   handlePopUpOpen("revokeCertificate", {
@@ -402,7 +413,7 @@ const Page = () => {
                                 }
                               >
                                 Revoke Certificate
-                              </UnstableDropdownMenuItem>
+                              </DropdownMenuItem>
                             )}
                           </ProjectPermissionCan>
                         )}
@@ -411,23 +422,24 @@ const Page = () => {
                         I={ProjectPermissionCertificateActions.Delete}
                         a={subject(ProjectPermissionSub.Certificates, {
                           commonName: certificate.commonName,
-                          altNames: certificate.altNames,
+                          altNames: certificate.altNames?.split(",").map((s) => s.trim()),
                           serialNumber: certificate.serialNumber,
-                          friendlyName: certificate.friendlyName
+                          friendlyName: certificate.friendlyName,
+                          metadata: certificate.metadata
                         })}
                       >
                         {(canDelete) => (
-                          <UnstableDropdownMenuItem
+                          <DropdownMenuItem
                             variant="danger"
                             isDisabled={!canDelete}
                             onClick={() => handlePopUpOpen("deleteCertificate")}
                           >
                             Delete Certificate
-                          </UnstableDropdownMenuItem>
+                          </DropdownMenuItem>
                         )}
                       </ProjectPermissionCan>
-                    </UnstableDropdownMenuContent>
-                  </UnstableDropdownMenu>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </PageHeader>
                 <div className="flex flex-col gap-5 lg:flex-row">
                   <CertificateOverviewSection certificateId={certificate.id} />
@@ -444,6 +456,8 @@ const Page = () => {
             )
           }
         </ProjectPermissionCan>
+      ) : (
+        <EmptyState title="Error: Unable to find the certificate." className="py-12" />
       )}
       <CertificateCertModal popUp={popUp} handlePopUpToggle={handlePopUpToggle} />
       <CertificateExportModal

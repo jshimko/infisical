@@ -245,6 +245,15 @@ export const eventToNameMap: { [K in EventType]: string } = {
   [EventType.DASHBOARD_GET_SECRET_VALUE]: "Dashboard Get Secret Value",
   [EventType.DASHBOARD_GET_SECRET_VERSION_VALUE]: "Dashboard Get Secret Version Value",
 
+  [EventType.VIEW_INSIGHTS_SECRETS_MANAGEMENT_CALENDAR]:
+    "View Secrets Management Calendar Insights",
+  [EventType.VIEW_INSIGHTS_SECRETS_MANAGEMENT_ACCESS_VOLUME]:
+    "View Secrets Management Access Volume Insights",
+  [EventType.VIEW_INSIGHTS_SECRETS_MANAGEMENT_ACCESS_LOCATIONS]:
+    "View Secrets Management Access Locations Insights",
+  [EventType.VIEW_INSIGHTS_AUTH_METHODS]: "View Machine Identity Auth Methods Insights",
+  [EventType.VIEW_INSIGHTS_SECRETS_MANAGEMENT_SUMMARY]: "View Secrets Management Summary Insights",
+
   [EventType.CREATE_PROJECT_ROLE]: "Create Project Role",
   [EventType.UPDATE_PROJECT_ROLE]: "Update Project Role",
   [EventType.DELETE_PROJECT_ROLE]: "Delete Project Role",
@@ -268,6 +277,7 @@ export const eventToNameMap: { [K in EventType]: string } = {
   [EventType.PAM_SESSION_START]: "Start PAM Session",
   [EventType.PAM_SESSION_LOGS_UPDATE]: "Update PAM Session Logs",
   [EventType.PAM_SESSION_END]: "End PAM Session",
+  [EventType.PAM_SESSION_TERMINATE]: "Terminate PAM Session",
   [EventType.PAM_SESSION_GET]: "Get PAM Session",
   [EventType.PAM_SESSION_LIST]: "List PAM Sessions",
   [EventType.PAM_FOLDER_CREATE]: "Create PAM Folder",
@@ -278,6 +288,12 @@ export const eventToNameMap: { [K in EventType]: string } = {
   [EventType.PAM_ACCOUNT_CREATE]: "Create PAM Account",
   [EventType.PAM_ACCOUNT_UPDATE]: "Update PAM Account",
   [EventType.PAM_ACCOUNT_DELETE]: "Delete PAM Account",
+  [EventType.PAM_ACCOUNT_POLICY_CREATE]: "Create PAM Account Policy",
+  [EventType.PAM_ACCOUNT_POLICY_UPDATE]: "Update PAM Account Policy",
+  [EventType.PAM_ACCOUNT_POLICY_DELETE]: "Delete PAM Account Policy",
+  [EventType.PAM_ACCOUNT_POLICY_LIST]: "List PAM Account Policies",
+  [EventType.PAM_ACCOUNT_POLICY_GET]: "Get PAM Account Policy",
+  [EventType.PAM_ACCOUNT_READ_CREDENTIALS]: "Read PAM Account Credentials",
   [EventType.PAM_WEB_ACCESS_SESSION_TICKET_CREATED]: "Create PAM Web Access Session Ticket",
   [EventType.PAM_RESOURCE_LIST]: "List PAM Resources",
   [EventType.PAM_RESOURCE_GET]: "Get PAM Resource",
@@ -295,6 +311,11 @@ export const eventToNameMap: { [K in EventType]: string } = {
   [EventType.PAM_DISCOVERY_SOURCE_RUN_GET]: "Get PAM Discovery Source Run",
   [EventType.PAM_DISCOVERY_SOURCE_RESOURCE_LIST]: "List PAM Discovery Source Resources",
   [EventType.PAM_DISCOVERY_SOURCE_ACCOUNT_LIST]: "List PAM Discovery Source Accounts",
+  [EventType.PAM_RESOURCE_ROTATION_RULE_LIST]: "List PAM Resource Rotation Rules",
+  [EventType.PAM_RESOURCE_ROTATION_RULE_CREATE]: "Create PAM Resource Rotation Rule",
+  [EventType.PAM_RESOURCE_ROTATION_RULE_UPDATE]: "Update PAM Resource Rotation Rule",
+  [EventType.PAM_RESOURCE_ROTATION_RULE_DELETE]: "Delete PAM Resource Rotation Rule",
+  [EventType.PAM_RESOURCE_ROTATION_RULE_REORDER]: "Reorder PAM Resource Rotation Rules",
 
   [EventType.CREATE_CERTIFICATE_PROFILE]: "Create Certificate Profile",
   [EventType.UPDATE_CERTIFICATE_PROFILE]: "Update Certificate Profile",
@@ -306,6 +327,16 @@ export const eventToNameMap: { [K in EventType]: string } = {
   [EventType.ORDER_CERTIFICATE_FROM_PROFILE]: "Order Certificate From Profile",
   [EventType.GET_CERTIFICATE_PROFILE_LATEST_ACTIVE_BUNDLE]:
     "Get Certificate Profile Latest Active Bundle",
+
+  [EventType.CREATE_CERTIFICATE_REQUEST]: "Create Certificate Request",
+  [EventType.GET_CERTIFICATE_REQUEST]: "Get Certificate Request",
+  [EventType.GET_CERTIFICATE_FROM_REQUEST]: "Get Certificate From Request",
+  [EventType.LIST_CERTIFICATE_REQUESTS]: "List Certificate Requests",
+  [EventType.TRIGGER_CERTIFICATE_REQUEST_VALIDATION]: "Trigger Certificate Request Validation",
+
+  [EventType.SCEP_ENROLLMENT]: "SCEP Certificate Enrollment",
+  [EventType.SCEP_RENEWAL]: "SCEP Certificate Renewal",
+  [EventType.SCEP_DYNAMIC_CHALLENGE_GENERATED]: "SCEP Dynamic Challenge Generated",
 
   [EventType.APPROVAL_POLICY_CREATE]: "Create Approval Policy",
   [EventType.APPROVAL_POLICY_UPDATE]: "Update Approval Policy",
@@ -358,7 +389,16 @@ export const eventToNameMap: { [K in EventType]: string } = {
   [EventType.DELETE_DYNAMIC_SECRET_LEASE]: "Delete Dynamic Secret Lease",
   [EventType.RENEW_DYNAMIC_SECRET_LEASE]: "Renew Dynamic Secret Lease",
   [EventType.LIST_DYNAMIC_SECRET_LEASES]: "List Dynamic Secret Leases",
-  [EventType.GET_DYNAMIC_SECRET_LEASE]: "Get Dynamic Secret Lease"
+  [EventType.GET_DYNAMIC_SECRET_LEASE]: "Get Dynamic Secret Lease",
+
+  [EventType.SECRET_VALIDATION_RULE_CREATE]: "Create Secret Validation Rule",
+  [EventType.SECRET_VALIDATION_RULE_UPDATE]: "Update Secret Validation Rule",
+  [EventType.SECRET_VALIDATION_RULE_DELETE]: "Delete Secret Validation Rule",
+
+  // External Migration
+  [EventType.EXTERNAL_MIGRATION_CREATE]: "Create External Migration",
+  [EventType.EXTERNAL_MIGRATION_UPDATE]: "Update External Migration",
+  [EventType.EXTERNAL_MIGRATION_DELETE]: "Delete External Migration"
 };
 
 export const userAgentTypeToNameMap: { [K in UserAgentType]: string } = {
@@ -400,6 +440,7 @@ export const projectToEventsMap: Partial<Record<ProjectType, EventType[]>> = {
     EventType.PAM_SESSION_START,
     EventType.PAM_SESSION_LOGS_UPDATE,
     EventType.PAM_SESSION_END,
+    EventType.PAM_SESSION_TERMINATE,
     EventType.PAM_SESSION_GET,
     EventType.PAM_SESSION_LIST,
     EventType.PAM_FOLDER_CREATE,
@@ -410,6 +451,12 @@ export const projectToEventsMap: Partial<Record<ProjectType, EventType[]>> = {
     EventType.PAM_ACCOUNT_CREATE,
     EventType.PAM_ACCOUNT_UPDATE,
     EventType.PAM_ACCOUNT_DELETE,
+    EventType.PAM_ACCOUNT_POLICY_CREATE,
+    EventType.PAM_ACCOUNT_POLICY_UPDATE,
+    EventType.PAM_ACCOUNT_POLICY_DELETE,
+    EventType.PAM_ACCOUNT_POLICY_LIST,
+    EventType.PAM_ACCOUNT_POLICY_GET,
+    EventType.PAM_ACCOUNT_READ_CREDENTIALS,
     EventType.PAM_WEB_ACCESS_SESSION_TICKET_CREATED,
     EventType.PAM_RESOURCE_LIST,
     EventType.PAM_RESOURCE_GET,
@@ -425,7 +472,12 @@ export const projectToEventsMap: Partial<Record<ProjectType, EventType[]>> = {
     EventType.PAM_DISCOVERY_SOURCE_RUN_LIST,
     EventType.PAM_DISCOVERY_SOURCE_RUN_GET,
     EventType.PAM_DISCOVERY_SOURCE_RESOURCE_LIST,
-    EventType.PAM_DISCOVERY_SOURCE_ACCOUNT_LIST
+    EventType.PAM_DISCOVERY_SOURCE_ACCOUNT_LIST,
+    EventType.PAM_RESOURCE_ROTATION_RULE_LIST,
+    EventType.PAM_RESOURCE_ROTATION_RULE_CREATE,
+    EventType.PAM_RESOURCE_ROTATION_RULE_UPDATE,
+    EventType.PAM_RESOURCE_ROTATION_RULE_DELETE,
+    EventType.PAM_RESOURCE_ROTATION_RULE_REORDER
   ],
   [ProjectType.AI]: [
     ...sharedProjectEvents,

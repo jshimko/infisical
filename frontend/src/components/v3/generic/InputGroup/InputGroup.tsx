@@ -3,7 +3,7 @@ import * as React from "react";
 import { cva, type VariantProps } from "cva";
 
 import { cn } from "../../utils";
-import { UnstableInput } from "../Input";
+import { Input } from "../Input";
 
 function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -121,18 +121,23 @@ function InputGroupText({ className, ...props }: React.ComponentProps<"span">) {
   );
 }
 
-function InputGroupInput({ className, ...props }: React.ComponentProps<"input">) {
-  return (
-    <UnstableInput
-      data-slot="input-group-control"
-      className={cn(
-        "flex-1 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent",
-        className
-      )}
-      {...props}
-    />
-  );
-}
+const InputGroupInput = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, ...props }, ref) => {
+    return (
+      <Input
+        ref={ref}
+        data-slot="input-group-control"
+        className={cn(
+          "flex-1 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 dark:bg-transparent",
+          className
+        )}
+        {...props}
+      />
+    );
+  }
+);
+
+InputGroupInput.displayName = "InputGroupInput";
 
 // function InputGroupTextarea({ className, ...props }: React.ComponentProps<"textarea">) {
 //   return (

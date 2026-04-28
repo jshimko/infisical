@@ -1,25 +1,27 @@
-import { CopyIcon, PencilIcon } from "lucide-react";
+import { useReducer } from "react";
+import { CheckIcon, CopyIcon, EyeIcon, EyeOffIcon, PencilIcon } from "lucide-react";
 
 import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
-import {
-  Detail,
-  DetailLabel,
-  DetailValue,
-  UnstableIconButton,
-  UnstableInput
-} from "@app/components/v3";
+import { Detail, DetailLabel, DetailValue, IconButton, Input } from "@app/components/v3";
 import { ProjectPermissionSub } from "@app/context";
 import { ProjectPermissionPamAccountActions } from "@app/context/ProjectPermissionContext/types";
+import { useTimedReset } from "@app/hooks";
 import {
+  KubernetesAuthMethod,
   PamResourceType,
-  TActiveDirectoryAccount,
+  TKubernetesCredentials,
   TPamAccount,
   TWindowsAccount
 } from "@app/hooks/api/pam";
+import { TPamAccountCredentialsResponse } from "@app/hooks/api/pam/queries";
 import { TAwsIamCredentials } from "@app/hooks/api/pam/types/aws-iam-resource";
 import { TBaseSqlCredentials } from "@app/hooks/api/pam/types/shared/sql-resource";
 import { SSHAuthMethod, TSSHCredentials } from "@app/hooks/api/pam/types/ssh-resource";
+import { TActiveDirectoryAccount } from "@app/hooks/api/pamDomain/active-directory-types";
+
+import { SensitiveCredentialsGate } from "./SensitiveCredentialsGate";
+import { useCredentialsReveal } from "./useCredentialsReveal";
 
 type Props = {
   account: TPamAccount;
@@ -40,10 +42,10 @@ const CopyableField = ({ label, value }: { label: string; value: string }) => {
       <DetailLabel>{label}</DetailLabel>
       <DetailValue>
         <div className="flex items-center gap-2">
-          <UnstableInput value={value} readOnly className="flex-1 font-mono text-sm" />
-          <UnstableIconButton variant="ghost" onClick={handleCopy} size="sm">
+          <Input value={value} readOnly className="flex-1 font-mono text-sm" />
+          <IconButton variant="ghost" onClick={handleCopy} size="sm">
             <CopyIcon />
-          </UnstableIconButton>
+          </IconButton>
         </div>
       </DetailValue>
     </Detail>
@@ -94,19 +96,49 @@ const ActiveDirectoryCredentialsContent = ({ account }: { account: TActiveDirect
     <>
       <Detail>
         <DetailLabel>Account Type</DetailLabel>
-        <DetailValue className="capitalize">{account.internalMetadata.accountType}</DetailValue>
+        <DetailValue className="capitalize">{account.internalMetadata?.accountType}</DetailValue>
       </Detail>
       <CopyableField label="Username" value={account.credentials.username} />
     </>
   );
 };
 
+const KubernetesCredentialsContent = ({ credentials }: { credentials: TKubernetesCredentials }) => {
+  if (credentials.authMethod === KubernetesAuthMethod.GatewayKubernetesAuth) {
+    return (
+      <>
+        <CopyableField label="Namespace" value={credentials.namespace} />
+        <CopyableField label="Service Account Name" value={credentials.serviceAccountName} />
+      </>
+    );
+  }
+
+  // ServiceAccountToken: no non-sensitive fields (token is behind the reveal gate)
+  return null;
+};
+
 const CredentialsContent = ({ account }: { account: TPamAccount }) => {
+  if (account.domain) {
+    switch (account.domain.domainType) {
+      case "active-directory":
+        return (
+          <ActiveDirectoryCredentialsContent
+            account={account as unknown as TActiveDirectoryAccount}
+          />
+        );
+      default:
+        return null;
+    }
+  }
+
+  if (!account.resource) return null;
   const { resourceType } = account.resource;
 
   switch (resourceType) {
     case PamResourceType.Postgres:
     case PamResourceType.MySQL:
+    case PamResourceType.MsSQL:
+    case PamResourceType.MongoDB:
     case PamResourceType.Redis:
       return <SqlCredentialsContent credentials={account.credentials as TBaseSqlCredentials} />;
     case PamResourceType.SSH:
@@ -115,19 +147,182 @@ const CredentialsContent = ({ account }: { account: TPamAccount }) => {
       return <AwsIamCredentialsContent credentials={account.credentials as TAwsIamCredentials} />;
     case PamResourceType.Windows:
       return <WindowsCredentialsContent account={account as TWindowsAccount} />;
-    case PamResourceType.ActiveDirectory:
-      return <ActiveDirectoryCredentialsContent account={account as TActiveDirectoryAccount} />;
+    case PamResourceType.Kubernetes:
+      return (
+        <KubernetesCredentialsContent credentials={account.credentials as TKubernetesCredentials} />
+      );
     default:
       return null;
   }
 };
 
+const MASKED_VALUE = "••••••••••••";
+
+const SensitiveField = ({ label, value }: { label: string; value: string }) => {
+  const [isVisible, toggleVisibility] = useReducer((prev) => !prev, false);
+  const [, isCopied, setCopied] = useTimedReset<string>({
+    initialState: ""
+  });
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied("copied");
+    } catch {
+      createNotification({ type: "error", text: "Failed to copy to clipboard." });
+    }
+  };
+
+  return (
+    <Detail>
+      <DetailLabel>{label}</DetailLabel>
+      <DetailValue>
+        <div className="flex items-center gap-2">
+          <Input
+            value={isVisible ? value : MASKED_VALUE}
+            readOnly
+            className="flex-1 font-mono text-sm"
+          />
+          <IconButton variant="ghost" size="sm" onClick={toggleVisibility}>
+            {isVisible ? <EyeOffIcon /> : <EyeIcon />}
+          </IconButton>
+          <IconButton variant="ghost" size="sm" onClick={handleCopy}>
+            {isCopied ? <CheckIcon /> : <CopyIcon />}
+          </IconButton>
+        </div>
+      </DetailValue>
+    </Detail>
+  );
+};
+
+const MultilineSensitiveField = ({ label, value }: { label: string; value: string }) => {
+  const [, isCopied, setCopied] = useTimedReset<string>({
+    initialState: ""
+  });
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied("copied");
+    } catch {
+      createNotification({ type: "error", text: "Failed to copy to clipboard." });
+    }
+  };
+
+  return (
+    <Detail>
+      <DetailLabel>
+        <div className="flex w-full items-center justify-between">
+          {label}
+          <IconButton variant="ghost" size="sm" onClick={handleCopy}>
+            {isCopied ? <CheckIcon /> : <CopyIcon />}
+          </IconButton>
+        </div>
+      </DetailLabel>
+      <DetailValue>
+        <pre className="max-h-32 thin-scrollbar overflow-auto rounded-md border border-border bg-transparent px-3 py-2 font-mono text-sm break-all whitespace-pre-wrap">
+          {value}
+        </pre>
+      </DetailValue>
+    </Detail>
+  );
+};
+
+type SensitiveFieldDef = {
+  key: string;
+  label: string;
+  multiline?: boolean;
+};
+
+// Returns sensitive fields that require the "View Credentials" flow to reveal.
+// Non-sensitive fields (username, auth method, etc.) are already shown by CredentialsContent above.
+// When adding a new resource type, add a case here if it has credentials hidden from the sanitized view.
+const getSensitiveFieldDefs = (account: TPamAccount): SensitiveFieldDef[] => {
+  if (account.domain) {
+    switch (account.domain.domainType) {
+      case "active-directory":
+        return [{ key: "password", label: "Password" }];
+      default:
+        return [];
+    }
+  }
+
+  if (!account.resource) return [];
+  const { resourceType } = account.resource;
+
+  switch (resourceType) {
+    case PamResourceType.Postgres:
+    case PamResourceType.MySQL:
+    case PamResourceType.MsSQL:
+    case PamResourceType.MongoDB:
+    case PamResourceType.Redis:
+    case PamResourceType.Windows:
+      return [{ key: "password", label: "Password" }];
+
+    case PamResourceType.SSH: {
+      const { authMethod } = account.credentials as TSSHCredentials;
+      if (authMethod === SSHAuthMethod.Password) return [{ key: "password", label: "Password" }];
+      if (authMethod === SSHAuthMethod.PublicKey)
+        return [{ key: "privateKey", label: "Private Key", multiline: true }];
+      return [];
+    }
+
+    case PamResourceType.Kubernetes: {
+      const { authMethod } = account.credentials as TKubernetesCredentials;
+      if (authMethod === KubernetesAuthMethod.ServiceAccountToken)
+        return [{ key: "serviceAccountToken", label: "Service Account Token", multiline: true }];
+      return [];
+    }
+
+    default:
+      return [];
+  }
+};
+
+const RevealedCredentials = ({
+  credentialsData,
+  fieldDefs
+}: {
+  credentialsData: TPamAccountCredentialsResponse;
+  fieldDefs: SensitiveFieldDef[];
+}) => {
+  const { credentials } = credentialsData;
+
+  const presentFields = fieldDefs.filter((f) => {
+    const value = credentials[f.key];
+    return value !== undefined && value !== null && String(value).length > 0;
+  });
+
+  if (presentFields.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {presentFields.map((field) =>
+        field.multiline ? (
+          <MultilineSensitiveField
+            key={field.key}
+            label={field.label}
+            value={String(credentials[field.key])}
+          />
+        ) : (
+          <SensitiveField
+            key={field.key}
+            label={field.label}
+            value={String(credentials[field.key])}
+          />
+        )
+      )}
+    </div>
+  );
+};
+
 export const PamAccountCredentialsSection = ({ account, onEdit }: Props) => {
-  if (
-    Object.keys(account.credentials).length <= 0 ||
-    [PamResourceType.Kubernetes].includes(account.resource.resourceType)
-  )
-    return null;
+  const { state, startReveal, reset } = useCredentialsReveal(account.id);
+
+  if (Object.keys(account.credentials).length <= 0) return null;
+
+  const sensitiveFieldDefs = getSensitiveFieldDefs(account);
+  const hasSensitiveFields = sensitiveFieldDefs.length > 0;
 
   return (
     <div className="flex w-full flex-col gap-3 rounded-lg border border-border bg-container px-4 py-3">
@@ -138,13 +333,37 @@ export const PamAccountCredentialsSection = ({ account, onEdit }: Props) => {
           a={ProjectPermissionSub.PamAccounts}
         >
           {(isAllowed) => (
-            <UnstableIconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
+            <IconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
               <PencilIcon />
-            </UnstableIconButton>
+            </IconButton>
           )}
         </ProjectPermissionCan>
       </div>
       <CredentialsContent account={account} />
+      {hasSensitiveFields && (
+        <SensitiveCredentialsGate
+          state={state}
+          accountName={account.name}
+          resourceName={account.resource?.name ?? ""}
+          resourceType={account.resource?.resourceType ?? ("" as PamResourceType)}
+          metadata={account.metadata}
+          onReveal={() => {
+            if (!account.credentialsConfigured) {
+              createNotification({
+                type: "error",
+                text: "No password exists for this account."
+              });
+              return;
+            }
+            startReveal();
+          }}
+          onReset={reset}
+        >
+          {state.status === "revealed" && (
+            <RevealedCredentials credentialsData={state.data} fieldDefs={sensitiveFieldDefs} />
+          )}
+        </SensitiveCredentialsGate>
+      )}
     </div>
   );
 };

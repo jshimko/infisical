@@ -4,9 +4,10 @@ import * as x509 from "@peculiar/x509";
 import { KeyStorePrefixes, TKeyStoreFactory } from "@app/keystore/keystore";
 import { getConfig } from "@app/lib/config/env";
 import { crypto } from "@app/lib/crypto/cryptography";
+import { getPqcCrypto, isPqcAlgorithm } from "@app/lib/crypto/pqc";
 import { BadRequestError } from "@app/lib/errors";
 import { logger } from "@app/lib/logger";
-import { QueueJobs, QueueName, TQueueServiceFactory } from "@app/queue";
+import { JOB_SCHEDULER_PREFIX, QueueJobs, QueueName, TQueueServiceFactory } from "@app/queue";
 import { TCertificateDALFactory } from "@app/services/certificate/certificate-dal";
 import { CertKeyAlgorithm, CertStatus } from "@app/services/certificate/certificate-types";
 import { DEFAULT_CRL_VALIDITY_DAYS } from "@app/services/certificate-common/certificate-constants";
@@ -112,19 +113,12 @@ export const certificateAuthorityQueueFactory = ({
     // Daily at midnight UTC; only CRLs expiring before next run are rebuilt
     const cronPattern = appCfg.NODE_ENV === "development" ? "*/5 * * * *" : "0 0 * * *";
 
-    // clear previous repeatable job
-    await queueService.stopRepeatableJob(
+    await queueService.upsertJobScheduler(
       QueueName.CaCrlRotation,
-      QueueJobs.CaCrlRotation,
-      { pattern: cronPattern, utc: true },
-      QueueJobs.CaCrlRotation
+      `${JOB_SCHEDULER_PREFIX}:${QueueJobs.CaCrlRotation}`,
+      { pattern: cronPattern },
+      { name: QueueJobs.CaCrlRotation, opts: { delay: 5000 } }
     );
-
-    await queueService.queue(QueueName.CaCrlRotation, QueueJobs.CaCrlRotation, undefined, {
-      delay: 5000,
-      jobId: QueueJobs.CaCrlRotation,
-      repeat: { pattern: cronPattern, utc: true, key: QueueJobs.CaCrlRotation }
-    });
   };
 
   const orderCertificateForSubscriber = async ({ subscriberId, caType }: TOrderCertificateForSubscriberDTO) => {
@@ -239,14 +233,19 @@ export const certificateAuthorityQueueFactory = ({
           const kmsDecryptor = await kmsService.decryptWithKmsKey({ kmsId: keyId });
           const privateKey = await kmsDecryptor({ cipherTextBlob: caSecret.encryptedPrivateKey });
 
-          const skObj = crypto.nativeCrypto.createPrivateKey({ key: privateKey, format: "der", type: "pkcs8" });
-          const sk = await crypto.nativeCrypto.subtle.importKey(
-            "pkcs8",
-            skObj.export({ format: "der", type: "pkcs8" }),
-            alg,
-            true,
-            ["sign"]
-          );
+          let sk: CryptoKey;
+          if (isPqcAlgorithm(internalCa.keyAlgorithm)) {
+            sk = await getPqcCrypto().subtle.importKey("pkcs8", privateKey, alg, true, ["sign"]);
+          } else {
+            const skObj = crypto.nativeCrypto.createPrivateKey({ key: privateKey, format: "der", type: "pkcs8" });
+            sk = await crypto.nativeCrypto.subtle.importKey(
+              "pkcs8",
+              skObj.export({ format: "der", type: "pkcs8" }),
+              alg,
+              true,
+              ["sign"]
+            );
+          }
 
           const revokedCerts = await certificateDAL.find({
             caId: internalCa.caId,

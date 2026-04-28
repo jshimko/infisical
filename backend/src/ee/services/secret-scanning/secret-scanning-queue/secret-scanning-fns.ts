@@ -1,25 +1,14 @@
 import { Octokit } from "@octokit/rest";
-import { exec } from "child_process";
-import { mkdir, readFile, rm, writeFile } from "fs";
+import { execFile } from "child_process";
+import { readFile, rm, writeFile } from "fs";
+import { mkdtemp } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
 import { SecretMatch } from "./secret-scanning-queue-types";
 
 export function createTempFolder(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const tempDir = tmpdir();
-    const tempFolderName = Math.random().toString(36).substring(2);
-    const tempFolderPath = join(tempDir, tempFolderName);
-
-    mkdir(tempFolderPath, (err) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(tempFolderPath);
-      }
-    });
-  });
+  return mkdtemp(join(tmpdir(), "infisical-scan-"));
 }
 
 export function writeTextToFile(filePath: string, content: string): Promise<void> {
@@ -40,9 +29,12 @@ export async function cloneRepo(
   repoPath: string
 ): Promise<void> {
   const cloneUrl = `https://x-access-token:${installationAcccessToken}@github.com/${repositoryFullName}.git`;
-  const command = `git clone ${cloneUrl} ${repoPath} --bare`;
+
+  // eslint-disable-next-line no-new
+  new URL(cloneUrl);
+
   return new Promise((resolve, reject) => {
-    exec(command, (error) => {
+    execFile("git", ["clone", cloneUrl, repoPath, "--bare"], (error) => {
       if (error) {
         reject(error);
       } else {
@@ -54,8 +46,7 @@ export async function cloneRepo(
 
 export function runInfisicalScanOnRepo(repoPath: string, outputPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const command = `cd ${repoPath} && infisical scan --exit-code=77 -r "${outputPath}"`;
-    exec(command, (error) => {
+    execFile("infisical", ["scan", "--exit-code=77", "-r", outputPath], { cwd: repoPath }, (error) => {
       if (error && error.code !== 77) {
         reject(error);
       } else {
@@ -67,8 +58,11 @@ export function runInfisicalScanOnRepo(repoPath: string, outputPath: string): Pr
 
 export function runInfisicalScan(inputPath: string, outputPath: string, configPath?: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const command = `cat "${inputPath}" | infisical scan --exit-code=77 --pipe -r "${outputPath}" ${configPath ? `-c "${configPath}"` : ""}`;
-    exec(command, (error) => {
+    const args = ["scan", "--exit-code=77", "--source", inputPath, "--no-git", "-r", outputPath];
+    if (configPath) {
+      args.push("-c", configPath);
+    }
+    execFile("infisical", args, (error) => {
       if (error && error.code !== 77) {
         reject(error);
       } else {

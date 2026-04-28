@@ -1,38 +1,38 @@
 import { useMemo } from "react";
-import {
-  faArrowDown,
-  faArrowUp,
-  faEllipsisV,
-  faFolder,
-  faKey,
-  faMagnifyingGlass,
-  faSearch,
-  faTrash
-} from "@fortawesome/free-solid-svg-icons";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { format } from "date-fns";
+import {
+  ChevronDownIcon,
+  FolderIcon,
+  MoreHorizontalIcon,
+  SearchIcon,
+  TrashIcon
+} from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import { ProjectPermissionCan } from "@app/components/permissions";
 import {
+  Badge,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  EmptyState,
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
   IconButton,
-  Input,
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
   Pagination,
+  Skeleton,
   Table,
-  TableContainer,
-  TableSkeleton,
-  TBody,
-  Td,
-  Th,
-  THead,
-  Tooltip,
-  Tr
-} from "@app/components/v2";
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@app/components/v3";
 import { ProjectPermissionActions, ProjectPermissionSub, useProject } from "@app/context";
 import {
   getUserTablePreference,
@@ -145,105 +145,123 @@ export const ServiceTokenTable = ({ handlePopUpOpen }: Props) => {
     setOrderDirection(OrderByDirection.ASC);
   };
 
-  const getClassName = (col: TokensOrderBy) => twMerge("ml-2", orderBy === col ? "" : "opacity-30");
-
-  const getColSortIcon = (col: TokensOrderBy) =>
-    orderDirection === OrderByDirection.DESC && orderBy === col ? faArrowUp : faArrowDown;
-
   return (
     <div>
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        leftIcon={<FontAwesomeIcon icon={faMagnifyingGlass} />}
-        placeholder="Search service tokens by name, environment or secret path..."
-        className="flex-1"
-        containerClassName="mb-4 mt-2"
-      />
-      <TableContainer>
-        <Table>
-          <THead>
-            <Tr>
-              <Th>
-                <div className="flex items-center">
+      <div className="mb-4">
+        <InputGroup>
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search service tokens by name, environment or secret path..."
+          />
+        </InputGroup>
+      </div>
+      {!isPending && !filteredTokens?.length ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>
+              {search ? "No service tokens match search" : "No service tokens found"}
+            </EmptyTitle>
+            <EmptyDescription>
+              {search ? "Adjust your search criteria." : "Create a token to get started."}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead onClick={() => handleSort(TokensOrderBy.Name)}>
                   Name
-                  <IconButton
-                    variant="plain"
-                    className={getClassName(TokensOrderBy.Name)}
-                    ariaLabel="sort"
-                    onClick={() => handleSort(TokensOrderBy.Name)}
-                  >
-                    <FontAwesomeIcon icon={getColSortIcon(TokensOrderBy.Name)} />
-                  </IconButton>
-                </div>
-              </Th>
-              <Th>Environment / Secret Path</Th>
-              <Th>
-                <div className="flex items-center">
-                  Valid Until
-                  <IconButton
-                    variant="plain"
-                    className={getClassName(TokensOrderBy.Expiration)}
-                    ariaLabel="sort"
-                    onClick={() => handleSort(TokensOrderBy.Expiration)}
-                  >
-                    <FontAwesomeIcon icon={getColSortIcon(TokensOrderBy.Expiration)} />
-                  </IconButton>
-                </div>
-              </Th>
-              <Th className="w-5" aria-label="button" />
-            </Tr>
-          </THead>
-          <TBody>
-            {isPending && <TableSkeleton columns={4} innerKey="project-service-tokens" />}
-            {!isPending &&
-              filteredTokens.slice(offset, perPage * page).map((row) => (
-                <Tr key={row.id}>
-                  <Td>{row.name}</Td>
-                  <Td>
-                    <div className="flex flex-row flex-wrap gap-1">
-                      {row?.scopes.map(({ secretPath, environment }) => (
-                        <div
-                          key={`${row.id}-${environment}-${secretPath}`}
-                          className="inline-flex items-center space-x-1 rounded-md border border-mineshaft-500 p-1 px-2"
-                        >
-                          <div className="mr-1 border-r border-mineshaft-500 pr-2">
-                            {environment}
-                          </div>
-                          <FontAwesomeIcon icon={faFolder} size="sm" className="text-yellow" />
-                          <span className="pl-1">{secretPath}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </Td>
-                  <Td>
-                    {row.expiresAt ? (
-                      format(row.expiresAt, "MM/dd/yyyy h:mm:ss aa")
-                    ) : (
-                      <span className="text-mineshaft-400">N/A</span>
+                  <ChevronDownIcon
+                    className={twMerge(
+                      "transition-transform",
+                      orderDirection === OrderByDirection.DESC &&
+                        orderBy === TokensOrderBy.Name &&
+                        "rotate-180",
+                      orderBy !== TokensOrderBy.Name && "opacity-30"
                     )}
-                  </Td>
-                  <Td>
-                    <Tooltip className="max-w-sm text-center" content="Options">
+                  />
+                </TableHead>
+                <TableHead>Environment / Secret Path</TableHead>
+                <TableHead onClick={() => handleSort(TokensOrderBy.Expiration)}>
+                  Valid Until
+                  <ChevronDownIcon
+                    className={twMerge(
+                      "transition-transform",
+                      orderDirection === OrderByDirection.DESC &&
+                        orderBy === TokensOrderBy.Expiration &&
+                        "rotate-180",
+                      orderBy !== TokensOrderBy.Expiration && "opacity-30"
+                    )}
+                  />
+                </TableHead>
+                <TableHead className="w-5" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isPending &&
+                Array.from({ length: 10 }).map((_, i) => (
+                  <TableRow key={`skeleton-${i + 1}`}>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-4" />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {!isPending &&
+                filteredTokens.slice(offset, perPage * page).map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell isTruncatable>{row.name}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-row flex-wrap gap-1">
+                        {row?.scopes.map(({ secretPath, environment }) => (
+                          <Badge key={`${row.id}-${environment}-${secretPath}`} variant="neutral">
+                            <span className="border-r border-border pr-1.5">{environment}</span>
+                            <FolderIcon className="text-yellow" />
+                            <span>{secretPath}</span>
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {row.expiresAt ? (
+                        format(row.expiresAt, "MMM d, yyyy h:mm aa")
+                      ) : (
+                        <span className="text-muted">&mdash;</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <IconButton
-                            ariaLabel="Options"
-                            colorSchema="secondary"
-                            className="w-6"
-                            variant="plain"
+                            variant="ghost"
+                            size="xs"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <FontAwesomeIcon icon={faEllipsisV} />
+                            <MoreHorizontalIcon />
                           </IconButton>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent className="min-w-48" sideOffset={2} align="end">
+                        <DropdownMenuContent sideOffset={2} align="end">
                           <ProjectPermissionCan
                             I={ProjectPermissionActions.Delete}
                             a={ProjectPermissionSub.ServiceTokens}
                           >
                             {(isAllowed) => (
                               <DropdownMenuItem
-                                icon={<FontAwesomeIcon icon={faTrash} />}
+                                variant="danger"
                                 isDisabled={!isAllowed}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -253,34 +271,29 @@ export const ServiceTokenTable = ({ handlePopUpOpen }: Props) => {
                                   });
                                 }}
                               >
+                                <TrashIcon />
                                 Delete Token
                               </DropdownMenuItem>
                             )}
                           </ProjectPermissionCan>
                         </DropdownMenuContent>
                       </DropdownMenu>
-                    </Tooltip>
-                  </Td>
-                </Tr>
-              ))}
-          </TBody>
-        </Table>
-        {Boolean(filteredTokens.length) && (
-          <Pagination
-            count={filteredTokens.length}
-            page={page}
-            perPage={perPage}
-            onChangePage={setPage}
-            onChangePerPage={handlePerPageChange}
-          />
-        )}
-        {!isPending && !filteredTokens?.length && (
-          <EmptyState
-            title={data?.length ? "No service tokens match search..." : "No service tokens found"}
-            icon={data?.length ? faSearch : faKey}
-          />
-        )}
-      </TableContainer>
+                    </TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
+          {Boolean(filteredTokens.length) && (
+            <Pagination
+              count={filteredTokens.length}
+              page={page}
+              perPage={perPage}
+              onChangePage={setPage}
+              onChangePerPage={handlePerPageChange}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 };

@@ -66,6 +66,14 @@ export const RotationsBrowser = () => {
       rotationType: "Single-Phase",
     },
     {
+      name: "HP iLO Local Account",
+      slug: "hp-ilo-local-account",
+      path: "/documentation/platform/secret-rotation/hp-ilo-local-account",
+      description: "Learn how to automatically rotate HP iLO local account passwords.",
+      category: "Networking & DNS",
+      rotationType: "Single-Phase",
+    },
+    {
       name: "Unix/Linux Local Account",
       slug: "unix-linux-local-account",
       path: "/documentation/platform/secret-rotation/unix-linux-local-account",
@@ -141,6 +149,15 @@ export const RotationsBrowser = () => {
       description:
         "Learn how to automatically rotate OpenRouter API keys.",
       category: "AI & LLM",
+      rotationType: "Dual-Phase",
+    },
+    {
+      name: "Supabase API Key",
+      slug: "supabase-api-key",
+      path: "/documentation/platform/secret-rotation/supabase-api-key",
+      description:
+        "Learn how to automatically rotate Supabase API keys.",
+      category: "Cloud Providers",
       rotationType: "Dual-Phase",
     },
   ].sort(function (a, b) {

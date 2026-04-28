@@ -24,6 +24,9 @@ import {
 } from "@app/lib/errors";
 import { extractIPDetails, isValidIpOrCidr } from "@app/lib/ip";
 import { logger } from "@app/lib/logger";
+import { requestMemoKeys } from "@app/lib/request-context/memo-keys";
+import { RequestContextKey } from "@app/lib/request-context/request-context-keys";
+import { requestMemoize } from "@app/lib/request-context/request-memoizer";
 import { AuthAttemptAuthMethod, AuthAttemptAuthResult, authAttemptCounter } from "@app/lib/telemetry/metrics";
 
 import { ActorType, AuthTokenType } from "../auth/auth-type";
@@ -77,9 +80,14 @@ export const identityAliCloudAuthServiceFactory = ({
     }
 
     const identity = await identityDAL.findById(identityAliCloudAuth.identityId);
-    if (!identity) throw new UnauthorizedError({ message: "Identity not found" });
+    if (!identity)
+      throw new UnauthorizedError({
+        message: "Identity not found"
+      });
 
-    const org = await orgDAL.findById(identity.orgId);
+    const org = await requestMemoize(requestMemoKeys.orgFindById(identity.orgId), () =>
+      orgDAL.findById(identity.orgId)
+    );
     const isSubOrgIdentity = Boolean(org.rootOrgId);
 
     // If the identity is a sub-org identity, then the scope is always the org.id, and if it's a root org identity, then we need to resolve the scope if a organizationSlug is specified
@@ -103,11 +111,17 @@ export const identityAliCloudAuthServiceFactory = ({
 
         if (!isAccountAllowed)
           throw new UnauthorizedError({
-            message: "Access denied: Alibaba Cloud account ARN not allowed."
+            message: "Access denied: Alibaba Cloud account ARN not allowed.",
+            detail: {
+              reasonCode: "arn_not_allowed",
+              identityId: identity.id,
+              orgId: identity.orgId,
+              identityName: identity.name
+            }
           });
       }
 
-      if (organizationSlug) {
+      if (organizationSlug && org.slug !== organizationSlug) {
         if (!isSubOrgIdentity) {
           const subOrg = await orgDAL.findOne({ rootOrgId: org.id, slug: organizationSlug });
 
@@ -123,7 +137,13 @@ export const identityAliCloudAuthServiceFactory = ({
 
           if (!subOrgMembership) {
             throw new UnauthorizedError({
-              message: `Identity not authorized to access sub organization ${organizationSlug}`
+              message: `Identity not authorized to access sub organization ${organizationSlug}`,
+              detail: {
+                reasonCode: "sub_org_unauthorized",
+                identityId: identity.id,
+                identityName: identity.name,
+                orgId: identity.orgId
+              }
             });
           }
 
@@ -190,8 +210,8 @@ export const identityAliCloudAuthServiceFactory = ({
           "infisical.organization.name": org.name,
           "infisical.identity.auth_method": AuthAttemptAuthMethod.ALICLOUD_AUTH,
           "infisical.identity.auth_result": AuthAttemptAuthResult.SUCCESS,
-          "client.address": requestContext.get("ip"),
-          "user_agent.original": requestContext.get("userAgent")
+          "client.address": requestContext.get(RequestContextKey.Ip),
+          "user_agent.original": requestContext.get(RequestContextKey.UserAgent)
         });
       }
 
@@ -210,8 +230,8 @@ export const identityAliCloudAuthServiceFactory = ({
           "infisical.organization.name": org.name,
           "infisical.identity.auth_method": AuthAttemptAuthMethod.ALICLOUD_AUTH,
           "infisical.identity.auth_result": AuthAttemptAuthResult.FAILURE,
-          "client.address": requestContext.get("ip"),
-          "user_agent.original": requestContext.get("userAgent")
+          "client.address": requestContext.get(RequestContextKey.Ip),
+          "user_agent.original": requestContext.get(RequestContextKey.UserAgent)
         });
       }
       throw error;
@@ -521,7 +541,10 @@ export const identityAliCloudAuthServiceFactory = ({
         actorOrgId
       });
 
-      const { shouldUseNewPrivilegeSystem } = await orgDAL.findById(identityMembershipOrg.scopeOrgId);
+      const { shouldUseNewPrivilegeSystem } = await requestMemoize(
+        requestMemoKeys.orgFindById(identityMembershipOrg.scopeOrgId),
+        () => orgDAL.findById(identityMembershipOrg.scopeOrgId)
+      );
       const permissionBoundary = validatePrivilegeChangeOperation(
         shouldUseNewPrivilegeSystem,
         OrgPermissionIdentityActions.RevokeAuth,

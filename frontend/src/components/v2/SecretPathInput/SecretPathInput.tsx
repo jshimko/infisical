@@ -10,7 +10,7 @@ import { useGetFoldersByEnv } from "@app/hooks/api";
 
 import { Input } from "../Input";
 
-type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "size" | "onChange"> & {
+type BaseProps = Omit<InputHTMLAttributes<HTMLInputElement>, "size" | "onChange"> & {
   value?: string | null;
   isImport?: boolean;
   isVisible?: boolean;
@@ -19,27 +19,30 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "size" | "onChange"> & 
   environment?: string;
   containerClassName?: string;
   onChange?: (arg: string) => void;
+  folderNames?: string[];
+  projectId: string;
 };
 
-export const SecretPathInput = ({
+type Props = Omit<BaseProps, "projectId"> & { projectId?: string };
+
+const SecretPathInputBase = ({
   containerClassName,
   onChange,
   environment,
+  projectId,
   value: propValue,
+  folderNames: folderNamesProp,
   ...props
-}: Props) => {
+}: BaseProps) => {
   const [inputValue, setInputValue] = useState(propValue ?? "");
   const [secretPath, setSecretPath] = useState("/");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isInputFocused, setIsInputFocus] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [debouncedInputValue] = useDebounce(inputValue, 200);
-
-  const { currentProject } = useProject();
-  const projectId = currentProject?.id || "";
   const { folderNames: folders } = useGetFoldersByEnv({
     path: secretPath,
-    environments: [environment || currentProject?.environments?.[0].slug || ""],
+    environments: [environment || ""],
     projectId
   });
 
@@ -58,15 +61,16 @@ export const SecretPathInput = ({
   }, [debouncedInputValue]);
 
   useEffect(() => {
+    const activeFolders = folderNamesProp ?? folders;
     const searchFragment = debouncedInputValue.split("/").pop() || "";
-    const filteredSuggestions = folders
+    const filteredSuggestions = activeFolders
       .filter((suggestionEntry) =>
         suggestionEntry.toUpperCase().startsWith(searchFragment.toUpperCase())
       )
       .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 
     setSuggestions(filteredSuggestions);
-  }, [debouncedInputValue, folders]);
+  }, [debouncedInputValue, folders, folderNamesProp]);
 
   const handleSuggestionSelect = (selectedIndex: number) => {
     if (!suggestions[selectedIndex]) {
@@ -76,7 +80,7 @@ export const SecretPathInput = ({
     const validPaths = inputValue.split("/");
     validPaths.pop();
 
-    const newValue = `${validPaths.join("/")}/${suggestions[selectedIndex]}`;
+    const newValue = `${validPaths.join("/")}/${suggestions[selectedIndex]}/`;
     onChange?.(newValue);
     setInputValue(newValue);
     setSecretPath(newValue);
@@ -126,47 +130,70 @@ export const SecretPathInput = ({
           className={containerClassName}
         />
       </Popover.Trigger>
-      <Popover.Content
-        align="start"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-        className={twMerge(
-          "relative top-2 z-100 overflow-hidden rounded-md border border-mineshaft-600 bg-mineshaft-900 font-inter text-bunker-100 shadow-md"
-        )}
-        style={{
-          width: "var(--radix-popover-trigger-width)",
-          maxHeight: "var(--radix-select-content-available-height)"
-        }}
-      >
-        <div className="max-h-[25vh] thin-scrollbar w-full flex-col items-center justify-center overflow-y-scroll rounded-md text-white">
-          {suggestions.map((suggestion, i) => (
-            <div
-              tabIndex={0}
-              role="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                setHighlightedIndex(i);
-                handleSuggestionSelect(i);
-              }}
-              style={{ pointerEvents: "auto" }}
-              className="flex items-center justify-between border-mineshaft-600 text-left"
-              key={`secret-reference-secret-${i + 1}`}
-            >
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className={twMerge(
+            "relative top-2 z-100 overflow-hidden rounded-md border border-mineshaft-600 bg-mineshaft-900 font-inter text-bunker-100 shadow-md"
+          )}
+          style={{
+            width: "var(--radix-popover-trigger-width)",
+            maxHeight: "var(--radix-select-content-available-height)"
+          }}
+        >
+          <div className="max-h-[25vh] thin-scrollbar w-full flex-col items-center justify-center overflow-y-auto rounded-md text-white">
+            {suggestions.map((suggestion, i) => (
               <div
-                className={`${
-                  highlightedIndex === i ? "bg-gray-600" : ""
-                } text-md relative mb-0.5 flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-1 outline-hidden transition-all select-none hover:bg-mineshaft-500 data-highlighted:bg-mineshaft-500`}
+                tabIndex={0}
+                role="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setHighlightedIndex(i);
+                  handleSuggestionSelect(i);
+                }}
+                style={{ pointerEvents: "auto" }}
+                className="flex items-center justify-between border-mineshaft-600 text-left"
+                key={`secret-reference-secret-${i + 1}`}
               >
-                <div className="flex gap-2">
-                  <div className="flex items-center text-yellow-700">
-                    <FontAwesomeIcon icon={faFolder} />
+                <div
+                  className={`${
+                    highlightedIndex === i ? "bg-gray-600" : ""
+                  } text-md relative mb-0.5 flex w-full cursor-pointer items-center justify-between rounded-md px-2 py-1 outline-hidden transition-all select-none hover:bg-mineshaft-500 data-highlighted:bg-mineshaft-500`}
+                >
+                  <div className="flex gap-2">
+                    <div className="flex items-center text-yellow-700">
+                      <FontAwesomeIcon icon={faFolder} />
+                    </div>
+                    <div className="text-md text-left">{suggestion}</div>
                   </div>
-                  <div className="text-md w-10/12 truncate text-left">{suggestion}</div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </Popover.Content>
+            ))}
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
     </Popover.Root>
   );
+};
+
+const SecretPathInputWithProjectContext = ({
+  environment,
+  ...props
+}: Omit<BaseProps, "projectId">) => {
+  const { currentProject } = useProject();
+  return (
+    <SecretPathInputBase
+      projectId={currentProject?.id || ""}
+      environment={environment || currentProject?.environments?.[0].slug}
+      {...props}
+    />
+  );
+};
+
+export const SecretPathInput = ({ projectId, ...props }: Props) => {
+  if (projectId !== undefined) {
+    return <SecretPathInputBase projectId={projectId} {...props} />;
+  }
+  return <SecretPathInputWithProjectContext {...props} />;
 };

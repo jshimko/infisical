@@ -8,16 +8,18 @@ import { getConfig } from "@app/lib/config/env";
 import { request } from "@app/lib/config/request";
 import { crypto } from "@app/lib/crypto/cryptography";
 import { logger } from "@app/lib/logger";
+import { requestMemoKeys } from "@app/lib/request-context/memo-keys";
+import { RequestContextKey } from "@app/lib/request-context/request-context-keys";
+import { requestMemoize } from "@app/lib/request-context/request-memoizer";
 import { ActorType } from "@app/services/auth/auth-type";
 import { TOrgDALFactory } from "@app/services/org/org-dal";
 
-import { PostHogEventTypes, TPostHogEvent, TSecretModifiedEvent } from "./telemetry-types";
+import { HubSpotSignupMethod, PostHogEventTypes, TPostHogEvent, TSecretModifiedEvent } from "./telemetry-types";
 
 export const TELEMETRY_SECRET_PROCESSED_KEY = "telemetry-secret-processed";
 export const TELEMETRY_SECRET_OPERATIONS_KEY = "telemetry-secret-operations";
 
-export const POSTHOG_AGGREGATED_EVENTS = [PostHogEventTypes.SecretPulled];
-const TELEMETRY_AGGREGATED_KEY_EXP = 600; // 10mins
+export const POSTHOG_AGGREGATED_EVENTS = [PostHogEventTypes.SecretPulled, PostHogEventTypes.MachineIdentityLogin];
 
 // Bucket configuration
 const TELEMETRY_BUCKET_COUNT = 30;
@@ -58,7 +60,34 @@ const getBucketForDistinctId = (distinctId: string): string => {
 
 export const createTelemetryEventKey = (event: string, distinctId: string): string => {
   const bucketId = getBucketForDistinctId(distinctId);
-  return `telemetry-event-${event}-${bucketId}-${distinctId}-${crypto.nativeCrypto.randomUUID()}`;
+  return KeyStorePrefixes.TelemetryEvent(event, bucketId, distinctId, crypto.nativeCrypto.randomUUID());
+};
+
+export enum DeploymentType {
+  USCloud = "us-cloud",
+  EUCloud = "eu-cloud",
+  Dedicated = "dedicated",
+  SelfHosted = "self-hosted"
+}
+
+/**
+ * Computes the deployment type based on the instance type and environment configuration.
+ * - US Cloud: instanceType is Cloud and INTERNAL_REGION is "us" (or unset, defaults to US)
+ * - EU Cloud: instanceType is Cloud and INTERNAL_REGION is "eu"
+ * - Dedicated: INFISICAL_DEDICATED is true
+ * - Self-Hosted: everything else
+ */
+const getDeploymentType = (
+  instanceType: InstanceType,
+  appConfig: { INFISICAL_CLOUD: boolean; INFISICAL_DEDICATED: boolean; INTERNAL_REGION?: string }
+) => {
+  if (instanceType === InstanceType.Cloud) {
+    return appConfig.INTERNAL_REGION === "eu" ? DeploymentType.EUCloud : DeploymentType.USCloud;
+  }
+  if (appConfig.INFISICAL_DEDICATED) {
+    return DeploymentType.Dedicated;
+  }
+  return DeploymentType.SelfHosted;
 };
 
 export const telemetryServiceFactory = ({ keyStore, licenseService, orgDAL }: TTelemetryServiceFactoryDep) => {
@@ -102,6 +131,64 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
     }
   };
 
+  const sendHubSpotSignupEvent = async (
+    email: string,
+    signupMethod: HubSpotSignupMethod,
+    firstName?: string,
+    lastName?: string,
+    hubspotUtk?: string
+  ) => {
+    const instanceType = licenseService.getInstanceType();
+    if (
+      appCfg.isProductionMode &&
+      instanceType === InstanceType.Cloud &&
+      appCfg.HUBSPOT_PORTAL_ID &&
+      appCfg.HUBSPOT_SIGNUP_FORM_ID
+    ) {
+      try {
+        const fields: { name: string; value: string }[] = [
+          { name: "email", value: email },
+          { name: "signup_method", value: signupMethod }
+        ];
+
+        const optionalFields: Record<string, string | undefined> = {
+          firstname: firstName,
+          lastname: lastName
+        };
+
+        for (const [name, value] of Object.entries(optionalFields)) {
+          if (value) fields.push({ name, value });
+        }
+
+        const context: Record<string, string> = {
+          pageUri: `${appCfg.SITE_URL || "https://app.infisical.com"}/signup`,
+          pageName: "App Signup"
+        };
+
+        // Include the HubSpot tracking cookie to link this submission
+        // to the visitor's browsing session for proper attribution
+        if (hubspotUtk) {
+          context.hutk = hubspotUtk;
+        }
+
+        await request.post(
+          `https://api.hsforms.com/submissions/v3/integration/submit/${appCfg.HUBSPOT_PORTAL_ID}/${appCfg.HUBSPOT_SIGNUP_FORM_ID}`,
+          {
+            fields,
+            context
+          },
+          {
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        );
+      } catch (error) {
+        logger.error(error, "Failed to send HubSpot signup event");
+      }
+    }
+  };
+
   const getOrgGroupProperties = async (orgId: string, orgName?: string): Promise<Record<string, unknown>> => {
     const properties: Record<string, unknown> = {};
     if (orgName) {
@@ -110,9 +197,14 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
 
     const instanceType = licenseService.getInstanceType();
     properties.is_cloud = instanceType === InstanceType.Cloud;
+    properties.instance_type = instanceType;
+    properties.deployment_type = getDeploymentType(instanceType, appCfg);
+    if (appCfg.INTERNAL_REGION) {
+      properties.region = appCfg.INTERNAL_REGION;
+    }
 
     try {
-      const org = await orgDAL.findOrgById(orgId);
+      const org = await requestMemoize(requestMemoKeys.orgFindOrgById(orgId), () => orgDAL.findOrgById(orgId));
       if (org) {
         if (!properties.name) {
           properties.name = org.name;
@@ -135,54 +227,7 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
   };
 
   const sendPostHogEvents = async (event: TPostHogEvent) => {
-    if (postHog) {
-      const instanceType = licenseService.getInstanceType();
-
-      // Resolve org name: prefer explicit value, fall back to request context
-      const resolvedOrgName = event.organizationName ?? requestContext.get("orgName");
-
-      // capture posthog only when its cloud or signup event happens in self-hosted
-      if (instanceType === InstanceType.Cloud || event.event === PostHogEventTypes.UserSignedUp) {
-        if (POSTHOG_AGGREGATED_EVENTS.includes(event.event)) {
-          const eventKey = createTelemetryEventKey(event.event, event.distinctId);
-          await keyStore.setItemWithExpiry(
-            eventKey,
-            TELEMETRY_AGGREGATED_KEY_EXP,
-            JSON.stringify({
-              distinctId: event.distinctId,
-              event: event.event,
-              properties: event.properties,
-              organizationId: event.organizationId,
-              ...(resolvedOrgName ? { organizationName: resolvedOrgName } : {})
-            })
-          );
-        } else {
-          if (event.organizationId) {
-            // Fire-and-forget: enrich groupIdentify without blocking the HTTP response
-            const orgId = event.organizationId;
-            void getOrgGroupProperties(orgId, resolvedOrgName)
-              .then((groupProperties) => {
-                postHog.groupIdentify({
-                  groupType: "organization",
-                  groupKey: orgId,
-                  properties: groupProperties,
-                  distinctId: event.distinctId
-                });
-              })
-              .catch((error) => {
-                logger.error(error, "Failed to identify PostHog organization");
-              });
-          }
-          postHog.capture({
-            event: event.event,
-            distinctId: event.distinctId,
-            properties: event.properties,
-            ...(event.organizationId ? { groups: { organization: event.organizationId } } : {})
-          });
-        }
-        return;
-      }
-
+    if (!appCfg.INFISICAL_CLOUD && postHog) {
       if (
         [
           PostHogEventTypes.SecretPulled,
@@ -191,12 +236,66 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
           PostHogEventTypes.SecretUpdated
         ].includes(event.event)
       ) {
-        await keyStore.incrementBy(
-          TELEMETRY_SECRET_PROCESSED_KEY,
-          (event as TSecretModifiedEvent).properties.numberOfSecrets
-        );
-        await keyStore.incrementBy(TELEMETRY_SECRET_OPERATIONS_KEY, 1);
+        try {
+          await keyStore.incrementBy(
+            TELEMETRY_SECRET_PROCESSED_KEY,
+            (event as TSecretModifiedEvent).properties.numberOfSecrets
+          );
+          await keyStore.incrementBy(TELEMETRY_SECRET_OPERATIONS_KEY, 1);
+        } catch (error) {
+          logger.error(error, "Failed to increment telemetry secret counters in Redis");
+        }
       }
+    }
+
+    if (!postHog) return;
+
+    // Resolve org name: prefer explicit value, fall back to request context
+    const resolvedOrgName = event.organizationName ?? requestContext.get(RequestContextKey.OrgName);
+
+    if (POSTHOG_AGGREGATED_EVENTS.includes(event.event)) {
+      const eventKey = createTelemetryEventKey(event.event, event.distinctId);
+      await keyStore.setItemWithExpiry(
+        eventKey,
+        KeyStoreTtls.TelemetryAggregatedEventInSeconds,
+        JSON.stringify({
+          distinctId: event.distinctId,
+          event: event.event,
+          properties: event.properties,
+          organizationId: event.organizationId,
+          ...(resolvedOrgName ? { organizationName: resolvedOrgName } : {})
+        })
+      );
+    } else {
+      if (event.organizationId) {
+        const orgId = event.organizationId;
+        // Dedup groupIdentify: only fire once per org per hour to avoid redundant DB/API calls
+        const groupIdentifyCacheKey = KeyStorePrefixes.TelemetryGroupIdentify(orgId);
+        void keyStore
+          .setItemWithExpiryNX(groupIdentifyCacheKey, KeyStoreTtls.TelemetryGroupIdentifyInSeconds, "1")
+          .then((wasSet) => {
+            if (wasSet) {
+              return getOrgGroupProperties(orgId, resolvedOrgName).then((groupProperties) => {
+                postHog.groupIdentify({
+                  groupType: "organization",
+                  groupKey: orgId,
+                  properties: groupProperties,
+                  distinctId: event.distinctId
+                });
+              });
+            }
+            return undefined;
+          })
+          .catch((error) => {
+            logger.error(error, "Failed to identify PostHog organization");
+          });
+      }
+      postHog.capture({
+        event: event.event,
+        distinctId: event.distinctId,
+        properties: event.properties,
+        ...(event.organizationId ? { groups: { organization: event.organizationId } } : {})
+      });
     }
   };
 
@@ -272,7 +371,7 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
     if (!postHog) return 0;
 
     try {
-      const bucketPattern = `telemetry-event-${eventType}-${bucketId}-*`;
+      const bucketPattern = KeyStorePrefixes.TelemetryEventByBucketPattern(eventType, bucketId);
       const bucketKeys = await keyStore.getKeysByPattern(bucketPattern);
 
       if (bucketKeys.length === 0) return 0;
@@ -309,20 +408,29 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
         const key = JSON.parse(eventsKey) as { id: string; org?: string };
         if (key.org) {
           try {
-            let groupProperties = orgPropertiesCache.get(key.org);
-            if (!groupProperties) {
-              // Use the organizationName from the first event in the group (all events in a group share the same org)
-              const orgName = events[0]?.organizationName;
-              // eslint-disable-next-line no-await-in-loop
-              groupProperties = await getOrgGroupProperties(key.org, orgName);
-              orgPropertiesCache.set(key.org, groupProperties);
+            // Dedup groupIdentify across all paths: only fire once per org per hour
+            const groupIdentifyCacheKey = KeyStorePrefixes.TelemetryGroupIdentify(key.org);
+            // eslint-disable-next-line no-await-in-loop
+            const wasSet = await keyStore.setItemWithExpiryNX(
+              groupIdentifyCacheKey,
+              KeyStoreTtls.TelemetryGroupIdentifyInSeconds,
+              "1"
+            );
+            if (wasSet) {
+              let groupProperties = orgPropertiesCache.get(key.org);
+              if (!groupProperties) {
+                const orgName = events[0]?.organizationName;
+                // eslint-disable-next-line no-await-in-loop
+                groupProperties = await getOrgGroupProperties(key.org, orgName);
+                orgPropertiesCache.set(key.org, groupProperties);
+              }
+              postHog.groupIdentify({
+                groupType: "organization",
+                groupKey: key.org,
+                properties: groupProperties,
+                distinctId: key.id
+              });
             }
-            postHog.groupIdentify({
-              groupType: "organization",
-              groupKey: key.org,
-              properties: groupProperties,
-              distinctId: key.id
-            });
           } catch (error) {
             logger.error(error, "Failed to identify PostHog organization");
           }
@@ -371,8 +479,8 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
     }
   };
 
-  const TELEMETRY_IDENTIFY_CACHE_KEY_PREFIX = "telemetry-identify";
-  const TELEMETRY_IDENTIFY_CACHE_TTL = 600; // 10 minutes
+  // Shorter TTL for in-memory fallback to bound memory growth during Redis outages
+  const IN_MEMORY_IDENTIFY_FALLBACK_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   // In-memory fallback dedup set to limit blast radius during Redis outages
   const inMemoryIdentifyDedup = new Set<string>();
@@ -392,31 +500,29 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
     { skipDedup }: { skipDedup?: boolean } = {}
   ) => {
     if (postHog && distinctId) {
-      const instanceType = licenseService.getInstanceType();
-      if (instanceType === InstanceType.Cloud) {
-        if (!skipDedup) {
-          try {
-            const cacheKey = `${TELEMETRY_IDENTIFY_CACHE_KEY_PREFIX}:${distinctId}`;
-            // Atomic SET NX + EX: only the first caller within the TTL window proceeds
-            const wasSet = await keyStore.setItemWithExpiryNX(cacheKey, TELEMETRY_IDENTIFY_CACHE_TTL, "1");
-            if (!wasSet) return;
-          } catch (error) {
-            logger.error(error, `Failed to check PostHog identify dedup cache for distinctId=${distinctId}`);
-            // In-memory fallback to limit blast radius during Redis outage
-            if (inMemoryIdentifyDedup.has(distinctId)) return;
-            inMemoryIdentifyDedup.add(distinctId);
-            const timer = setTimeout(
-              () => inMemoryIdentifyDedup.delete(distinctId),
-              TELEMETRY_IDENTIFY_CACHE_TTL * 1000
-            );
-            timer.unref();
-          }
-        }
+      if (!skipDedup) {
         try {
-          postHog.identify({ distinctId, properties });
-        } catch (err) {
-          logger.error(err, `Failed to call postHog.identify for distinctId=${distinctId}`);
+          const cacheKey = KeyStorePrefixes.TelemetryIdentify(distinctId);
+          // Atomic SET NX + EX: only the first caller within the TTL window proceeds
+          const wasSet = await keyStore.setItemWithExpiryNX(
+            cacheKey,
+            KeyStoreTtls.TelemetryIdentifyIdentityInSeconds,
+            "1"
+          );
+          if (!wasSet) return;
+        } catch (error) {
+          logger.error(error, `Failed to check PostHog identify dedup cache for distinctId=${distinctId}`);
+          // In-memory fallback to limit blast radius during Redis outage
+          if (inMemoryIdentifyDedup.has(distinctId)) return;
+          inMemoryIdentifyDedup.add(distinctId);
+          const timer = setTimeout(() => inMemoryIdentifyDedup.delete(distinctId), IN_MEMORY_IDENTIFY_FALLBACK_TTL_MS);
+          timer.unref();
         }
+      }
+      try {
+        postHog.identify({ distinctId, properties });
+      } catch (err) {
+        logger.error(err, `Failed to call postHog.identify for distinctId=${distinctId}`);
       }
     }
   };
@@ -432,42 +538,36 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
     }
   ) => {
     if (postHog && identityId) {
-      const instanceType = licenseService.getInstanceType();
-      if (instanceType === InstanceType.Cloud) {
-        const dedupKey = `${identityId}-${properties.authMethod ?? ""}`;
-        try {
-          const cacheKey = KeyStorePrefixes.TelemetryIdentifyIdentity(dedupKey);
-          // Atomic SET NX + EX: only the first caller within the TTL window proceeds
-          const wasSet = await keyStore.setItemWithExpiryNX(
-            cacheKey,
-            KeyStoreTtls.TelemetryIdentifyIdentityInSeconds,
-            "1"
-          );
-          if (!wasSet) return;
-        } catch (error) {
-          logger.error(error, `Failed to check PostHog identity dedup cache [identityId=${identityId}]`);
-          // In-memory fallback to limit blast radius during Redis outage
-          if (inMemoryIdentityDedup.has(dedupKey)) return;
-          inMemoryIdentityDedup.add(dedupKey);
-          const timer = setTimeout(
-            () => inMemoryIdentityDedup.delete(dedupKey),
-            KeyStoreTtls.TelemetryIdentifyIdentityInSeconds * 1000
-          );
-          timer.unref();
-          // falls through intentionally: first caller during Redis outage still identifies
-        }
+      const dedupKey = `${identityId}-${properties.authMethod ?? ""}`;
+      try {
+        const cacheKey = KeyStorePrefixes.TelemetryIdentifyIdentity(dedupKey);
+        // Atomic SET NX + EX: only the first caller within the TTL window proceeds
+        const wasSet = await keyStore.setItemWithExpiryNX(
+          cacheKey,
+          KeyStoreTtls.TelemetryIdentifyIdentityInSeconds,
+          "1"
+        );
+        if (!wasSet) return;
+      } catch (error) {
+        logger.error(error, `Failed to check PostHog identity dedup cache [identityId=${identityId}]`);
+        // In-memory fallback to limit blast radius during Redis outage
+        if (inMemoryIdentityDedup.has(dedupKey)) return;
+        inMemoryIdentityDedup.add(dedupKey);
+        const timer = setTimeout(() => inMemoryIdentityDedup.delete(dedupKey), IN_MEMORY_IDENTIFY_FALLBACK_TTL_MS);
+        timer.unref();
+        // falls through intentionally: first caller during Redis outage still identifies
+      }
 
-        const distinctId = `identity-${identityId}`;
-        const enrichedProperties = {
-          ...properties,
-          actorType: ActorType.IDENTITY,
-          ...(properties.name ? { name: `[Machine Identity] ${properties.name}` } : {})
-        };
-        try {
-          postHog.identify({ distinctId, properties: enrichedProperties });
-        } catch (err) {
-          logger.error(err, `Failed to call postHog.identify for machine identity [identityId=${identityId}]`);
-        }
+      const distinctId = `identity-${identityId}`;
+      const enrichedProperties = {
+        ...properties,
+        actorType: ActorType.IDENTITY,
+        ...(properties.name ? { name: `[Machine Identity] ${properties.name}` } : {})
+      };
+      try {
+        postHog.identify({ distinctId, properties: enrichedProperties });
+      } catch (err) {
+        logger.error(err, `Failed to call postHog.identify for machine identity [identityId=${identityId}]`);
       }
     }
   };
@@ -480,6 +580,7 @@ To opt into telemetry, you can set "TELEMETRY_ENABLED=true" within the environme
 
   return {
     sendLoopsEvent,
+    sendHubSpotSignupEvent,
     sendPostHogEvents,
     identifyUser,
     identifyIdentity,

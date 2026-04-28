@@ -5,11 +5,11 @@ import {
   GitBranchIcon,
   ImportIcon,
   LucideIcon,
-  XIcon
+  MinusIcon
 } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
-import { Tooltip, TooltipContent, TooltipTrigger, UnstableTableCell } from "@app/components/v3";
+import { TableCell, Tooltip, TooltipContent, TooltipTrigger } from "@app/components/v3";
 
 export type EnvironmentStatus = "present" | "missing" | "empty" | "imported" | "no-access";
 
@@ -31,8 +31,8 @@ export const ResourceEnvironmentStatusCell = ({ status, hasOverride }: Props) =>
       break;
     case "missing":
       tooltipContent = "Missing from environment";
-      iconClassName = "text-danger";
-      Icon = XIcon;
+      iconClassName = "text-muted";
+      Icon = MinusIcon;
       break;
     case "empty":
       tooltipContent = "Empty value in environment";
@@ -54,7 +54,7 @@ export const ResourceEnvironmentStatusCell = ({ status, hasOverride }: Props) =>
   }
 
   return (
-    <UnstableTableCell
+    <TableCell
       className={twMerge(
         "relative border-r text-center last:border-r-0",
         status === "present" && "text-success",
@@ -80,6 +80,6 @@ export const ResourceEnvironmentStatusCell = ({ status, hasOverride }: Props) =>
         </TooltipTrigger>
         <TooltipContent>{tooltipContent}</TooltipContent>
       </Tooltip>
-    </UnstableTableCell>
+    </TableCell>
   );
 };

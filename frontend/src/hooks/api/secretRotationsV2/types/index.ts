@@ -42,6 +42,11 @@ import {
   TDbtServiceTokenRotationOption
 } from "./dbt-service-token-rotation";
 import {
+  THpIloRotation,
+  THpIloRotationGeneratedCredentialsResponse,
+  THpIloRotationOption
+} from "./hp-ilo-rotation";
+import {
   TMongoDBCredentialsRotation,
   TMongoDBCredentialsRotationGeneratedCredentialsResponse,
   TMongoDBCredentialsRotationOption
@@ -70,6 +75,11 @@ import {
   TRedisCredentialsRotationOption
 } from "./redis-credentials-rotation";
 import {
+  TSupabaseApiKeyRotation,
+  TSupabaseApiKeyRotationGeneratedCredentialsResponse,
+  TSupabaseApiKeyRotationOption
+} from "./supabase-api-key-rotation";
+import {
   TUnixLinuxLocalAccountRotation,
   TUnixLinuxLocalAccountRotationGeneratedCredentialsResponse,
   TUnixLinuxLocalAccountRotationOption
@@ -97,6 +107,8 @@ export type TSecretRotationV2 = (
   | TDbtServiceTokenRotation
   | TWindowsLocalAccountRotation
   | TOpenRouterApiKeyRotation
+  | THpIloRotation
+  | TSupabaseApiKeyRotation
 ) & {
   secrets: (SecretV3RawSanitized | null)[];
 };
@@ -114,7 +126,9 @@ export type TSecretRotationV2Option =
   | TUnixLinuxLocalAccountRotationOption
   | TDbtServiceTokenRotationOption
   | TWindowsLocalAccountRotationOption
-  | TOpenRouterApiKeyRotationOption;
+  | TOpenRouterApiKeyRotationOption
+  | THpIloRotationOption
+  | TSupabaseApiKeyRotationOption;
 
 export type TListSecretRotationV2Options = { secretRotationOptions: TSecretRotationV2Option[] };
 
@@ -136,7 +150,9 @@ export type TViewSecretRotationGeneratedCredentialsResponse =
   | TUnixLinuxLocalAccountRotationGeneratedCredentialsResponse
   | TDbtServiceTokenRotationGeneratedCredentialsResponse
   | TWindowsLocalAccountRotationGeneratedCredentialsResponse
-  | TOpenRouterApiKeyRotationGeneratedCredentialsResponse;
+  | TOpenRouterApiKeyRotationGeneratedCredentialsResponse
+  | THpIloRotationGeneratedCredentialsResponse
+  | TSupabaseApiKeyRotationGeneratedCredentialsResponse;
 
 export type TCreateSecretRotationV2DTO = DiscriminativePick<
   TSecretRotationV2,
@@ -196,6 +212,8 @@ export type TSecretRotationOptionMap = {
   [SecretRotation.DbtServiceToken]: TDbtServiceTokenRotationOption;
   [SecretRotation.WindowsLocalAccount]: TWindowsLocalAccountRotationOption;
   [SecretRotation.OpenRouterApiKey]: TOpenRouterApiKeyRotationOption;
+  [SecretRotation.HpIloLocalAccount]: THpIloRotationOption;
+  [SecretRotation.SupabaseApiKey]: TSupabaseApiKeyRotationOption;
 };
 
 export type TSecretRotationGeneratedCredentialsResponseMap = {
@@ -215,12 +233,17 @@ export type TSecretRotationGeneratedCredentialsResponseMap = {
   [SecretRotation.DbtServiceToken]: TDbtServiceTokenRotationGeneratedCredentialsResponse;
   [SecretRotation.WindowsLocalAccount]: TWindowsLocalAccountRotationGeneratedCredentialsResponse;
   [SecretRotation.OpenRouterApiKey]: TOpenRouterApiKeyRotationGeneratedCredentialsResponse;
+  [SecretRotation.HpIloLocalAccount]: THpIloRotationGeneratedCredentialsResponse;
+  [SecretRotation.SupabaseApiKey]: TSupabaseApiKeyRotationGeneratedCredentialsResponse;
 };
 
-// Unified type for local account reconciliation (Unix/Linux and Windows)
+// Unified type for local account reconciliation (Unix/Linux, Windows, and HP iLO)
 export type TReconcileLocalAccountRotationDTO = {
   rotationId: string;
-  type: SecretRotation.UnixLinuxLocalAccount | SecretRotation.WindowsLocalAccount;
+  type:
+    | SecretRotation.UnixLinuxLocalAccount
+    | SecretRotation.WindowsLocalAccount
+    | SecretRotation.HpIloLocalAccount;
   // required for query invalidation
   secretPath: string;
   projectId: string;
@@ -229,5 +252,5 @@ export type TReconcileLocalAccountRotationDTO = {
 export type TReconcileLocalAccountRotationResponse = {
   message: string;
   reconciled: boolean;
-  secretRotation: TUnixLinuxLocalAccountRotation | TWindowsLocalAccountRotation;
+  secretRotation: TUnixLinuxLocalAccountRotation | TWindowsLocalAccountRotation | THpIloRotation;
 };

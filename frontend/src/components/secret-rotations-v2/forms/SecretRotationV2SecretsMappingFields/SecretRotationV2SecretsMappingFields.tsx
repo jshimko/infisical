@@ -8,11 +8,13 @@ import { AwsIamUserSecretRotationSecretsMappingFields } from "./AwsIamUserSecret
 import { AzureClientSecretRotationSecretsMappingFields } from "./AzureClientSecretRotationSecretsMappingFields";
 import { DatabricksServicePrincipalSecretRotationSecretsMappingFields } from "./DatabricksServicePrincipalSecretRotationSecretsMappingFields";
 import { DbtServiceTokenRotationSecretsMappingFields } from "./DbtServiceTokenRotationSecretsMappingFields";
+import { HpIloRotationSecretsMappingFields } from "./HpIloRotationSecretsMappingFields";
 import { LdapPasswordRotationSecretsMappingFields } from "./LdapPasswordRotationSecretsMappingFields";
 import { OktaClientSecretRotationSecretsMappingFields } from "./OktaClientSecretRotationSecretsMappingFields";
 import { OpenRouterApiKeyRotationSecretsMappingFields } from "./OpenRouterApiKeyRotationSecretsMappingFields";
 import { RedisCredentialsRotationSecretsMappingFields } from "./RedisCredentialsRotationSecretsMappingFields";
 import { SqlCredentialsRotationSecretsMappingFields } from "./shared";
+import { SupabaseApiKeyRotationSecretsMappingFields } from "./SupabaseApiKeyRotationSecretsMappingFields";
 import { UnixLinuxLocalAccountRotationSecretsMappingFields } from "./UnixLinuxLocalAccountRotationSecretsMappingFields";
 import { WindowsLocalAccountRotationSecretsMappingFields } from "./WindowsLocalAccountRotationSecretsMappingFields";
 
@@ -33,7 +35,9 @@ const COMPONENT_MAP: Record<SecretRotation, React.FC> = {
   [SecretRotation.UnixLinuxLocalAccount]: UnixLinuxLocalAccountRotationSecretsMappingFields,
   [SecretRotation.DbtServiceToken]: DbtServiceTokenRotationSecretsMappingFields,
   [SecretRotation.WindowsLocalAccount]: WindowsLocalAccountRotationSecretsMappingFields,
-  [SecretRotation.OpenRouterApiKey]: OpenRouterApiKeyRotationSecretsMappingFields
+  [SecretRotation.OpenRouterApiKey]: OpenRouterApiKeyRotationSecretsMappingFields,
+  [SecretRotation.HpIloLocalAccount]: HpIloRotationSecretsMappingFields,
+  [SecretRotation.SupabaseApiKey]: SupabaseApiKeyRotationSecretsMappingFields
 };
 
 export const SecretRotationV2SecretsMappingFields = () => {

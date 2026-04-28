@@ -21,36 +21,36 @@ import {
   Badge,
   Button,
   Checkbox,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+  IconButton,
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
+  Pagination,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
-  UnstableDropdownMenu,
-  UnstableDropdownMenuCheckboxItem,
-  UnstableDropdownMenuContent,
-  UnstableDropdownMenuItem,
-  UnstableDropdownMenuLabel,
-  UnstableDropdownMenuTrigger,
-  UnstableEmpty,
-  UnstableEmptyDescription,
-  UnstableEmptyHeader,
-  UnstableEmptyTitle,
-  UnstableIconButton,
-  UnstablePagination,
-  UnstableTable,
-  UnstableTableBody,
-  UnstableTableCell,
-  UnstableTableHead,
-  UnstableTableHeader,
-  UnstableTableRow
+  TooltipTrigger
 } from "@app/components/v3";
 import {
   OrgPermissionActions,
@@ -59,6 +59,7 @@ import {
   useSubscription,
   useUser
 } from "@app/context";
+import { isCustomOrgRole } from "@app/helpers/roles";
 import {
   getUserTablePreference,
   PreferenceKey,
@@ -86,6 +87,7 @@ type Props = {
       username?: string;
       text?: string;
       selectedOrgMemberships?: OrgUser[];
+      isEnterpriseFeature?: boolean;
     }
   ) => void;
   setCompleteInviteLinks: (links: Array<{ email: string; link: string }> | null) => void;
@@ -129,12 +131,12 @@ export const OrgMembersTable = ({
   const onRoleChange = async (membershipId: string, role: string) => {
     if (!currentOrg?.id) return;
 
-    // TODO: replace hardcoding default role
-    const isCustomRole = !["admin", "member", "no-access"].includes(role);
+    const isCustomRole = isCustomOrgRole(role);
 
     if (isCustomRole && subscription && !subscription?.rbac) {
       handlePopUpOpen("upgradePlan", {
-        text: "Your current plan does not include access to assigning custom roles to members. To unlock this feature, please upgrade to Infisical Pro plan."
+        text: "Your current plan does not include access to assigning custom roles to members. To unlock this feature, please upgrade to Infisical Enterprise plan.",
+        isEnterpriseFeature: true
       });
       return;
     }
@@ -323,23 +325,23 @@ export const OrgMembersTable = ({
             placeholder={`Search ${isSubOrganization ? "sub-" : ""}organization users...`}
           />
         </InputGroup>
-        <UnstableDropdownMenu>
-          <UnstableDropdownMenuTrigger asChild>
-            <UnstableIconButton
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <IconButton
               variant={
                 // eslint-disable-next-line no-nested-ternary
                 isTableFiltered ? (isSubOrganization ? "sub-org" : "org") : "outline"
               }
             >
               <FilterIcon />
-            </UnstableIconButton>
-          </UnstableDropdownMenuTrigger>
-          <UnstableDropdownMenuContent align="end">
-            <UnstableDropdownMenuLabel>
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>
               Filter by {isSubOrganization ? "Sub-" : ""}Organization Role
-            </UnstableDropdownMenuLabel>
+            </DropdownMenuLabel>
             {roles?.map(({ id, slug, name }) => (
-              <UnstableDropdownMenuCheckboxItem
+              <DropdownMenuCheckboxItem
                 key={id}
                 checked={filter.roles.includes(slug)}
                 onClick={(e) => {
@@ -349,32 +351,32 @@ export const OrgMembersTable = ({
                 }}
               >
                 {name}
-              </UnstableDropdownMenuCheckboxItem>
+              </DropdownMenuCheckboxItem>
             ))}
-          </UnstableDropdownMenuContent>
-        </UnstableDropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {!isLoading && !filteredMembers?.length ? (
-        <UnstableEmpty className="border">
-          <UnstableEmptyHeader>
-            <UnstableEmptyTitle>
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyTitle>
               {members.length
                 ? `No ${isSubOrganization ? "sub-" : ""}organization users match search`
                 : `No ${isSubOrganization ? "sub-" : ""}organization users found`}
-            </UnstableEmptyTitle>
-            <UnstableEmptyDescription>
+            </EmptyTitle>
+            <EmptyDescription>
               {members.length
                 ? "Adjust your search or filter criteria."
                 : "Invite users to get started."}
-            </UnstableEmptyDescription>
-          </UnstableEmptyHeader>
-        </UnstableEmpty>
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <>
-          <UnstableTable>
-            <UnstableTableHeader>
-              <UnstableTableRow>
-                <UnstableTableHead className="w-5">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-5">
                   <Checkbox
                     id="member-page-select"
                     isChecked={isPageSelected || isPageIndeterminate}
@@ -394,8 +396,8 @@ export const OrgMembersTable = ({
                       }
                     }}
                   />
-                </UnstableTableHead>
-                <UnstableTableHead
+                </TableHead>
+                <TableHead
                   onClick={() => handleSort(OrgMembersOrderBy.Name)}
                   className="min-w-40 lg:w-1/3 lg:min-w-0"
                 >
@@ -409,11 +411,8 @@ export const OrgMembersTable = ({
                       "transition-transform"
                     )}
                   />
-                </UnstableTableHead>
-                <UnstableTableHead
-                  onClick={() => handleSort(OrgMembersOrderBy.Email)}
-                  className="w-1/3"
-                >
+                </TableHead>
+                <TableHead onClick={() => handleSort(OrgMembersOrderBy.Email)} className="w-1/3">
                   Username
                   <ChevronDownIcon
                     className={twMerge(
@@ -424,8 +423,8 @@ export const OrgMembersTable = ({
                       "transition-transform"
                     )}
                   />
-                </UnstableTableHead>
-                <UnstableTableHead onClick={() => handleSort(OrgMembersOrderBy.Role)}>
+                </TableHead>
+                <TableHead onClick={() => handleSort(OrgMembersOrderBy.Role)}>
                   {isSubOrganization ? "Sub-" : ""}Organization Role
                   <ChevronDownIcon
                     className={twMerge(
@@ -436,30 +435,30 @@ export const OrgMembersTable = ({
                       "transition-transform"
                     )}
                   />
-                </UnstableTableHead>
-                <UnstableTableHead className="w-5" />
-              </UnstableTableRow>
-            </UnstableTableHeader>
-            <UnstableTableBody>
+                </TableHead>
+                <TableHead className="w-5" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {isLoading &&
                 Array.from({ length: perPage }).map((_, i) => (
-                  <UnstableTableRow key={`skeleton-${i + 1}`}>
-                    <UnstableTableCell>
+                  <TableRow key={`skeleton-${i + 1}`}>
+                    <TableCell>
                       <Skeleton className="h-4 w-4" />
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell>
                       <Skeleton className="h-4 w-full" />
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell>
                       <Skeleton className="h-4 w-full" />
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell>
                       <Skeleton className="h-4 w-full" />
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell>
                       <Skeleton className="h-4 w-4" />
-                    </UnstableTableCell>
-                  </UnstableTableRow>
+                    </TableCell>
+                  </TableRow>
                 ))}
               {!isLoading &&
                 filteredMembersPage.map(
@@ -480,7 +479,7 @@ export const OrgMembersTable = ({
                     const username = u?.username ?? inviteEmail ?? "-";
                     const isSelected = selectedMemberIds.includes(orgMembershipId);
                     return (
-                      <UnstableTableRow
+                      <TableRow
                         key={`org-membership-${orgMembershipId}`}
                         className="group cursor-pointer"
                         onClick={() =>
@@ -493,7 +492,7 @@ export const OrgMembersTable = ({
                           })
                         }
                       >
-                        <UnstableTableCell>
+                        <TableCell>
                           <Checkbox
                             id={`select-member-${orgMembershipId}`}
                             isChecked={isSelected}
@@ -507,11 +506,8 @@ export const OrgMembersTable = ({
                               );
                             }}
                           />
-                        </UnstableTableCell>
-                        <UnstableTableCell
-                          isTruncatable
-                          className={twMerge(!isActive && "text-muted")}
-                        >
+                        </TableCell>
+                        <TableCell isTruncatable className={twMerge(!isActive && "text-muted")}>
                           <div className="flex w-full items-center gap-x-1.5">
                             <p className="truncate">
                               {name ?? <span className="text-muted">—</span>}
@@ -541,14 +537,11 @@ export const OrgMembersTable = ({
                               </Tooltip>
                             )}
                           </div>
-                        </UnstableTableCell>
-                        <UnstableTableCell
-                          isTruncatable
-                          className={twMerge(!isActive && "text-muted")}
-                        >
+                        </TableCell>
+                        <TableCell isTruncatable className={twMerge(!isActive && "text-muted")}>
                           <p className="truncate">{username}</p>
-                        </UnstableTableCell>
-                        <UnstableTableCell>
+                        </TableCell>
+                        <TableCell>
                           <OrgPermissionCan
                             I={OrgPermissionActions.Edit}
                             a={OrgPermissionSubjects.Member}
@@ -582,8 +575,8 @@ export const OrgMembersTable = ({
                               </Select>
                             )}
                           </OrgPermissionCan>
-                        </UnstableTableCell>
-                        <UnstableTableCell>
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center justify-end gap-6">
                             {isActive &&
                               (status === "invited" || status === "verified") &&
@@ -613,23 +606,19 @@ export const OrgMembersTable = ({
                                   )}
                                 </OrgPermissionCan>
                               )}
-                            <UnstableDropdownMenu>
-                              <UnstableDropdownMenuTrigger asChild>
-                                <UnstableIconButton
-                                  variant="ghost"
-                                  size="xs"
-                                  isDisabled={userId === u?.id}
-                                >
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <IconButton variant="ghost" size="xs" isDisabled={userId === u?.id}>
                                   <MoreHorizontalIcon />
-                                </UnstableIconButton>
-                              </UnstableDropdownMenuTrigger>
-                              <UnstableDropdownMenuContent sideOffset={2} align="end">
+                                </IconButton>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent sideOffset={2} align="end">
                                 <OrgPermissionCan
                                   I={OrgPermissionActions.Edit}
                                   a={OrgPermissionSubjects.Member}
                                 >
                                   {(isAllowed) => (
-                                    <UnstableDropdownMenuItem
+                                    <DropdownMenuItem
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         navigate({
@@ -644,7 +633,7 @@ export const OrgMembersTable = ({
                                     >
                                       <PencilIcon />
                                       Edit User
-                                    </UnstableDropdownMenuItem>
+                                    </DropdownMenuItem>
                                   )}
                                 </OrgPermissionCan>
                                 <OrgPermissionCan
@@ -652,7 +641,7 @@ export const OrgMembersTable = ({
                                   a={OrgPermissionSubjects.Member}
                                 >
                                   {(isAllowed) => (
-                                    <UnstableDropdownMenuItem
+                                    <DropdownMenuItem
                                       onClick={async (e) => {
                                         e.stopPropagation();
 
@@ -677,7 +666,7 @@ export const OrgMembersTable = ({
                                     >
                                       <UserMinusIcon />
                                       {`${isActive ? "Deactivate" : "Activate"} User`}
-                                    </UnstableDropdownMenuItem>
+                                    </DropdownMenuItem>
                                   )}
                                 </OrgPermissionCan>
                                 <OrgPermissionCan
@@ -685,7 +674,7 @@ export const OrgMembersTable = ({
                                   a={OrgPermissionSubjects.Member}
                                 >
                                   {(isAllowed) => (
-                                    <UnstableDropdownMenuItem
+                                    <DropdownMenuItem
                                       variant="danger"
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -699,21 +688,21 @@ export const OrgMembersTable = ({
                                     >
                                       <UserXIcon />
                                       Remove User
-                                    </UnstableDropdownMenuItem>
+                                    </DropdownMenuItem>
                                   )}
                                 </OrgPermissionCan>
-                              </UnstableDropdownMenuContent>
-                            </UnstableDropdownMenu>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                        </UnstableTableCell>
-                      </UnstableTableRow>
+                        </TableCell>
+                      </TableRow>
                     );
                   }
                 )}
-            </UnstableTableBody>
-          </UnstableTable>
+            </TableBody>
+          </Table>
           {Boolean(filteredMembers.length) && (
-            <UnstablePagination
+            <Pagination
               count={filteredMembers.length}
               page={page}
               perPage={perPage}

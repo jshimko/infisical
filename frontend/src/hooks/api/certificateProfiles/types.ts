@@ -1,12 +1,18 @@
 export enum EnrollmentType {
   API = "api",
   EST = "est",
-  ACME = "acme"
+  ACME = "acme",
+  SCEP = "scep"
 }
 
 export enum IssuerType {
   CA = "ca",
   SELF_SIGNED = "self-signed"
+}
+
+export enum ScepChallengeType {
+  STATIC = "static",
+  DYNAMIC = "dynamic"
 }
 
 export type TCertificateProfileDefaults = {
@@ -81,6 +87,18 @@ export type TCertificateProfileWithDetails = TCertificateProfile & {
     skipDnsOwnershipVerification?: boolean;
     skipEabBinding?: boolean;
   };
+  scepConfig?: {
+    id: string;
+    scepEndpointUrl: string;
+    raCertificatePem: string;
+    raCertExpiresAt: string;
+    includeCaCertInResponse: boolean;
+    allowCertBasedRenewal: boolean;
+    challengeType: ScepChallengeType;
+    challengeEndpointUrl?: string;
+    dynamicChallengeExpiryMinutes?: number;
+    dynamicChallengeMaxPending?: number;
+  };
 };
 
 export type TCreateCertificateProfileDTO = {
@@ -104,6 +122,14 @@ export type TCreateCertificateProfileDTO = {
     skipDnsOwnershipVerification?: boolean;
     skipEabBinding?: boolean;
   };
+  scepConfig?: {
+    challengeType?: ScepChallengeType;
+    challengePassword?: string;
+    includeCaCertInResponse?: boolean;
+    allowCertBasedRenewal?: boolean;
+    dynamicChallengeExpiryMinutes?: number;
+    dynamicChallengeMaxPending?: number;
+  };
   externalConfigs?: Record<string, unknown> | null;
   defaults?: TCertificateProfileDefaults | null;
 };
@@ -126,6 +152,14 @@ export type TUpdateCertificateProfileDTO = {
   acmeConfig?: {
     skipDnsOwnershipVerification?: boolean;
     skipEabBinding?: boolean;
+  };
+  scepConfig?: {
+    challengeType?: ScepChallengeType;
+    challengePassword?: string;
+    includeCaCertInResponse?: boolean;
+    allowCertBasedRenewal?: boolean;
+    dynamicChallengeExpiryMinutes?: number;
+    dynamicChallengeMaxPending?: number;
   };
   externalConfigs?: Record<string, unknown> | null;
   defaults?: TCertificateProfileDefaults | null;

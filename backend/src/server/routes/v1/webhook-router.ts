@@ -4,9 +4,15 @@ import { WebhooksSchema } from "@app/db/schemas";
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
 import { removeTrailingSlash } from "@app/lib/fn";
 import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
+import { getTelemetryDistinctId } from "@app/server/lib/telemetry";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
 import { AuthMode } from "@app/services/auth/auth-type";
-import { WebhookType } from "@app/services/webhook/webhook-types";
+import { PostHogEventTypes } from "@app/services/telemetry/telemetry-types";
+import {
+  SUBSCRIBABLE_WEBHOOK_EVENTS,
+  TSubscribableWebhookEvent,
+  WebhookType
+} from "@app/services/webhook/webhook-types";
 
 export const sanitizedWebhookSchema = WebhooksSchema.pick({
   id: true,
@@ -24,7 +30,12 @@ export const sanitizedWebhookSchema = WebhooksSchema.pick({
     id: z.string(),
     name: z.string(),
     slug: z.string()
-  })
+  }),
+  eventsFilter: z.array(
+    z.object({
+      eventName: z.enum([...SUBSCRIBABLE_WEBHOOK_EVENTS] as [TSubscribableWebhookEvent, ...TSubscribableWebhookEvent[]])
+    })
+  )
 });
 
 export const registerWebhookRouter = async (server: FastifyZodProvider) => {
@@ -44,15 +55,28 @@ export const registerWebhookRouter = async (server: FastifyZodProvider) => {
           environment: z.string().trim(),
           webhookUrl: z.string().url().trim(),
           webhookSecretKey: z.string().trim().optional(),
-          secretPath: z.string().trim().default("/").transform(removeTrailingSlash)
+          secretPath: z.string().trim().default("/").transform(removeTrailingSlash),
+          eventsFilter: z
+            .array(
+              z.object({
+                eventName: z.enum([...SUBSCRIBABLE_WEBHOOK_EVENTS] as [
+                  TSubscribableWebhookEvent,
+                  ...TSubscribableWebhookEvent[]
+                ])
+              })
+            )
+            .optional()
         })
         .superRefine((data, ctx) => {
-          if (data.type === WebhookType.SLACK && !data.webhookUrl.includes("hooks.slack.com")) {
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              message: "Incoming Webhook URL is invalid.",
-              path: ["webhookUrl"]
-            });
+          if (data.type === WebhookType.SLACK) {
+            const parsed = new URL(data.webhookUrl);
+            if (parsed.hostname !== "hooks.slack.com") {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Incoming Webhook URL is invalid.",
+                path: ["webhookUrl"]
+              });
+            }
           }
         }),
       response: {
@@ -80,8 +104,21 @@ export const registerWebhookRouter = async (server: FastifyZodProvider) => {
             environment: webhook.environment.slug,
             webhookId: webhook.id,
             isDisabled: webhook.isDisabled,
-            secretPath: webhook.secretPath
+            secretPath: webhook.secretPath,
+            eventsFilter: webhook.eventsFilter
           }
+        }
+      });
+
+      await server.services.telemetry.sendPostHogEvents({
+        event: PostHogEventTypes.WebhookCreated,
+        distinctId: getTelemetryDistinctId(req),
+        organizationId: req.permission.orgId,
+        properties: {
+          projectId: req.body.projectId,
+          environment: webhook.environment.slug,
+          webhookId: webhook.id,
+          type: req.body.type
         }
       });
 
@@ -101,9 +138,23 @@ export const registerWebhookRouter = async (server: FastifyZodProvider) => {
       params: z.object({
         webhookId: z.string().trim()
       }),
-      body: z.object({
-        isDisabled: z.boolean().default(false)
-      }),
+      body: z
+        .object({
+          isDisabled: z.boolean().optional(),
+          eventsFilter: z
+            .array(
+              z.object({
+                eventName: z.enum([...SUBSCRIBABLE_WEBHOOK_EVENTS] as [
+                  TSubscribableWebhookEvent,
+                  ...TSubscribableWebhookEvent[]
+                ])
+              })
+            )
+            .optional()
+        })
+        .refine(({ isDisabled, eventsFilter }) => {
+          return isDisabled !== undefined || eventsFilter !== undefined;
+        }, "At least one field is required"),
       response: {
         200: z.object({
           message: z.string(),
@@ -118,7 +169,8 @@ export const registerWebhookRouter = async (server: FastifyZodProvider) => {
         actorAuthMethod: req.permission.authMethod,
         actorOrgId: req.permission.orgId,
         id: req.params.webhookId,
-        isDisabled: req.body.isDisabled
+        isDisabled: req.body.isDisabled,
+        eventsFilter: req.body.eventsFilter
       });
 
       await server.services.auditLog.createAuditLog({
@@ -130,7 +182,8 @@ export const registerWebhookRouter = async (server: FastifyZodProvider) => {
             environment: webhook.environment.slug,
             webhookId: webhook.id,
             isDisabled: webhook.isDisabled,
-            secretPath: webhook.secretPath
+            secretPath: webhook.secretPath,
+            eventsFilter: webhook.eventsFilter
           }
         }
       });

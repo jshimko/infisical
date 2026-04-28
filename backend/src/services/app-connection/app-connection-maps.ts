@@ -53,7 +53,15 @@ export const APP_CONNECTION_NAME_MAP: Record<AppConnection, string> = {
   [AppConnection.OpenRouter]: "OpenRouter",
   [AppConnection.CircleCI]: "CircleCI",
   [AppConnection.AzureEntraId]: "Azure Entra ID",
-  [AppConnection.Venafi]: "Venafi TLS Protect Cloud"
+  [AppConnection.Venafi]: "Venafi TLS Protect Cloud",
+  [AppConnection.VenafiTpp]: "Venafi TPP",
+  [AppConnection.ExternalInfisical]: "Infisical",
+  [AppConnection.Doppler]: "Doppler",
+  [AppConnection.NetScaler]: "NetScaler",
+  [AppConnection.Anthropic]: "Anthropic",
+  [AppConnection.Ona]: "Ona",
+  [AppConnection.DigiCert]: "DigiCert",
+  [AppConnection.TravisCI]: "Travis CI"
 };
 
 export const APP_CONNECTION_PLAN_MAP: Record<AppConnection, AppConnectionPlanType> = {
@@ -109,5 +117,13 @@ export const APP_CONNECTION_PLAN_MAP: Record<AppConnection, AppConnectionPlanTyp
   [AppConnection.OpenRouter]: AppConnectionPlanType.Regular,
   [AppConnection.CircleCI]: AppConnectionPlanType.Regular,
   [AppConnection.AzureEntraId]: AppConnectionPlanType.Regular,
-  [AppConnection.Venafi]: AppConnectionPlanType.Regular
+  [AppConnection.Venafi]: AppConnectionPlanType.Regular,
+  [AppConnection.VenafiTpp]: AppConnectionPlanType.Regular,
+  [AppConnection.ExternalInfisical]: AppConnectionPlanType.Regular,
+  [AppConnection.Doppler]: AppConnectionPlanType.Regular,
+  [AppConnection.NetScaler]: AppConnectionPlanType.Regular,
+  [AppConnection.Anthropic]: AppConnectionPlanType.Regular,
+  [AppConnection.Ona]: AppConnectionPlanType.Regular,
+  [AppConnection.DigiCert]: AppConnectionPlanType.Regular,
+  [AppConnection.TravisCI]: AppConnectionPlanType.Regular
 };

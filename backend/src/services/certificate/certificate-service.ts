@@ -11,6 +11,7 @@ import {
 } from "@app/ee/services/permission/project-permission";
 import { crypto } from "@app/lib/crypto/cryptography";
 import { BadRequestError, DatabaseError, NotFoundError } from "@app/lib/errors";
+import { logger } from "@app/lib/logger";
 import { TCertificateBodyDALFactory } from "@app/services/certificate/certificate-body-dal";
 import { TCertificateDALFactory } from "@app/services/certificate/certificate-dal";
 import { TCertificateAuthorityCertDALFactory } from "@app/services/certificate-authority/certificate-authority-cert-dal";
@@ -21,6 +22,8 @@ import { TCertificateAuthoritySecretDALFactory } from "@app/services/certificate
 import { TCertificateAuthorityServiceFactory } from "@app/services/certificate-authority/certificate-authority-service";
 import { TCertificateSyncDALFactory } from "@app/services/certificate-sync/certificate-sync-dal";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
+import { TPkiAlertV2QueueServiceFactory } from "@app/services/pki-alert-v2/pki-alert-v2-queue";
+import { PkiAlertEventType } from "@app/services/pki-alert-v2/pki-alert-v2-types";
 import { TPkiCollectionDALFactory } from "@app/services/pki-collection/pki-collection-dal";
 import { TPkiCollectionItemDALFactory } from "@app/services/pki-collection/pki-collection-item-dal";
 import { TPkiSyncDALFactory } from "@app/services/pki-sync/pki-sync-dal";
@@ -79,6 +82,7 @@ type TCertificateServiceFactoryDep = {
   pkiSyncQueue: Pick<TPkiSyncQueueFactory, "queuePkiSyncSyncCertificatesById">;
   certificateAuthorityService: Pick<TCertificateAuthorityServiceFactory, "revokeCertificate">;
   resourceMetadataDAL: Pick<TResourceMetadataDALFactory, "find">;
+  pkiAlertV2Queue?: Pick<TPkiAlertV2QueueServiceFactory, "queueCertificateEvent">;
 };
 
 export type TCertificateServiceFactory = ReturnType<typeof certificateServiceFactory>;
@@ -100,7 +104,8 @@ export const certificateServiceFactory = ({
   pkiSyncDAL,
   pkiSyncQueue,
   certificateAuthorityService,
-  resourceMetadataDAL
+  resourceMetadataDAL,
+  pkiAlertV2Queue
 }: TCertificateServiceFactoryDep) => {
   /**
    * Return details for certificate with serial number [serialNumber]
@@ -127,12 +132,16 @@ export const certificateServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: certWithDetails.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Read,
       subject(ProjectPermissionSub.Certificates, {
         commonName: certWithDetails.commonName,
-        altNames: certWithDetails.altNames ?? undefined,
-        serialNumber: certWithDetails.serialNumber
+        altNames: certWithDetails.altNames?.split(",").map((s) => s.trim()),
+        serialNumber: certWithDetails.serialNumber,
+        metadata: certMetadata
       })
     );
 
@@ -201,9 +210,6 @@ export const certificateServiceFactory = ({
       }
     }
 
-    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
-    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
-
     return {
       cert: {
         ...cert,
@@ -239,12 +245,16 @@ export const certificateServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.ReadPrivateKey,
       subject(ProjectPermissionSub.Certificates, {
         commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
-        serialNumber: cert.serialNumber
+        altNames: cert.altNames?.split(",").map((s) => s.trim()),
+        serialNumber: cert.serialNumber,
+        metadata: certMetadata
       })
     );
 
@@ -277,12 +287,16 @@ export const certificateServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Delete,
       subject(ProjectPermissionSub.Certificates, {
         commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
-        serialNumber: cert.serialNumber
+        altNames: cert.altNames?.split(",").map((s) => s.trim()),
+        serialNumber: cert.serialNumber,
+        metadata: certMetadata
       })
     );
 
@@ -357,18 +371,36 @@ export const certificateServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Delete,
       subject(ProjectPermissionSub.Certificates, {
         commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
+        altNames: cert.altNames?.split(",").map((s) => s.trim()),
         serialNumber: cert.serialNumber,
         friendlyName: cert.friendlyName,
-        status: cert.status
+        status: cert.status,
+        metadata: certMetadata
       })
     );
 
     if (cert.status === CertStatus.REVOKED) throw new Error("Certificate already revoked");
+
+    // Call the upstream CA first so we don't end up with a cert that's revoked locally but still
+    // active at the issuer (e.g., when the upstream rejects the chosen revocation reason).
+    if (
+      ca.externalCa?.type === CaType.AWS_PCA ||
+      ca.externalCa?.type === CaType.AWS_ACM_PUBLIC_CA ||
+      ca.externalCa?.type === CaType.DIGICERT
+    ) {
+      await certificateAuthorityService.revokeCertificate({
+        caId: ca.id,
+        serialNumber: cert.serialNumber,
+        reason: revocationReason
+      });
+    }
 
     const revokedAt = new Date();
     await certificateDAL.update(
@@ -389,17 +421,6 @@ export const certificateServiceFactory = ({
       pkiSyncQueue
     });
 
-    // Note: External CA revocation handling would go here for supported CA types
-    // Currently, only internal CAs, ACME CAs and AWS PCA (external CA) support revocation
-
-    if (ca.externalCa?.type === CaType.AWS_PCA) {
-      await certificateAuthorityService.revokeCertificate({
-        caId: ca.id,
-        serialNumber: cert.serialNumber,
-        reason: revocationReason
-      });
-    }
-
     // rebuild CRL (TODO: move to interval-based cron job)
     // Only rebuild CRL for internal CAs - external CAs manage their own CRLs
     if (!ca.externalCa?.id) {
@@ -412,6 +433,16 @@ export const certificateServiceFactory = ({
         certificateDAL,
         kmsService
       });
+    }
+
+    try {
+      await pkiAlertV2Queue?.queueCertificateEvent({
+        certificateId: cert.id,
+        projectId: ca.projectId,
+        eventType: PkiAlertEventType.REVOCATION
+      });
+    } catch {
+      logger.debug("Failed to queue PKI revocation alert event");
     }
 
     // Return appropriate CA format based on CA type
@@ -446,12 +477,16 @@ export const certificateServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Read,
       subject(ProjectPermissionSub.Certificates, {
         commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
-        serialNumber: cert.serialNumber
+        altNames: cert.altNames?.split(",").map((s) => s.trim()),
+        serialNumber: cert.serialNumber,
+        metadata: certMetadata
       })
     );
 
@@ -755,24 +790,29 @@ export const certificateServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.Read,
       subject(ProjectPermissionSub.Certificates, {
         commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
+        altNames: cert.altNames?.split(",").map((s) => s.trim()),
         serialNumber: cert.serialNumber,
         friendlyName: cert.friendlyName,
-        status: cert.status
+        status: cert.status,
+        metadata: certMetadata
       })
     );
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.ReadPrivateKey,
       subject(ProjectPermissionSub.Certificates, {
         commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
+        altNames: cert.altNames?.split(",").map((s) => s.trim()),
         serialNumber: cert.serialNumber,
         friendlyName: cert.friendlyName,
-        status: cert.status
+        status: cert.status,
+        metadata: certMetadata
       })
     );
 
@@ -883,14 +923,18 @@ export const certificateServiceFactory = ({
       actionProjectType: ActionProjectType.CertificateManager
     });
 
+    const metadataRows = await resourceMetadataDAL.find({ certificateId: cert.id });
+    const certMetadata = metadataRows.map(({ key, value }) => ({ key, value: value || "" }));
+
     ForbiddenError.from(permission).throwUnlessCan(
       ProjectPermissionCertificateActions.ReadPrivateKey,
       subject(ProjectPermissionSub.Certificates, {
         commonName: cert.commonName,
-        altNames: cert.altNames ?? undefined,
+        altNames: cert.altNames?.split(",").map((s) => s.trim()),
         serialNumber: cert.serialNumber,
         friendlyName: cert.friendlyName,
-        status: cert.status
+        status: cert.status,
+        metadata: certMetadata
       })
     );
 

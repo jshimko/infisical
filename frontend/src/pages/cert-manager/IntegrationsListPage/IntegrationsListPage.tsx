@@ -3,14 +3,14 @@ import { useTranslation } from "react-i18next";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 
 import { ProjectPermissionCan } from "@app/components/permissions";
-import { PageHeader, Tab, TabList, TabPanel, Tabs } from "@app/components/v2";
+import { PageHeader, TabPanel, Tabs } from "@app/components/v2";
 import { ROUTE_PATHS } from "@app/const/routes";
 import { ProjectPermissionSub, useOrganization, useProject } from "@app/context";
 import { ProjectPermissionPkiSyncActions } from "@app/context/ProjectPermissionContext/types";
 import { ProjectType } from "@app/hooks/api/projects/types";
 import { IntegrationsListPageTabs } from "@app/types/integrations";
 
-import { PkiSyncsTab } from "./components";
+import { AppConnectionsTab, PkiSyncsTab } from "./components";
 
 export const IntegrationsListPage = () => {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export const IntegrationsListPage = () => {
     from: ROUTE_PATHS.CertManager.IntegrationsListPage.id
   });
 
-  const currentTab = selectedTab || IntegrationsListPageTabs.PkiSyncs;
+  const currentTab = selectedTab || IntegrationsListPageTabs.AppConnections;
 
   const updateSelectedTab = (tab: string) => {
     navigate({
@@ -53,11 +53,9 @@ export const IntegrationsListPage = () => {
             description="Manage integrations with third-party certificate services."
           />
           <Tabs orientation="vertical" value={currentTab} onValueChange={updateSelectedTab}>
-            <TabList>
-              <Tab variant="project" value={IntegrationsListPageTabs.PkiSyncs}>
-                Certificate Syncs
-              </Tab>
-            </TabList>
+            <TabPanel value={IntegrationsListPageTabs.AppConnections}>
+              <AppConnectionsTab />
+            </TabPanel>
             <TabPanel value={IntegrationsListPageTabs.PkiSyncs}>
               <ProjectPermissionCan
                 renderGuardBanner

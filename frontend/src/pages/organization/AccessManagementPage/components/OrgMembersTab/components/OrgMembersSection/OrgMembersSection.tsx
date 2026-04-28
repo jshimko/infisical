@@ -16,13 +16,13 @@ import {
 import {
   Badge,
   Button,
-  DocumentationLinkBadge,
-  UnstableCard,
-  UnstableCardAction,
-  UnstableCardContent,
-  UnstableCardDescription,
-  UnstableCardHeader,
-  UnstableCardTitle
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  DocumentationLinkBadge
 } from "@app/components/v3";
 import { ROUTE_PATHS } from "@app/const/routes";
 import {
@@ -33,6 +33,7 @@ import {
   useUser
 } from "@app/context";
 import { useDeleteOrgMembership, useGetOrgUsers, useUpdateOrgMembership } from "@app/hooks/api";
+import { SubscriptionPlanTypes } from "@app/hooks/api/subscriptions/types";
 import { useDeleteOrgMembershipBatch } from "@app/hooks/api/users/queries";
 import { OrgUser } from "@app/hooks/api/users/types";
 import { usePopUp } from "@app/hooks/usePopUp";
@@ -89,7 +90,7 @@ export const OrgMembersSection = () => {
     ? subscription.identitiesUsed < subscription.identityLimit
     : true;
 
-  const isEnterprise = subscription?.slug === "enterprise";
+  const isEnterprise = subscription?.slug === SubscriptionPlanTypes.Enterprise;
 
   const handleAddMemberModal = () => {
     if (currentOrg?.authEnforced) {
@@ -203,16 +204,16 @@ export const OrgMembersSection = () => {
           </OrgPermissionCan>
         </div>
       </div>
-      <UnstableCard>
-        <UnstableCardHeader>
-          <UnstableCardTitle>
+      <Card>
+        <CardHeader>
+          <CardTitle>
             {isSubOrganization ? "Sub-" : ""}Organization Users
             <DocumentationLinkBadge href="https://infisical.com/docs/documentation/platform/identities/user-identities" />
-          </UnstableCardTitle>
-          <UnstableCardDescription>
+          </CardTitle>
+          <CardDescription>
             Invite and manage {isSubOrganization ? "sub-" : ""}organization users
-          </UnstableCardDescription>
-          <UnstableCardAction>
+          </CardDescription>
+          <CardAction>
             <OrgPermissionCan I={OrgPermissionActions.Create} a={OrgPermissionSubjects.Member}>
               {(isAllowed) => (
                 <Button
@@ -232,17 +233,17 @@ export const OrgMembersSection = () => {
                 </Button>
               )}
             </OrgPermissionCan>
-          </UnstableCardAction>
-        </UnstableCardHeader>
-        <UnstableCardContent>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
           <OrgMembersTable
             handlePopUpOpen={handlePopUpOpen}
             setCompleteInviteLinks={setCompleteInviteLinks}
             selectedMemberIds={selectedMemberIds}
             setSelectedMemberIds={setSelectedMemberIds}
           />
-        </UnstableCardContent>
-      </UnstableCard>
+        </CardContent>
+      </Card>
       <AddOrgMemberModal
         popUp={popUp}
         handlePopUpToggle={handlePopUpToggle}
@@ -333,6 +334,7 @@ export const OrgMembersSection = () => {
         isOpen={popUp.upgradePlan.isOpen}
         onOpenChange={(isOpen) => handlePopUpToggle("upgradePlan", isOpen)}
         text={popUp.upgradePlan?.data?.text}
+        isEnterpriseFeature={popUp.upgradePlan?.data?.isEnterpriseFeature}
       />
       <EmailServiceSetupModal
         isOpen={popUp.setUpEmail?.isOpen}

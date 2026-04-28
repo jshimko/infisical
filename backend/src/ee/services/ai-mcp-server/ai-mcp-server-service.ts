@@ -7,17 +7,18 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore - MCP SDK uses ESM with .js extensions which don't resolve types with moduleResolution: "Node"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import axios from "axios";
+import { isAxiosError } from "axios";
 
 import { ActionProjectType, OrganizationActionScope } from "@app/db/schemas";
 import { verifyHostInputValidity } from "@app/ee/services/dynamic-secret/dynamic-secret-fns";
-import { KeyStorePrefixes, TKeyStoreFactory } from "@app/keystore/keystore";
+import { KeyStorePrefixes, KeyStoreTtls, TKeyStoreFactory } from "@app/keystore/keystore";
 import { getConfig } from "@app/lib/config/env";
 import { request } from "@app/lib/config/request";
 import { BadRequestError, NotFoundError } from "@app/lib/errors";
 import { GatewayProxyProtocol } from "@app/lib/gateway";
 import { withGatewayV2Proxy } from "@app/lib/gateway-v2/gateway-v2";
 import { logger } from "@app/lib/logger";
+import { ssrfSafeGet, ssrfSafePost } from "@app/lib/validator";
 import { ActorType, AuthMethod } from "@app/services/auth/auth-type";
 import { TKmsServiceFactory } from "@app/services/kms/kms-service";
 import { KmsDataKey } from "@app/services/kms/kms-types";
@@ -29,6 +30,7 @@ import { TPermissionServiceFactory } from "../permission/permission-service-type
 import { ProjectPermissionActions, ProjectPermissionSub } from "../permission/project-permission";
 import { TAiMcpServerDALFactory } from "./ai-mcp-server-dal";
 import { AiMcpServerAuthMethod, AiMcpServerCredentialMode, AiMcpServerStatus } from "./ai-mcp-server-enum";
+import { ssrfSafeMcpFetch } from "./ai-mcp-server-fns";
 import { TAiMcpServerToolDALFactory } from "./ai-mcp-server-tool-dal";
 import {
   TAiMcpServerCredentials,
@@ -63,8 +65,6 @@ type TAiMcpServerServiceFactoryDep = {
 
 export type TAiMcpServerServiceFactory = ReturnType<typeof aiMcpServerServiceFactory>;
 
-const OAUTH_SESSION_TTL_SECONDS = 10 * 60; // 10 minutes
-
 // Buffer time before token expiry to trigger refresh (5 minutes)
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
@@ -85,12 +85,12 @@ const refreshOAuthToken = async (
   try {
     // First try: origin-only format
     const originOnlyUrl = `${serverUrlObj.origin}/.well-known/oauth-authorization-server`;
-    const { data } = await request.get<TOAuthAuthorizationServerMetadata>(originOnlyUrl);
+    const { data } = await ssrfSafeGet<TOAuthAuthorizationServerMetadata>(originOnlyUrl);
     serverMetadata = data;
   } catch {
     // Second try: origin + pathname format
     const pathnameUrl = `${serverUrlObj.origin}/.well-known/oauth-authorization-server${serverUrlObj.pathname !== "/" ? serverUrlObj.pathname : ""}`;
-    const { data } = await request.get<TOAuthAuthorizationServerMetadata>(pathnameUrl);
+    const { data } = await ssrfSafeGet<TOAuthAuthorizationServerMetadata>(pathnameUrl);
     serverMetadata = data;
   }
 
@@ -105,7 +105,7 @@ const refreshOAuthToken = async (
     tokenParams.client_secret = clientSecret;
   }
 
-  const { data: tokenResponse } = await request.post<TOAuthTokenResponse>(
+  const { data: tokenResponse } = await ssrfSafePost<TOAuthTokenResponse>(
     serverMetadata.token_endpoint,
     new URLSearchParams(tokenParams).toString(),
     {
@@ -220,6 +220,7 @@ export const aiMcpServerServiceFactory = ({
         }
 
         const transport = new StreamableHTTPClientTransport(new URL(targetUrl), {
+          fetch: ssrfSafeMcpFetch,
           requestInit: {
             headers: {
               Authorization: `Bearer ${accessToken}`
@@ -277,7 +278,13 @@ export const aiMcpServerServiceFactory = ({
 
   /**
    * Helper to create a gateway-aware HTTP request function
-   * Returns a function that can make requests either directly or through a gateway proxy
+   * Returns a function that can make requests either directly or through a gateway proxy.
+   *
+   * When not using a gateway, requests use SSRF-safe methods that:
+   * - Validate each URL (including redirect targets) for private/internal IPs
+   * - Enforce HTTPS in production
+   * - Manually follow redirects with validation at each hop
+   * - Block POST redirects entirely
    */
   const createGatewayAwareRequest = (
     gatewayId: string | undefined,
@@ -289,19 +296,23 @@ export const aiMcpServerServiceFactory = ({
     post: <T>(url: string, data: unknown, config?: { headers?: Record<string, string> }) => Promise<{ data: T }>;
   } => {
     if (!gatewayId) {
-      // Direct requests (no gateway)
+      // Direct requests (no gateway) - use SSRF-safe methods with redirect validation
       return {
-        get: <T>(url: string) => request.get<T>(url),
+        get: async <T>(url: string) => {
+          const response = await ssrfSafeGet<T>(url);
+          return { data: response.data };
+        },
         getRaw: async <T>(url: string) => {
-          const response = await request.get<T>(url, { validateStatus: () => true });
-          return { data: response.data, status: response.status, headers: response.headers as Record<string, unknown> };
+          // For getRaw, we need to accept all status codes (including 401 for OAuth discovery)
+          // but still validate redirects before following them
+          return ssrfSafeGet<T>(url, { validateStatus: () => true });
         },
         post: <T>(url: string, data: unknown, config?: { headers?: Record<string, string> }) =>
-          request.post<T>(url, data, config)
+          ssrfSafePost<T>(url, data, config)
       };
     }
 
-    // Gateway-proxied requests
+    // Gateway-proxied requests - gateway handles network isolation
     const targetHost = mcpUrlObj.hostname;
     let targetPort = 80;
     if (mcpUrlObj.port) {
@@ -346,6 +357,8 @@ export const aiMcpServerServiceFactory = ({
    * 2. Parse the protected resource metadata URL from the header
    * 3. Fetch the protected resource metadata to get authorization_servers
    * 4. Fetch the authorization server metadata
+   *
+   * All URLs in the discovery chain are validated for SSRF protection when not using a gateway.
    */
   const discoverOAuthMetadata = async (
     mcpUrl: string,
@@ -357,7 +370,6 @@ export const aiMcpServerServiceFactory = ({
     let resourceMetadataUrl: string | null = null;
 
     const url = new URL(mcpUrl);
-    await verifyHostInputValidity({ host: url.hostname, isGateway: true, isDynamicSecret: false });
 
     // Create gateway-aware request helper
     const gatewayRequest = createGatewayAwareRequest(gatewayId, url);
@@ -370,7 +382,10 @@ export const aiMcpServerServiceFactory = ({
       // Extract WWW-Authenticate header from 401 response
       const wwwAuth = initialResponse.headers["www-authenticate"] as string | undefined;
       if (wwwAuth) {
-        resourceMetadataUrl = parseWwwAuthenticateHeader(wwwAuth);
+        const parsedResourceMetadataUrl = parseWwwAuthenticateHeader(wwwAuth);
+        if (parsedResourceMetadataUrl) {
+          resourceMetadataUrl = parsedResourceMetadataUrl;
+        }
       }
     } else if (initialResponse.status >= 200 && initialResponse.status < 300) {
       // If we get a success response, the server doesn't require auth (unusual)
@@ -387,7 +402,7 @@ export const aiMcpServerServiceFactory = ({
     const urlObj = new URL(mcpUrl);
 
     if (!resourceMetadataUrl) {
-      // Fallback: Try common .well-known paths
+      // Fallback: Try common .well-known paths (derived from validated mcpUrl origin, so safe)
       const possiblePaths = [
         `${urlObj.origin}/.well-known/oauth-protected-resource${urlObj.pathname}`,
         `${urlObj.origin}/.well-known/oauth-protected-resource`
@@ -426,7 +441,7 @@ export const aiMcpServerServiceFactory = ({
         }
       } catch (err) {
         // Log non-404 errors for debugging, but still fall through
-        if (!axios.isAxiosError(err) || err.response?.status !== 404) {
+        if (!isAxiosError(err) || err.response?.status !== 404) {
           logger.warn(err, "Failed to fetch OAuth authorization server metadata");
         }
       }
@@ -522,12 +537,12 @@ export const aiMcpServerServiceFactory = ({
     }
 
     const urlObj = new URL(url);
-    await verifyHostInputValidity({ host: urlObj.hostname, isGateway: true, isDynamicSecret: false });
 
     // Create gateway-aware request helper for DCR
     const gatewayRequest = createGatewayAwareRequest(gatewayId, urlObj);
 
     // 1. Discover OAuth metadata following RFC 9728 flow (route through gateway if configured)
+    // Note: discoverOAuthMetadata validates all URLs in the discovery chain
     const { protectedResource, authServer } = await discoverOAuthMetadata(url, gatewayId);
 
     // 2. Generate session ID
@@ -594,7 +609,7 @@ export const aiMcpServerServiceFactory = ({
 
     await keyStore.setItemWithExpiry(
       KeyStorePrefixes.AiMcpServerOAuth(sessionId),
-      OAUTH_SESSION_TTL_SECONDS,
+      KeyStoreTtls.AiMcpServerOAuthSessionInSeconds,
       JSON.stringify(sessionData)
     );
 
@@ -642,7 +657,6 @@ export const aiMcpServerServiceFactory = ({
     // Create gateway-aware request helper using the stored gatewayId
     const serverUrlObj = new URL(sessionData.serverUrl);
     const gatewayRequest = createGatewayAwareRequest(sessionData.gatewayId, serverUrlObj);
-
     // 2. Exchange code for tokens using the stored token endpoint
     const tokenParams: Record<string, string> = {
       grant_type: "authorization_code",
@@ -681,7 +695,7 @@ export const aiMcpServerServiceFactory = ({
 
     await keyStore.setItemWithExpiry(
       KeyStorePrefixes.AiMcpServerOAuth(sessionId),
-      OAUTH_SESSION_TTL_SECONDS,
+      KeyStoreTtls.AiMcpServerOAuthSessionInSeconds,
       JSON.stringify(updatedSession)
     );
 

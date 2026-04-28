@@ -1,11 +1,12 @@
 import { TAuditLogDALFactory } from "@app/ee/services/audit-log/audit-log-dal";
+import { TAuditLogServiceFactory } from "@app/ee/services/audit-log/audit-log-types";
+import { TScepTransactionDALFactory } from "@app/ee/services/pki-scep/pki-scep-transaction-dal";
 import { TScimServiceFactory } from "@app/ee/services/scim/scim-types";
 import { TSnapshotDALFactory } from "@app/ee/services/secret-snapshot/snapshot-dal";
 import { TKeyValueStoreDALFactory } from "@app/keystore/key-value-store-dal";
 import { getConfig } from "@app/lib/config/env";
 import { logger } from "@app/lib/logger";
-import { QueueJobs, QueueName, TQueueServiceFactory } from "@app/queue";
-import { TQueueJobsDALFactory } from "@app/queue/queue-jobs-dal";
+import { JOB_SCHEDULER_PREFIX, QueueJobs, QueueName, TQueueServiceFactory } from "@app/queue";
 import { TUserNotificationDALFactory } from "@app/services/notification/user-notification-dal";
 
 import { TApprovalRequestDALFactory, TApprovalRequestGrantsDALFactory } from "../approval-policy/approval-request-dal";
@@ -21,6 +22,7 @@ import { TServiceTokenServiceFactory } from "../service-token/service-token-serv
 
 type TDailyResourceCleanUpQueueServiceFactoryDep = {
   auditLogDAL: Pick<TAuditLogDALFactory, "pruneAuditLog">;
+  auditLogService: Pick<TAuditLogServiceFactory, "checkPostgresAuditLogVolumeMigrationAlert">;
   identityAccessTokenDAL: Pick<TIdentityAccessTokenDALFactory, "removeExpiredTokens">;
   identityUniversalAuthClientSecretDAL: Pick<TIdentityUaClientSecretDALFactory, "removeExpiredClientSecrets">;
   secretVersionDAL: Pick<TSecretVersionDALFactory, "pruneExcessVersions">;
@@ -37,13 +39,14 @@ type TDailyResourceCleanUpQueueServiceFactoryDep = {
   approvalRequestDAL: Pick<TApprovalRequestDALFactory, "markExpiredRequests">;
   approvalRequestGrantsDAL: Pick<TApprovalRequestGrantsDALFactory, "markExpiredGrants">;
   certificateRequestDAL: Pick<TCertificateRequestDALFactory, "markExpiredApprovalRequests">;
-  queueJobsDAL: Pick<TQueueJobsDALFactory, "pruneQueueJobs">;
+  scepTransactionDAL: Pick<TScepTransactionDALFactory, "pruneExpiredTransactions">;
 };
 
 export type TDailyResourceCleanUpQueueServiceFactory = ReturnType<typeof dailyResourceCleanUpQueueServiceFactory>;
 
 export const dailyResourceCleanUpQueueServiceFactory = ({
   auditLogDAL,
+  auditLogService,
   queueService,
   snapshotDAL,
   secretVersionDAL,
@@ -60,7 +63,7 @@ export const dailyResourceCleanUpQueueServiceFactory = ({
   approvalRequestDAL,
   approvalRequestGrantsDAL,
   certificateRequestDAL,
-  queueJobsDAL
+  scepTransactionDAL
 }: TDailyResourceCleanUpQueueServiceFactoryDep) => {
   const appCfg = getConfig();
 
@@ -86,15 +89,16 @@ export const dailyResourceCleanUpQueueServiceFactory = ({
         await serviceTokenService.notifyExpiringTokens();
         await scimService.notifyExpiringTokens();
         await orgService.notifyInvitedUsers();
-        await auditLogDAL.pruneAuditLog();
+        await auditLogService.checkPostgresAuditLogVolumeMigrationAlert();
         await userNotificationDAL.pruneNotifications();
         await keyValueStoreDAL.pruneExpiredKeys();
-        await queueJobsDAL.pruneQueueJobs();
+        await scepTransactionDAL.pruneExpiredTransactions();
         const expiredApprovalRequestIds = await approvalRequestDAL.markExpiredRequests();
         if (expiredApprovalRequestIds.length > 0) {
           await certificateRequestDAL.markExpiredApprovalRequests(expiredApprovalRequestIds);
         }
         await approvalRequestGrantsDAL.markExpiredGrants();
+        await auditLogDAL.pruneAuditLog();
         logger.info(`${QueueName.DailyResourceCleanUp}: queue task completed`);
       } catch (error) {
         logger.error(error, `${QueueName.DailyResourceCleanUp}: resource cleanup failed`);
@@ -102,22 +106,14 @@ export const dailyResourceCleanUpQueueServiceFactory = ({
       }
     });
 
-    await queueService.queue(QueueName.DailyResourceCleanUp, QueueJobs.DailyResourceCleanUp, undefined, {
-      jobId: QueueJobs.DailyResourceCleanUp,
-      repeat: {
-        pattern: appCfg.isDailyResourceCleanUpDevelopmentMode ? "*/5 * * * *" : "0 0 * * *",
-        key: QueueJobs.DailyResourceCleanUp
-      }
-    });
-
-    // Hourly cleanup routine
-    await queueService.stopRepeatableJob(
-      QueueName.FrequentResourceCleanUp,
-      QueueJobs.FrequentResourceCleanUp,
-      { pattern: "0 * * * *", utc: true },
-      QueueName.FrequentResourceCleanUp // just a job id
+    await queueService.upsertJobScheduler(
+      QueueName.DailyResourceCleanUp,
+      `${JOB_SCHEDULER_PREFIX}:${QueueJobs.DailyResourceCleanUp}`,
+      { pattern: appCfg.isDailyResourceCleanUpDevelopmentMode ? "*/5 * * * *" : "0 0 * * *" },
+      { name: QueueJobs.DailyResourceCleanUp }
     );
 
+    // Hourly cleanup routine
     queueService.start(QueueName.FrequentResourceCleanUp, async () => {
       try {
         logger.info(`${QueueName.FrequentResourceCleanUp}: queue task started`);
@@ -129,13 +125,12 @@ export const dailyResourceCleanUpQueueServiceFactory = ({
       }
     });
 
-    await queueService.queue(QueueName.FrequentResourceCleanUp, QueueJobs.FrequentResourceCleanUp, undefined, {
-      jobId: QueueJobs.FrequentResourceCleanUp,
-      repeat: {
-        pattern: appCfg.isDailyResourceCleanUpDevelopmentMode ? "*/5 * * * *" : "0 * * * *",
-        key: QueueJobs.FrequentResourceCleanUp
-      }
-    });
+    await queueService.upsertJobScheduler(
+      QueueName.FrequentResourceCleanUp,
+      `${JOB_SCHEDULER_PREFIX}:${QueueJobs.FrequentResourceCleanUp}`,
+      { pattern: appCfg.isDailyResourceCleanUpDevelopmentMode ? "*/5 * * * *" : "0 * * * *" },
+      { name: QueueJobs.FrequentResourceCleanUp }
+    );
   };
 
   return {

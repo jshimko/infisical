@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { PkiCertificateProfilesSchema } from "@app/db/schemas";
 import { EventType } from "@app/ee/services/audit-log/audit-log-types";
+import { ScepChallengeType } from "@app/ee/services/pki-scep/challenge";
 import { ApiDocsTags } from "@app/lib/api-docs";
 import { readLimit, writeLimit } from "@app/server/config/rateLimiter";
 import { verifyAuth } from "@app/server/plugins/auth/verify-auth";
@@ -85,6 +86,16 @@ export const registerCertificateProfilesRouter = async (
               skipEabBinding: z.boolean().optional()
             })
             .optional(),
+          scepConfig: z
+            .object({
+              challengeType: z.nativeEnum(ScepChallengeType).default(ScepChallengeType.STATIC),
+              challengePassword: z.string().optional(),
+              includeCaCertInResponse: z.boolean().optional(),
+              allowCertBasedRenewal: z.boolean().optional(),
+              dynamicChallengeExpiryMinutes: z.number().int().min(1).max(1440).default(60),
+              dynamicChallengeMaxPending: z.number().int().min(1).max(1000).default(100)
+            })
+            .optional(),
           externalConfigs: ExternalConfigUnionSchema,
           defaults: z
             .object({
@@ -155,34 +166,59 @@ export const registerCertificateProfilesRouter = async (
         .refine(
           (data) => {
             if (data.enrollmentType === EnrollmentType.EST) {
-              return !data.apiConfig && !data.acmeConfig;
+              return !data.apiConfig && !data.acmeConfig && !data.scepConfig;
             }
             return true;
           },
           {
-            message: "EST enrollment type cannot have API or ACME configuration"
+            message: "EST enrollment type cannot have API, ACME, or SCEP configuration"
           }
         )
         .refine(
           (data) => {
             if (data.enrollmentType === EnrollmentType.API) {
-              return !data.estConfig && !data.acmeConfig;
+              return !data.estConfig && !data.acmeConfig && !data.scepConfig;
             }
             return true;
           },
           {
-            message: "API enrollment type cannot have EST or ACME configuration"
+            message: "API enrollment type cannot have EST, ACME, or SCEP configuration"
           }
         )
         .refine(
           (data) => {
             if (data.enrollmentType === EnrollmentType.ACME) {
-              return !data.estConfig && !data.apiConfig;
+              return !data.estConfig && !data.apiConfig && !data.scepConfig;
             }
             return true;
           },
           {
-            message: "ACME enrollment type cannot have EST or API configuration"
+            message: "ACME enrollment type cannot have EST, API, or SCEP configuration"
+          }
+        )
+        .refine(
+          (data) => {
+            if (data.enrollmentType === EnrollmentType.SCEP) {
+              if (!data.scepConfig) return false;
+              // Static mode requires a challenge password with min 8 chars; dynamic mode does not
+              if (data.scepConfig.challengeType === ScepChallengeType.DYNAMIC) return true;
+              return !!data.scepConfig.challengePassword && data.scepConfig.challengePassword.length >= 8;
+            }
+            return true;
+          },
+          {
+            message: "SCEP static challenge requires a challenge password with at least 8 characters"
+          }
+        )
+        .refine(
+          (data) => {
+            if (data.enrollmentType === EnrollmentType.SCEP) {
+              return !data.estConfig && !data.apiConfig && !data.acmeConfig;
+            }
+            return true;
+          },
+          {
+            message: "SCEP enrollment type cannot have EST, API, or ACME configuration"
           }
         )
         .refine(
@@ -321,6 +357,20 @@ export const registerCertificateProfilesRouter = async (
                 skipEabBinding: z.boolean().optional()
               })
               .optional(),
+            scepConfig: z
+              .object({
+                id: z.string(),
+                scepEndpointUrl: z.string(),
+                raCertificatePem: z.string(),
+                raCertExpiresAt: z.date(),
+                includeCaCertInResponse: z.boolean(),
+                allowCertBasedRenewal: z.boolean(),
+                challengeType: z.string(),
+                challengeEndpointUrl: z.string().optional(),
+                dynamicChallengeExpiryMinutes: z.number().optional(),
+                dynamicChallengeMaxPending: z.number().optional()
+              })
+              .optional(),
             externalConfigs: ExternalConfigUnionSchema,
             defaults: CertificateProfileDefaultsResponseSchema
           }).array(),
@@ -411,6 +461,20 @@ export const registerCertificateProfilesRouter = async (
                 directoryUrl: z.string(),
                 skipDnsOwnershipVerification: z.boolean().optional(),
                 skipEabBinding: z.boolean().optional()
+              })
+              .optional(),
+            scepConfig: z
+              .object({
+                id: z.string(),
+                scepEndpointUrl: z.string(),
+                raCertificatePem: z.string(),
+                raCertExpiresAt: z.date(),
+                includeCaCertInResponse: z.boolean(),
+                allowCertBasedRenewal: z.boolean(),
+                challengeType: z.string(),
+                challengeEndpointUrl: z.string().optional(),
+                dynamicChallengeExpiryMinutes: z.number().optional(),
+                dynamicChallengeMaxPending: z.number().optional()
               })
               .optional(),
             externalConfigs: ExternalConfigUnionSchema
@@ -527,6 +591,16 @@ export const registerCertificateProfilesRouter = async (
               skipEabBinding: z.boolean().optional()
             })
             .optional(),
+          scepConfig: z
+            .object({
+              challengeType: z.nativeEnum(ScepChallengeType).optional(),
+              challengePassword: z.string().optional(),
+              includeCaCertInResponse: z.boolean().optional(),
+              allowCertBasedRenewal: z.boolean().optional(),
+              dynamicChallengeExpiryMinutes: z.number().int().min(1).max(1440).optional(),
+              dynamicChallengeMaxPending: z.number().int().min(1).max(1000).optional()
+            })
+            .optional(),
           externalConfigs: ExternalConfigUnionSchema,
           defaults: z
             .object({
@@ -577,6 +651,18 @@ export const registerCertificateProfilesRouter = async (
           },
           {
             message: "Cannot skip both External Account Binding (EAB) and DNS ownership verification at the same time."
+          }
+        )
+        .refine(
+          (data) => {
+            if (data.scepConfig?.challengePassword) {
+              if (data.scepConfig.challengeType === ScepChallengeType.DYNAMIC) return true;
+              return data.scepConfig.challengePassword.length >= 8;
+            }
+            return true;
+          },
+          {
+            message: "SCEP static challenge requires a challenge password with at least 8 characters"
           }
         ),
       response: {

@@ -20,42 +20,41 @@ import { createNotification } from "@app/components/notifications";
 import { ProjectPermissionCan } from "@app/components/permissions";
 import { DeleteActionModal, Tab, TabList, TabPanel, Tabs } from "@app/components/v2";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Badge,
   Button,
+  Card,
+  CardContent,
+  CardHeader,
   Detail,
   DetailLabel,
   DetailValue,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  IconButton,
+  PageLoader,
+  Pagination,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
-  UnstableAlert,
-  UnstableAlertDescription,
-  UnstableAlertTitle,
-  UnstableCard,
-  UnstableCardContent,
-  UnstableCardHeader,
-  UnstableDropdownMenu,
-  UnstableDropdownMenuContent,
-  UnstableDropdownMenuItem,
-  UnstableDropdownMenuTrigger,
-  UnstableEmpty,
-  UnstableEmptyHeader,
-  UnstableEmptyTitle,
-  UnstableIconButton,
-  UnstablePageLoader,
-  UnstablePagination,
-  UnstableTable,
-  UnstableTableBody,
-  UnstableTableCell,
-  UnstableTableHead,
-  UnstableTableHeader,
-  UnstableTableRow
+  TooltipTrigger
 } from "@app/components/v3";
 import { ProjectPermissionSub, useOrganization } from "@app/context";
 import { ProjectPermissionPamDiscoveryActions } from "@app/context/ProjectPermissionContext/types";
 import { usePagination } from "@app/hooks";
 import { gatewaysQueryKeys } from "@app/hooks/api";
-import { PamResourceType } from "@app/hooks/api/pam";
 import type {
   TPamDiscoverySource,
   TPamDiscoverySourceRunProgress
@@ -70,6 +69,7 @@ import {
   useListPamDiscoverySourceRuns,
   useTriggerPamDiscoveryScan
 } from "@app/hooks/api/pamDiscovery";
+import { PAM_DOMAIN_TYPE_MAP, PamDomainType, useListPamDomains } from "@app/hooks/api/pamDomain";
 
 import { PamUpdateDiscoverySourceModal } from "../PamDiscoveryPage/components/PamUpdateDiscoverySourceModal";
 
@@ -99,9 +99,9 @@ const DiscoveryDetailsSection = ({
           a={ProjectPermissionSub.PamDiscovery}
         >
           {(isAllowed) => (
-            <UnstableIconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
+            <IconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
               <PencilIcon />
-            </UnstableIconButton>
+            </IconButton>
           )}
         </ProjectPermissionCan>
       </div>
@@ -154,9 +154,9 @@ const DiscoveryConfigurationSection = ({
           a={ProjectPermissionSub.PamDiscovery}
         >
           {(isAllowed) => (
-            <UnstableIconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
+            <IconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
               <PencilIcon />
-            </UnstableIconButton>
+            </IconButton>
           )}
         </ProjectPermissionCan>
       </div>
@@ -199,9 +199,17 @@ const DiscoveryConfigurationSection = ({
             )}
           </DetailValue>
         </Detail>
-        {(source.discoveryConfiguration?.caCert as string) && (
+        {(source.discoveryConfiguration?.ldapCaCert as string) && (
           <Detail>
-            <DetailLabel>CA Certificate</DetailLabel>
+            <DetailLabel>LDAP CA Certificate</DetailLabel>
+            <DetailValue>
+              <Badge variant="success">Provided</Badge>
+            </DetailValue>
+          </Detail>
+        )}
+        {(source.discoveryConfiguration?.winrmCaCert as string) && (
+          <Detail>
+            <DetailLabel>WinRM CA Certificate</DetailLabel>
             <DetailValue>
               <Badge variant="success">Provided</Badge>
             </DetailValue>
@@ -238,9 +246,9 @@ const DiscoveryCredentialsSection = ({
           a={ProjectPermissionSub.PamDiscovery}
         >
           {(isAllowed) => (
-            <UnstableIconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
+            <IconButton variant="ghost" size="xs" onClick={onEdit} isDisabled={!isAllowed}>
               <PencilIcon />
-            </UnstableIconButton>
+            </IconButton>
           )}
         </ProjectPermissionCan>
       </div>
@@ -254,6 +262,72 @@ const DiscoveryCredentialsSection = ({
           <DetailValue>••••••••</DetailValue>
         </Detail>
       </div>
+    </div>
+  );
+};
+
+const DiscoveryDomainSection = ({
+  source,
+  projectId,
+  orgId
+}: {
+  source: TPamDiscoverySource;
+  projectId: string;
+  orgId: string;
+}) => {
+  const navigate = useNavigate();
+  const domainFQDN = source.discoveryConfiguration?.domainFQDN as string | undefined;
+  const fingerprint = domainFQDN?.toLowerCase();
+
+  const { data: domainsData } = useListPamDomains({
+    projectId,
+    discoveryFingerprint: fingerprint
+  });
+
+  const domain = domainsData?.domains[0];
+
+  const domainTypeInfo = domain
+    ? PAM_DOMAIN_TYPE_MAP[domain.domainType as keyof typeof PAM_DOMAIN_TYPE_MAP]
+    : null;
+
+  return (
+    <div className="flex w-full flex-col gap-3 rounded-lg border border-border bg-container px-4 py-3">
+      <div className="border-b border-border pb-2">
+        <h3 className="text-lg font-medium">Domain</h3>
+      </div>
+      {domain ? (
+        <button
+          type="button"
+          className="flex items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-mineshaft-700"
+          onClick={() =>
+            navigate({
+              to: "/organizations/$orgId/projects/pam/$projectId/domains/$domainType/$domainId",
+              params: {
+                orgId,
+                projectId,
+                domainType: domain.domainType,
+                domainId: domain.id
+              }
+            })
+          }
+        >
+          {domainTypeInfo?.image && (
+            <img
+              alt={domainTypeInfo.name}
+              src={`/images/integrations/${domainTypeInfo.image}`}
+              className="size-6"
+            />
+          )}
+          <div>
+            <p className="text-sm font-medium text-mineshaft-100">{domain.name}</p>
+            <p className="text-xs text-muted">{domainTypeInfo?.name}</p>
+          </div>
+        </button>
+      ) : (
+        <p className="text-sm text-muted">
+          No domain has been created yet. Run a scan to automatically create the domain.
+        </p>
+      )}
     </div>
   );
 };
@@ -301,7 +375,7 @@ const RunExpandedContent = ({
   errorMessage?: string | null;
 }) => {
   const adEnum = progress?.adEnumeration;
-  const depScan = progress?.dependencyScan;
+  const depScan = progress?.machineEnumeration;
   const machineErrors = progress?.machineErrors;
   const hasMachineErrors = machineErrors && Object.keys(machineErrors).length > 0;
 
@@ -310,8 +384,8 @@ const RunExpandedContent = ({
       <div className="flex gap-10">
         {adEnum && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium tracking-wider text-muted uppercase">
-              AD Enumeration
+            <span className="text-xs font-medium tracking-wider text-label uppercase">
+              Directory Scan
             </span>
             <Badge
               variant={PROGRESS_BADGE_MAP[adEnum.status] || "info"}
@@ -320,14 +394,14 @@ const RunExpandedContent = ({
               {adEnum.status}
             </Badge>
             {adEnum.error && adEnum.error !== errorMessage && (
-              <span className="text-xs text-red-400">{adEnum.error}</span>
+              <span className="text-xs whitespace-pre-wrap text-danger">{adEnum.error}</span>
             )}
           </div>
         )}
         {depScan && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium tracking-wider text-muted uppercase">
-              Dependency Scan
+            <span className="text-xs font-medium tracking-wider text-label uppercase">
+              Host Scan
             </span>
             <Badge
               variant={PROGRESS_BADGE_MAP[depScan.status] || "info"}
@@ -337,9 +411,9 @@ const RunExpandedContent = ({
             </Badge>
             {depScan.totalMachines !== undefined && (
               <span className="text-xs text-muted">
-                {depScan.scannedMachines ?? 0}/{depScan.totalMachines} machines
+                {depScan.scannedMachines ?? 0}/{depScan.totalMachines} hosts
                 {(depScan.failedMachines ?? 0) > 0 && (
-                  <span className="ml-1 text-red-400">({depScan.failedMachines} failed)</span>
+                  <span className="ml-1 text-danger">({depScan.failedMachines} failed)</span>
                 )}
               </span>
             )}
@@ -352,21 +426,21 @@ const RunExpandedContent = ({
       {errorMessage && (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-medium tracking-wider text-muted uppercase">Error</span>
-          <span className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 font-mono text-xs text-red-400">
+          <span className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 font-mono text-xs whitespace-pre-wrap text-danger">
             {errorMessage}
           </span>
         </div>
       )}
       {hasMachineErrors && (
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium tracking-wider text-muted uppercase">
-            Machine Errors
+          <span className="text-xs font-medium tracking-wider text-label uppercase">
+            Host Errors
           </span>
           <div className="mb-0.5 flex items-center gap-2 rounded border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-400">
             <InfoIcon className="size-4 shrink-0" />
             <span className="whitespace-pre-wrap">
-              Machines without WinRM enabled will fail with &quot;socket hang up&quot;. This is
-              expected for domain controllers and machines not configured for remote management.
+              Hosts without WinRM enabled will fail with &quot;socket hang up&quot;. This is
+              expected for domain controllers and hosts not configured for remote management.
             </span>
           </div>
           <div className="flex flex-col gap-1">
@@ -376,7 +450,7 @@ const RunExpandedContent = ({
                 className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 font-mono text-xs"
               >
                 <span className="font-semibold text-foreground">{host}</span>
-                <span className="ml-2 text-muted">{err}</span>
+                <span className="ml-2 whitespace-pre-wrap text-label">{err}</span>
               </div>
             ))}
           </div>
@@ -410,7 +484,7 @@ const RunsTab = ({
     discoverySourceId,
     discoveryType,
     { offset, limit: perPage },
-    { refetchInterval: isPolling ? 3000 : false }
+    { refetchInterval: isPolling ? 10_000 : false }
   );
 
   const runs = data?.runs || [];
@@ -436,95 +510,93 @@ const RunsTab = ({
   return (
     <div>
       {discoveryType === PamDiscoveryType.ActiveDirectory && isDependencyDiscoveryDisabled && (
-        <UnstableAlert variant="org" className="mb-4">
+        <Alert variant="org" className="mb-4">
           <InfoIcon />
-          <UnstableAlertTitle>Dependency discovery is disabled</UnstableAlertTitle>
-          <UnstableAlertDescription>
+          <AlertTitle>Dependency discovery is disabled</AlertTitle>
+          <AlertDescription>
             Windows Services, Scheduled Tasks, and IIS App Pools will not be discovered. Enable
             &quot;Discover Dependencies&quot; in the source configuration to scan for dependencies
-          </UnstableAlertDescription>
-        </UnstableAlert>
+          </AlertDescription>
+        </Alert>
       )}
-      <UnstableTable>
-        <UnstableTableHeader>
-          <UnstableTableRow>
-            <UnstableTableHead className="w-8" />
-            <UnstableTableHead>Started</UnstableTableHead>
-            <UnstableTableHead>Duration</UnstableTableHead>
-            <UnstableTableHead>Triggered By</UnstableTableHead>
-            <UnstableTableHead>Status</UnstableTableHead>
-            <UnstableTableHead>Resources</UnstableTableHead>
-            <UnstableTableHead>Accounts</UnstableTableHead>
-            <UnstableTableHead>Dependencies</UnstableTableHead>
-          </UnstableTableRow>
-        </UnstableTableHeader>
-        <UnstableTableBody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-8" />
+            <TableHead>Started</TableHead>
+            <TableHead>Duration</TableHead>
+            <TableHead>Triggered By</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Resources</TableHead>
+            <TableHead>Accounts</TableHead>
+            <TableHead>Dependencies</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {isPending && (
-            <UnstableTableRow>
-              <UnstableTableCell colSpan={COL_COUNT} className="text-center text-muted">
+            <TableRow>
+              <TableCell colSpan={COL_COUNT} className="text-center text-muted">
                 Loading runs...
-              </UnstableTableCell>
-            </UnstableTableRow>
+              </TableCell>
+            </TableRow>
           )}
           {!isPending && runs.length === 0 && (
-            <UnstableTableRow>
-              <UnstableTableCell colSpan={COL_COUNT}>
-                <UnstableEmpty className="border-0 bg-transparent py-8 shadow-none">
-                  <UnstableEmptyHeader>
-                    <UnstableEmptyTitle>No discovery runs yet</UnstableEmptyTitle>
-                  </UnstableEmptyHeader>
-                </UnstableEmpty>
-              </UnstableTableCell>
-            </UnstableTableRow>
+            <TableRow>
+              <TableCell colSpan={COL_COUNT}>
+                <Empty className="border-0 bg-transparent py-8 shadow-none">
+                  <EmptyHeader>
+                    <EmptyTitle>No discovery runs yet</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              </TableCell>
+            </TableRow>
           )}
           {!isPending &&
             runs.map((run) => {
               const isExpanded = expandedRunId === run.id;
               const hasDetails =
                 run.progress?.adEnumeration ||
-                run.progress?.dependencyScan ||
+                run.progress?.machineEnumeration ||
                 run.errorMessage ||
                 (run.progress?.machineErrors && Object.keys(run.progress.machineErrors).length > 0);
 
               return (
                 <>
-                  <UnstableTableRow
+                  <TableRow
                     key={run.id}
                     className={hasDetails ? "cursor-pointer" : undefined}
                     onClick={
                       hasDetails ? () => setExpandedRunId(isExpanded ? null : run.id) : undefined
                     }
                   >
-                    <UnstableTableCell>
+                    <TableCell>
                       {hasDetails &&
                         (isExpanded ? (
                           <ChevronDownIcon className="size-4 text-muted" />
                         ) : (
                           <ChevronRightIcon className="size-4 text-muted" />
                         ))}
-                    </UnstableTableCell>
-                    <UnstableTableCell className="text-muted">
+                    </TableCell>
+                    <TableCell className="text-muted">
                       {run.startedAt ? format(new Date(run.startedAt), "MMM d, yyyy hh:mm a") : "-"}
-                    </UnstableTableCell>
-                    <UnstableTableCell className="text-muted">
+                    </TableCell>
+                    <TableCell className="text-muted">
                       {run.status === "running" && run.startedAt ? (
                         <LiveDuration startedAt={run.startedAt} />
                       ) : (
                         formatDuration(run.startedAt, run.completedAt)
                       )}
-                    </UnstableTableCell>
-                    <UnstableTableCell className="text-muted capitalize">
-                      {run.triggeredBy}
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell className="text-muted capitalize">{run.triggeredBy}</TableCell>
+                    <TableCell>
                       <Badge
                         variant={STATUS_BADGE_MAP[run.status] || "info"}
                         className={run.status === "running" ? "animate-pulse" : undefined}
                       >
                         {run.status}
                       </Badge>
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span>
@@ -553,8 +625,8 @@ const RunsTab = ({
                           )}
                         </TooltipContent>
                       </Tooltip>
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span>
@@ -577,8 +649,8 @@ const RunsTab = ({
                           )}
                         </TooltipContent>
                       </Tooltip>
-                    </UnstableTableCell>
-                    <UnstableTableCell>
+                    </TableCell>
+                    <TableCell>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span>
@@ -607,25 +679,25 @@ const RunsTab = ({
                           )}
                         </TooltipContent>
                       </Tooltip>
-                    </UnstableTableCell>
-                  </UnstableTableRow>
+                    </TableCell>
+                  </TableRow>
                   {isExpanded && (
-                    <UnstableTableRow key={`${run.id}-expanded`}>
-                      <UnstableTableCell colSpan={COL_COUNT} className="p-0">
+                    <TableRow key={`${run.id}-expanded`}>
+                      <TableCell colSpan={COL_COUNT} className="p-0">
                         <RunExpandedContent
                           progress={run.progress}
                           errorMessage={run.errorMessage}
                         />
-                      </UnstableTableCell>
-                    </UnstableTableRow>
+                      </TableCell>
+                    </TableRow>
                   )}
                 </>
               );
             })}
-        </UnstableTableBody>
-      </UnstableTable>
+        </TableBody>
+      </Table>
       {Boolean(totalCount) && !isPending && (
-        <UnstablePagination
+        <Pagination
           count={totalCount}
           page={page}
           perPage={perPage}
@@ -662,39 +734,39 @@ const ResourcesTab = ({
 
   return (
     <div>
-      <UnstableTable>
-        <UnstableTableHeader>
-          <UnstableTableRow>
-            <UnstableTableHead>Name</UnstableTableHead>
-            <UnstableTableHead>Type</UnstableTableHead>
-            <UnstableTableHead>OS Version</UnstableTableHead>
-            <UnstableTableHead>Deps.</UnstableTableHead>
-            <UnstableTableHead>Last Discovered</UnstableTableHead>
-            <UnstableTableHead>Status</UnstableTableHead>
-          </UnstableTableRow>
-        </UnstableTableHeader>
-        <UnstableTableBody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>OS Version</TableHead>
+            <TableHead>Deps.</TableHead>
+            <TableHead>Last Discovered</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {isPending && (
-            <UnstableTableRow>
-              <UnstableTableCell colSpan={6} className="text-center text-muted">
+            <TableRow>
+              <TableCell colSpan={6} className="text-center text-muted">
                 Loading resources...
-              </UnstableTableCell>
-            </UnstableTableRow>
+              </TableCell>
+            </TableRow>
           )}
           {!isPending && resources.length === 0 && (
-            <UnstableTableRow>
-              <UnstableTableCell colSpan={6}>
-                <UnstableEmpty className="border-0 bg-transparent py-8 shadow-none">
-                  <UnstableEmptyHeader>
-                    <UnstableEmptyTitle>No discovered resources</UnstableEmptyTitle>
-                  </UnstableEmptyHeader>
-                </UnstableEmpty>
-              </UnstableTableCell>
-            </UnstableTableRow>
+            <TableRow>
+              <TableCell colSpan={6}>
+                <Empty className="border-0 bg-transparent py-8 shadow-none">
+                  <EmptyHeader>
+                    <EmptyTitle>No discovered resources</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              </TableCell>
+            </TableRow>
           )}
           {!isPending &&
             resources.map((resource) => (
-              <UnstableTableRow
+              <TableRow
                 key={resource.id}
                 className="cursor-pointer"
                 onClick={() =>
@@ -709,13 +781,9 @@ const ResourcesTab = ({
                   })
                 }
               >
-                <UnstableTableCell className="font-medium">
-                  {resource.resourceName}
-                </UnstableTableCell>
-                <UnstableTableCell className="text-muted">
-                  {resource.resourceType}
-                </UnstableTableCell>
-                <UnstableTableCell className="text-muted" isTruncatable>
+                <TableCell className="font-medium">{resource.resourceName}</TableCell>
+                <TableCell className="text-muted">{resource.resourceType}</TableCell>
+                <TableCell className="text-muted" isTruncatable>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span>{resource.resourceInternalMetadata?.osVersion || "-"}</span>
@@ -726,28 +794,28 @@ const ResourcesTab = ({
                         ` ${resource.resourceInternalMetadata?.osVersionDetail}`}
                     </TooltipContent>
                   </Tooltip>
-                </UnstableTableCell>
-                <UnstableTableCell
+                </TableCell>
+                <TableCell
                   className={resource.dependencyCount ? "text-muted" : "text-mineshaft-500"}
                 >
                   {resource.dependencyCount ?? 0}
-                </UnstableTableCell>
-                <UnstableTableCell className="text-muted">
+                </TableCell>
+                <TableCell className="text-muted">
                   {format(new Date(resource.lastDiscoveredAt), "MMM d, yyyy HH:mm")}
-                </UnstableTableCell>
-                <UnstableTableCell>
+                </TableCell>
+                <TableCell>
                   {resource.isStale ? (
                     <Badge variant="danger">Stale</Badge>
                   ) : (
                     <Badge variant="success">Active</Badge>
                   )}
-                </UnstableTableCell>
-              </UnstableTableRow>
+                </TableCell>
+              </TableRow>
             ))}
-        </UnstableTableBody>
-      </UnstableTable>
+        </TableBody>
+      </Table>
       {Boolean(totalCount) && !isPending && (
-        <UnstablePagination
+        <Pagination
           count={totalCount}
           page={page}
           perPage={perPage}
@@ -784,47 +852,47 @@ const AccountsTab = ({
 
   return (
     <div>
-      <UnstableAlert variant="org" className="mb-4">
+      <Alert variant="org" className="mb-4">
         <InfoIcon />
-        <UnstableAlertTitle>Account passwords must be configured manually</UnstableAlertTitle>
-        <UnstableAlertDescription>
+        <AlertTitle>Account passwords must be configured manually</AlertTitle>
+        <AlertDescription>
           Discovered accounts are auto-imported with empty passwords by default
-        </UnstableAlertDescription>
-      </UnstableAlert>
-      <UnstableTable>
-        <UnstableTableHeader>
-          <UnstableTableRow>
-            <UnstableTableHead>Name</UnstableTableHead>
-            <UnstableTableHead>Resource</UnstableTableHead>
-            <UnstableTableHead>Type</UnstableTableHead>
-            <UnstableTableHead>Deps.</UnstableTableHead>
-            <UnstableTableHead>Last Logon</UnstableTableHead>
-            <UnstableTableHead>Last Discovered</UnstableTableHead>
-            <UnstableTableHead>Status</UnstableTableHead>
-          </UnstableTableRow>
-        </UnstableTableHeader>
-        <UnstableTableBody>
+        </AlertDescription>
+      </Alert>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Resource</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Deps.</TableHead>
+            <TableHead>Last Logon</TableHead>
+            <TableHead>Last Discovered</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {isPending && (
-            <UnstableTableRow>
-              <UnstableTableCell colSpan={7} className="text-center text-muted">
+            <TableRow>
+              <TableCell colSpan={7} className="text-center text-muted">
                 Loading accounts...
-              </UnstableTableCell>
-            </UnstableTableRow>
+              </TableCell>
+            </TableRow>
           )}
           {!isPending && accounts.length === 0 && (
-            <UnstableTableRow>
-              <UnstableTableCell colSpan={7}>
-                <UnstableEmpty className="border-0 bg-transparent py-8 shadow-none">
-                  <UnstableEmptyHeader>
-                    <UnstableEmptyTitle>No discovered accounts</UnstableEmptyTitle>
-                  </UnstableEmptyHeader>
-                </UnstableEmpty>
-              </UnstableTableCell>
-            </UnstableTableRow>
+            <TableRow>
+              <TableCell colSpan={7}>
+                <Empty className="border-0 bg-transparent py-8 shadow-none">
+                  <EmptyHeader>
+                    <EmptyTitle>No discovered accounts</EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              </TableCell>
+            </TableRow>
           )}
           {!isPending &&
             accounts.map((account) => (
-              <UnstableTableRow
+              <TableRow
                 key={account.id}
                 className="cursor-pointer"
                 onClick={() =>
@@ -840,8 +908,8 @@ const AccountsTab = ({
                   })
                 }
               >
-                <UnstableTableCell className="font-medium">{account.accountName}</UnstableTableCell>
-                <UnstableTableCell className="text-muted">
+                <TableCell className="font-medium">{account.accountName}</TableCell>
+                <TableCell className="text-muted">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="flex max-w-36">
@@ -850,41 +918,41 @@ const AccountsTab = ({
                     </TooltipTrigger>
                     <TooltipContent>{account.resourceName}</TooltipContent>
                   </Tooltip>
-                </UnstableTableCell>
-                <UnstableTableCell>
+                </TableCell>
+                <TableCell>
                   <div className="flex items-center gap-2">
-                    {account.resourceType === PamResourceType.ActiveDirectory && (
+                    {account.resourceType === PamDomainType.ActiveDirectory && (
                       <Badge variant="info">AD</Badge>
                     )}
                     <span className="text-muted capitalize">
                       {account.internalMetadata?.accountType ?? "-"}
                     </span>
                   </div>
-                </UnstableTableCell>
-                <UnstableTableCell
+                </TableCell>
+                <TableCell
                   className={account.dependencyCount ? "text-muted" : "text-mineshaft-500"}
                 >
                   {account.dependencyCount ?? 0}
-                </UnstableTableCell>
-                <UnstableTableCell className="text-muted">
+                </TableCell>
+                <TableCell className="text-muted">
                   {formatIsoDate(account.internalMetadata?.lastLogon)}
-                </UnstableTableCell>
-                <UnstableTableCell className="text-muted">
+                </TableCell>
+                <TableCell className="text-muted">
                   {format(new Date(account.lastDiscoveredAt), "MM/dd/yy, HH:mm")}
-                </UnstableTableCell>
-                <UnstableTableCell>
+                </TableCell>
+                <TableCell>
                   {account.isStale ? (
                     <Badge variant="danger">Stale</Badge>
                   ) : (
                     <Badge variant="success">Active</Badge>
                   )}
-                </UnstableTableCell>
-              </UnstableTableRow>
+                </TableCell>
+              </TableRow>
             ))}
-        </UnstableTableBody>
-      </UnstableTable>
+        </TableBody>
+      </Table>
       {Boolean(totalCount) && !isPending && (
-        <UnstablePagination
+        <Pagination
           count={totalCount}
           page={page}
           perPage={perPage}
@@ -942,20 +1010,20 @@ const PageContent = () => {
   const triggerScanMutation = useTriggerPamDiscoveryScan();
 
   if (isPending) {
-    return <UnstablePageLoader />;
+    return <PageLoader />;
   }
 
   if (!source) {
     return (
       <div className="flex h-full w-full items-center justify-center px-20">
-        <UnstableEmpty className="max-w-2xl">
-          <UnstableEmptyHeader>
+        <Empty className="max-w-2xl">
+          <EmptyHeader>
             <BanIcon className="size-8 text-muted" />
-            <UnstableEmptyTitle className="text-muted">
+            <EmptyTitle className="text-muted">
               Could not find discovery source with ID {discoverySourceId}
-            </UnstableEmptyTitle>
-          </UnstableEmptyHeader>
-        </UnstableEmpty>
+            </EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       </div>
     );
   }
@@ -1022,24 +1090,24 @@ const PageContent = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <UnstableDropdownMenu>
-            <UnstableDropdownMenuTrigger asChild>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
                 <EllipsisVerticalIcon />
               </Button>
-            </UnstableDropdownMenuTrigger>
-            <UnstableDropdownMenuContent align="end" sideOffset={2}>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={2}>
               <ProjectPermissionCan
                 I={ProjectPermissionPamDiscoveryActions.Edit}
                 a={ProjectPermissionSub.PamDiscovery}
               >
                 {(isAllowed) => (
-                  <UnstableDropdownMenuItem
+                  <DropdownMenuItem
                     onClick={() => setIsEditModalOpen(true)}
                     isDisabled={!isAllowed}
                   >
                     Edit Source
-                  </UnstableDropdownMenuItem>
+                  </DropdownMenuItem>
                 )}
               </ProjectPermissionCan>
               <ProjectPermissionCan
@@ -1047,18 +1115,18 @@ const PageContent = () => {
                 a={ProjectPermissionSub.PamDiscovery}
               >
                 {(isAllowed) => (
-                  <UnstableDropdownMenuItem
+                  <DropdownMenuItem
                     onClick={() => setIsDeleteModalOpen(true)}
                     variant="danger"
                     isDisabled={!isAllowed}
                   >
                     <TrashIcon className="size-4" />
                     Delete Source
-                  </UnstableDropdownMenuItem>
+                  </DropdownMenuItem>
                 )}
               </ProjectPermissionCan>
-            </UnstableDropdownMenuContent>
-          </UnstableDropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -1066,15 +1134,16 @@ const PageContent = () => {
         {/* Left Column */}
         <div className="flex w-80 shrink-0 flex-col gap-4">
           <DiscoveryDetailsSection source={source} onEdit={() => setIsEditModalOpen(true)} />
+          <DiscoveryDomainSection source={source} projectId={projectId!} orgId={currentOrg.id} />
           <DiscoveryConfigurationSection source={source} onEdit={() => setIsEditModalOpen(true)} />
           <DiscoveryCredentialsSection source={source} onEdit={() => setIsEditModalOpen(true)} />
         </div>
 
         {/* Right Column - Tabbed Content */}
-        <div className="flex w-full min-w-0">
+        <div className="min-w-0 flex-1">
           <Tabs value={selectedTab} onValueChange={handleTabChange} className="w-full">
-            <UnstableCard className="py-3">
-              <UnstableCardHeader>
+            <Card className="py-3">
+              <CardHeader>
                 <div className="flex items-center justify-between gap-2">
                   <TabList className="w-fit">
                     <Tab value="runs">Runs</Tab>
@@ -1098,8 +1167,8 @@ const PageContent = () => {
                     )}
                   </ProjectPermissionCan>
                 </div>
-              </UnstableCardHeader>
-              <UnstableCardContent>
+              </CardHeader>
+              <CardContent>
                 <TabPanel value="runs" className="p-0">
                   <RunsTab
                     discoverySourceId={source.id}
@@ -1125,8 +1194,8 @@ const PageContent = () => {
                     projectId={projectId!}
                   />
                 </TabPanel>
-              </UnstableCardContent>
-            </UnstableCard>
+              </CardContent>
+            </Card>
           </Tabs>
         </div>
       </div>

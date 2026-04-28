@@ -43,6 +43,13 @@ import {
   TDbtServiceTokenRotationWithConnection
 } from "./dbt-service-token/dbt-service-token-rotation-types";
 import {
+  THpIloRotation,
+  THpIloRotationGeneratedCredentials,
+  THpIloRotationInput,
+  THpIloRotationListItem,
+  THpIloRotationWithConnection
+} from "./hp-ilo-rotation";
+import {
   TLdapPasswordRotation,
   TLdapPasswordRotationGeneratedCredentials,
   TLdapPasswordRotationInput,
@@ -103,6 +110,13 @@ import {
 import { TSecretRotationV2DALFactory } from "./secret-rotation-v2-dal";
 import { SecretRotation } from "./secret-rotation-v2-enums";
 import {
+  TSupabaseApiKeyRotation,
+  TSupabaseApiKeyRotationGeneratedCredentials,
+  TSupabaseApiKeyRotationInput,
+  TSupabaseApiKeyRotationListItem,
+  TSupabaseApiKeyRotationWithConnection
+} from "./supabase-api-key";
+import {
   TUnixLinuxLocalAccountRotation,
   TUnixLinuxLocalAccountRotationGeneratedCredentials,
   TUnixLinuxLocalAccountRotationInput,
@@ -133,7 +147,9 @@ export type TSecretRotationV2 =
   | TUnixLinuxLocalAccountRotation
   | TDbtServiceTokenRotation
   | TWindowsLocalAccountRotation
-  | TOpenRouterApiKeyRotation;
+  | TOpenRouterApiKeyRotation
+  | THpIloRotation
+  | TSupabaseApiKeyRotation;
 
 export type TSecretRotationV2WithConnection =
   | TPostgresCredentialsRotationWithConnection
@@ -151,7 +167,9 @@ export type TSecretRotationV2WithConnection =
   | TUnixLinuxLocalAccountRotationWithConnection
   | TDbtServiceTokenRotationWithConnection
   | TWindowsLocalAccountRotationWithConnection
-  | TOpenRouterApiKeyRotationWithConnection;
+  | TOpenRouterApiKeyRotationWithConnection
+  | THpIloRotationWithConnection
+  | TSupabaseApiKeyRotationWithConnection;
 
 export type TSecretRotationV2GeneratedCredentials =
   | TSqlCredentialsRotationGeneratedCredentials
@@ -165,7 +183,9 @@ export type TSecretRotationV2GeneratedCredentials =
   | TUnixLinuxLocalAccountRotationGeneratedCredentials
   | TDbtServiceTokenRotationGeneratedCredentials
   | TWindowsLocalAccountRotationGeneratedCredentials
-  | TOpenRouterApiKeyRotationGeneratedCredentials;
+  | TOpenRouterApiKeyRotationGeneratedCredentials
+  | THpIloRotationGeneratedCredentials
+  | TSupabaseApiKeyRotationGeneratedCredentials;
 
 export type TSecretRotationV2Input =
   | TPostgresCredentialsRotationInput
@@ -183,7 +203,9 @@ export type TSecretRotationV2Input =
   | TUnixLinuxLocalAccountRotationInput
   | TDbtServiceTokenRotationInput
   | TWindowsLocalAccountRotationInput
-  | TOpenRouterApiKeyRotationInput;
+  | TOpenRouterApiKeyRotationInput
+  | THpIloRotationInput
+  | TSupabaseApiKeyRotationInput;
 
 export type TSecretRotationV2ListItem =
   | TPostgresCredentialsRotationListItem
@@ -201,12 +223,15 @@ export type TSecretRotationV2ListItem =
   | TUnixLinuxLocalAccountRotationListItem
   | TDbtServiceTokenRotationListItem
   | TWindowsLocalAccountRotationListItem
-  | TOpenRouterApiKeyRotationListItem;
+  | TOpenRouterApiKeyRotationListItem
+  | THpIloRotationListItem
+  | TSupabaseApiKeyRotationListItem;
 
 export type TSecretRotationV2TemporaryParameters =
   | TLdapPasswordRotationInput["temporaryParameters"]
   | TUnixLinuxLocalAccountRotationInput["temporaryParameters"]
   | TWindowsLocalAccountRotationInput["temporaryParameters"]
+  | THpIloRotationInput["temporaryParameters"]
   | undefined;
 
 export type TSecretRotationV2Raw = NonNullable<Awaited<ReturnType<TSecretRotationV2DALFactory["findById"]>>>;

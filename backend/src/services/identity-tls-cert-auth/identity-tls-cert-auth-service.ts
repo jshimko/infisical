@@ -21,6 +21,9 @@ import {
   UnauthorizedError
 } from "@app/lib/errors";
 import { extractIPDetails, isValidIpOrCidr } from "@app/lib/ip";
+import { requestMemoKeys } from "@app/lib/request-context/memo-keys";
+import { RequestContextKey } from "@app/lib/request-context/request-context-keys";
+import { requestMemoize } from "@app/lib/request-context/request-memoizer";
 import { AuthAttemptAuthMethod, AuthAttemptAuthResult, authAttemptCounter } from "@app/lib/telemetry/metrics";
 
 import { ActorType, AuthTokenType } from "../auth/auth-type";
@@ -53,7 +56,9 @@ const parseSubjectDetails = (data: string) => {
   const values: Record<string, string> = {};
   data.split("\n").forEach((el) => {
     const [key, value] = el.split("=");
-    values[key.trim()] = value.trim();
+    if (key && value) {
+      values[key.trim()] = value.trim();
+    }
   });
   return values;
 };
@@ -82,9 +87,14 @@ export const identityTlsCertAuthServiceFactory = ({
     }
 
     const identity = await identityDAL.findById(identityTlsCertAuth.identityId);
-    if (!identity) throw new UnauthorizedError({ message: "Identity not found" });
+    if (!identity)
+      throw new UnauthorizedError({
+        message: "Identity not found"
+      });
 
-    const org = await orgDAL.findById(identity.orgId);
+    const org = await requestMemoize(requestMemoKeys.orgFindById(identity.orgId), () =>
+      orgDAL.findById(identity.orgId)
+    );
     const isSubOrgIdentity = Boolean(org.rootOrgId);
 
     // If the identity is a sub-org identity, then the scope is always the org.id, and if it's a root org identity, then we need to resolve the scope if a organizationSlug is specified
@@ -111,18 +121,36 @@ export const identityTlsCertAuthServiceFactory = ({
       const isValidCertificate = clientCertificateX509.verify(caCertificateX509.publicKey);
       if (!isValidCertificate)
         throw new UnauthorizedError({
-          message: "Access denied: Certificate not issued by the provided CA."
+          message: "Access denied: Certificate not issued by the provided CA.",
+          detail: {
+            reasonCode: "ca_verification_failed",
+            identityId: identity.id,
+            orgId: identity.orgId,
+            identityName: identity.name
+          }
         });
 
       if (new Date(clientCertificateX509.validTo) < new Date()) {
         throw new UnauthorizedError({
-          message: "Access denied: Certificate has expired."
+          message: "Access denied: Certificate has expired.",
+          detail: {
+            reasonCode: "certificate_expired",
+            identityId: identity.id,
+            orgId: identity.orgId,
+            identityName: identity.name
+          }
         });
       }
 
       if (new Date(clientCertificateX509.validFrom) > new Date()) {
         throw new UnauthorizedError({
-          message: "Access denied: Certificate not yet valid."
+          message: "Access denied: Certificate not yet valid.",
+          detail: {
+            reasonCode: "certificate_not_yet_valid",
+            identityId: identity.id,
+            orgId: identity.orgId,
+            identityName: identity.name
+          }
         });
       }
 
@@ -131,12 +159,18 @@ export const identityTlsCertAuthServiceFactory = ({
         const isValidCommonName = identityTlsCertAuth.allowedCommonNames.split(",").includes(subjectDetails.CN);
         if (!isValidCommonName) {
           throw new UnauthorizedError({
-            message: "Access denied: TLS Certificate Auth common name not allowed."
+            message: "Access denied: TLS Certificate Auth common name not allowed.",
+            detail: {
+              reasonCode: "common_name_not_allowed",
+              identityId: identity.id,
+              orgId: identity.orgId,
+              identityName: identity.name
+            }
           });
         }
       }
 
-      if (organizationSlug) {
+      if (organizationSlug && org.slug !== organizationSlug) {
         if (!isSubOrgIdentity) {
           const subOrg = await orgDAL.findOne({ rootOrgId: org.id, slug: organizationSlug });
 
@@ -152,7 +186,13 @@ export const identityTlsCertAuthServiceFactory = ({
 
           if (!subOrgMembership) {
             throw new UnauthorizedError({
-              message: `Identity not authorized to access sub organization ${organizationSlug}`
+              message: `Identity not authorized to access sub organization ${organizationSlug}`,
+              detail: {
+                reasonCode: "sub_org_unauthorized",
+                identityId: identity.id,
+                orgId: identity.orgId,
+                identityName: identity.name
+              }
             });
           }
 
@@ -219,8 +259,8 @@ export const identityTlsCertAuthServiceFactory = ({
           "infisical.organization.name": org.name,
           "infisical.identity.auth_method": AuthAttemptAuthMethod.TLS_CERT_AUTH,
           "infisical.identity.auth_result": AuthAttemptAuthResult.SUCCESS,
-          "client.address": requestContext.get("ip"),
-          "user_agent.original": requestContext.get("userAgent")
+          "client.address": requestContext.get(RequestContextKey.Ip),
+          "user_agent.original": requestContext.get(RequestContextKey.UserAgent)
         });
       }
 
@@ -239,8 +279,8 @@ export const identityTlsCertAuthServiceFactory = ({
           "infisical.organization.name": org.name,
           "infisical.identity.auth_method": AuthAttemptAuthMethod.TLS_CERT_AUTH,
           "infisical.identity.auth_result": AuthAttemptAuthResult.FAILURE,
-          "client.address": requestContext.get("ip"),
-          "user_agent.original": requestContext.get("userAgent")
+          "client.address": requestContext.get(RequestContextKey.Ip),
+          "user_agent.original": requestContext.get(RequestContextKey.UserAgent)
         });
       }
       throw error;

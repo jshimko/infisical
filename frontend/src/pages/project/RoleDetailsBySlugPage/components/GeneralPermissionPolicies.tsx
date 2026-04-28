@@ -1,13 +1,24 @@
 import { cloneElement, Fragment, RefObject, useMemo } from "react";
-import { Control, Controller, useFieldArray, useFormContext, useWatch } from "react-hook-form";
+import {
+  Control,
+  Controller,
+  useFieldArray,
+  useFormContext,
+  useFormState,
+  useWatch
+} from "react-hook-form";
 import { components, MultiValueProps, MultiValueRemoveProps, OptionProps } from "react-select";
 import { CheckIcon, NetworkIcon, PlusIcon, TrashIcon } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 
 import {
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
   Badge,
   Button,
   FilterableSelect,
+  IconButton,
   Select,
   SelectContent,
   SelectItem,
@@ -15,11 +26,7 @@ import {
   SelectValue,
   Tooltip,
   TooltipContent,
-  TooltipTrigger,
-  UnstableAccordionContent,
-  UnstableAccordionItem,
-  UnstableAccordionTrigger,
-  UnstableIconButton
+  TooltipTrigger
 } from "@app/components/v3";
 import {
   ProjectPermissionGroupActions,
@@ -113,7 +120,13 @@ const ActionsMultiSelect = <T extends ProjectPermissionSub>({
   control,
   menuPortalContainerRef
 }: ActionsMultiSelectProps<T>) => {
-  const { setValue } = useFormContext<TFormSchema>();
+  const { setValue, trigger } = useFormContext<TFormSchema>();
+
+  const { errors } = useFormState({
+    control,
+    name: `permissions.${subject}.${rootIndex}.actionRequired` as any
+  });
+  const actionsError = (errors?.permissions as any)?.[subject]?.[rootIndex]?.actionRequired;
 
   const permissionRule = useWatch({
     control,
@@ -199,32 +212,39 @@ const ActionsMultiSelect = <T extends ProjectPermissionSub>({
       const isSelected = selectedArray.some((s: { value: string }) => s.value === valueStr);
       setValue(`permissions.${subject}.${rootIndex}.${valueStr}` as any, isSelected, {
         shouldDirty: true,
-        shouldTouch: true,
-        shouldValidate: true
+        shouldTouch: true
       });
     });
+
+    trigger("permissions");
   };
 
   return (
-    <FilterableSelect
-      isMulti
-      value={selectedActions}
-      onChange={handleChange}
-      options={actionOptions}
-      placeholder="Select actions..."
-      isDisabled={isDisabled}
-      isClearable={!isDisabled}
-      className="w-full"
-      menuPosition="fixed"
-      {...(menuPortalContainerRef?.current
-        ? { menuPortalTarget: menuPortalContainerRef.current }
-        : {})}
-      components={{
-        Option: OptionWithDescription,
-        MultiValueRemove,
-        MultiValue: MultiValueWithTooltip
-      }}
-    />
+    <div className="flex w-full flex-col">
+      <FilterableSelect
+        isMulti
+        value={selectedActions}
+        onChange={handleChange}
+        options={actionOptions}
+        placeholder="Select actions..."
+        isDisabled={isDisabled}
+        isClearable={!isDisabled}
+        className="w-full"
+        menuPosition="fixed"
+        {...(menuPortalContainerRef?.current
+          ? { menuPortalTarget: menuPortalContainerRef.current }
+          : {})}
+        components={{
+          Option: OptionWithDescription,
+          MultiValueRemove,
+          MultiValue: MultiValueWithTooltip
+        }}
+        isError={actionsError}
+      />
+      {actionsError && (
+        <span className="mt-1 text-xs text-danger">{actionsError.message as string}</span>
+      )}
+    </div>
   );
 };
 
@@ -254,8 +274,8 @@ export const GeneralPermissionPolicies = <T extends keyof NonNullable<TFormSchem
   if (!watchFields || !Array.isArray(watchFields) || watchFields.length === 0) return null;
 
   return (
-    <UnstableAccordionItem value={subject}>
-      <UnstableAccordionTrigger className="min-h-14 px-4 py-2.5 hover:bg-container-hover [&>svg]:size-5">
+    <AccordionItem value={subject}>
+      <AccordionTrigger className="min-h-14 px-4 py-2.5 hover:bg-container-hover [&>svg]:size-5">
         <div className="flex flex-1 items-center gap-2 text-left">
           <div className="flex grow flex-col">
             <span className="text-base select-none">{title}</span>
@@ -307,8 +327,8 @@ export const GeneralPermissionPolicies = <T extends keyof NonNullable<TFormSchem
             </div>
           )}
         </div>
-      </UnstableAccordionTrigger>
-      <UnstableAccordionContent className="!p-0">
+      </AccordionTrigger>
+      <AccordionContent className="!p-0">
         <div key={`select-${subject}-type`} className="flex flex-col space-y-3 bg-container p-3">
           {fields.map((el, rootIndex) => {
             const isInverted = watch(`permissions.${subject}.${rootIndex}.inverted` as any);
@@ -336,10 +356,10 @@ export const GeneralPermissionPolicies = <T extends keyof NonNullable<TFormSchem
                 <div
                   className={twMerge(
                     "relative rounded-md border border-l-[6px] border-border bg-card px-5 py-4 transition-colors duration-300",
-                    isInverted ? "border-l-red-600/50" : "border-l-green-600/50"
+                    isInverted ? "border-l-danger/50" : "border-l-success/50"
                   )}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
                     {isConditionalSubjects(subject) && (
                       <Controller
                         defaultValue={false as any}
@@ -374,14 +394,14 @@ export const GeneralPermissionPolicies = <T extends keyof NonNullable<TFormSchem
                     {!isDisabled && (
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <UnstableIconButton
+                          <IconButton
                             aria-label="Remove rule"
                             variant="danger"
                             onClick={() => remove(rootIndex)}
                             isDisabled={isDisabled}
                           >
                             <TrashIcon className="size-4" />
-                          </UnstableIconButton>
+                          </IconButton>
                         </TooltipTrigger>
                         <TooltipContent side="top">Remove Rule</TooltipContent>
                       </Tooltip>
@@ -396,7 +416,7 @@ export const GeneralPermissionPolicies = <T extends keyof NonNullable<TFormSchem
             );
           })}
         </div>
-      </UnstableAccordionContent>
-    </UnstableAccordionItem>
+      </AccordionContent>
+    </AccordionItem>
   );
 };
