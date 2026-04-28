@@ -19,7 +19,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: jshimko/infisical
+          images: ${{ secrets.DOCKER_REPO }}
           tags: |
             type=sha,prefix=
 
