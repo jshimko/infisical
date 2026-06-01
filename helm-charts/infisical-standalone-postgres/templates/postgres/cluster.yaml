@@ -24,7 +24,19 @@ spec:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true
       parameters:
-        barmanObjectName: {{ .Values.cnpg.cluster.name }}
+        barmanObjectName: {{ default .Values.cnpg.cluster.name .Values.cnpg.backups.name }}
+  {{- end }}
+  # if recovery on bootstrap is enabled, configure external cluster source
+  # https://cloudnative-pg.io/plugin-barman-cloud/docs/usage/#restoring-a-cluster
+  {{- if .Values.cnpg.cluster.spec.bootstrap.recovery }}
+  externalClusters:
+    - name: source
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          # Recovery Object Store (pull, read-only)
+          barmanObjectName: {{ .Values.cnpg.cluster.name }}
+          serverName: {{ .Values.cnpg.cluster.name }}-postgres
   {{- end }}
 
 ---
